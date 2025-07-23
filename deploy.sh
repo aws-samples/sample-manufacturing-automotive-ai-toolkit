@@ -7,6 +7,9 @@ export TEMP_BUCKET="ma3t-toolkit-temp-149536462911-us-west-2"  # This is for Clo
 export REGION="us-west-2"
 export CODE_PREFIX="repo"  # This will be the object key, not a prefix
 
+# Temporary
+export VISTA_DEPLOY_REGION="us-west-2"
+
 # Parse command line arguments
 while [[ $# -gt 0 ]]; do
   case $1 in

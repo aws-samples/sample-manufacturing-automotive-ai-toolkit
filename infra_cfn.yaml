@@ -6,7 +6,7 @@ Parameters:
     Type: String
     Description: "The Bedrock model ID to use for the agents"
     Default: "anthropic.claude-3-haiku-20240307-v1:0"
-  
+
   DeployApplication:
     Type: String
     Description: "Whether to deploy the application"
@@ -14,7 +14,7 @@ Parameters:
     AllowedValues:
       - "true"
       - "false"
-      
+
   UseLocalCode:
     Type: String
     Description: "Whether to use local code instead of GitHub. Set to true when using deploy.sh script."
@@ -22,17 +22,17 @@ Parameters:
     AllowedValues:
       - "true"
       - "false"
-      
+
   GitHubUrl:
     Type: String
     Description: "URL of the GitHub repository to download (only used if UseLocalCode is false)"
     Default: "https://github.com/aws-samples/manufacturing-automotive-ai-toolkit.git"
-    
+
   GitBranch:
     Type: String
     Description: "Branch name to download (only used if UseLocalCode is false)"
     Default: "main"
-    
+
   S3BucketName:
     Type: String
     Description: "Name of the S3 bucket to use for code storage"
@@ -172,9 +172,22 @@ Resources:
                 Resource: !Sub "arn:aws:iam::${AWS::AccountId}:role/${AWS::StackName}-AgentRole-*"
                 Condition:
                   StringEquals:
-                    "iam:PassedToService": 
+                    "iam:PassedToService":
                       - "bedrock-agentcore.amazonaws.com"
                       - "bedrock.amazonaws.com"
+      Tags:
+        - Key: Project
+          Value: "ma3t-agents-toolkit"
+
+
+  ##################################################################
+  # Cfn Based Agents
+  ##################################################################
+
+  VistaAgentStack:
+    Type: AWS::CloudFormation::Stack
+    Properties:
+      TemplateURL: agents_catalog/multi_agent_collaboration/00-vista-agents/cdk/cdk.out/VistaServiceStack.template.json
       Tags:
         - Key: Project
           Value: "ma3t-agents-toolkit"
@@ -182,10 +195,9 @@ Resources:
   ##################################################################
   # AgentCore Deployment
   ##################################################################
-
   AgentCoreDeploymentProject:
     Type: AWS::CodeBuild::Project
-    DependsOn: 
+    DependsOn:
       - AgentRole
     Properties:
       Name: !Sub "${AWS::StackName}-agent-deployment"

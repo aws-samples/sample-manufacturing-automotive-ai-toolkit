@@ -13,3 +13,4 @@ tasks.md
 Dockerfile
 .bedrock_agentcore.yaml
 ui/app/api/agents/config/*
+packaged_infra_cfn.yaml
