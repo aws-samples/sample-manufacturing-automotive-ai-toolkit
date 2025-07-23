@@ -1,0 +1,343 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: 'CloudFormation template to create a warranty-info DynamoDB table and Lambda function to insert sample records'
+
+Parameters:
+  TargetRegion:
+    Type: String
+    Default: us-east-1
+    Description: The region where you want to deploy the resources
+
+Resources:
+  WarrantyInfoTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: warranty-info
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: VIN
+          AttributeType: S
+      KeySchema:
+        - AttributeName: VIN
+          KeyType: HASH
+      Tags:
+        - Key: Name
+          Value: WarrantyInfo
+          
+  GetWarrantyDataRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: 'sts:AssumeRole'
+      ManagedPolicyArns:
+        - 'arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole'
+      Policies:
+        - PolicyName: DynamoDBReadAccess
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - 'dynamodb:GetItem'
+                Resource: !GetAtt WarrantyInfoTable.Arn
+                
+  GetWarrantyDataFunction:
+    Type: AWS::Lambda::Function
+    DependsOn: WarrantyInfoTable
+    Properties:
+      FunctionName: GetWarrantyData
+      Handler: index.lambda_handler
+      Role: !GetAtt GetWarrantyDataRole.Arn
+      Runtime: python3.13
+      Timeout: 30
+      MemorySize: 128
+      Code:
+        ZipFile: |
+          import json
+          import boto3
+
+          dynamodb = boto3.resource("dynamodb")
+          table = dynamodb.Table("warranty-info")
+
+          def lambda_handler(event, context):
+              # Extract VIN from parameters or directly from event
+              VIN = ""
+              if "parameters" in event:
+                  for param in event["parameters"]:
+                      if param.get("name") == "VIN":
+                          VIN = param.get("value", "")
+                          break
+              else:
+                  VIN = event.get('VIN', '')
+
+              # Extract metadata
+              action_group = event.get('actionGroup', '')
+              function = event.get('function', '')
+              session_attributes = event.get('sessionAttributes', {})
+              prompt_session_attributes = event.get('promptSessionAttributes', {})
+
+              try:
+                  # VIN is missing
+                  if not VIN:
+                      response_body = {
+                          'TEXT': {
+                              'body': json.dumps("VIN is required in input")
+                          }
+                      }
+                  else:
+                      # Query DynamoDB
+                      response = table.get_item(Key={"VIN": VIN})
+
+                      # VIN not found
+                      if "Item" not in response:
+                          response_body = {
+                              'TEXT': {
+                                  'body': json.dumps("VIN not found")
+                              }
+                          }
+                      else:
+                          # VIN found
+                          response_body = {
+                              'TEXT': {
+                                  'body': json.dumps(response["Item"])
+                              }
+                          }
+
+                  # Construct standardized response
+                  function_response = {
+                      'actionGroup': action_group,
+                      'function': function,
+                      'functionResponse': {
+                          'responseBody': response_body
+                      }
+                  }
+
+                  action_response = {
+                      'messageVersion': '1.0',
+                      'response': function_response,
+                      'sessionAttributes': session_attributes,
+                      'promptSessionAttributes': prompt_session_attributes
+                  }
+
+                  print(action_response)
+                  return action_response
+
+              except Exception as e:
+                  # Graceful error response
+                  error_response = {
+                      'TEXT': {
+                          'body': json.dumps("An internal error occurred.")
+                      }
+                  }
+
+                  function_response = {
+                      'actionGroup': action_group,
+                      'function': function,
+                      'functionResponse': {
+                          'responseBody': error_response
+                      }
+                  }
+
+                  action_response = {
+                      'messageVersion': '1.0',
+                      'response': function_response,
+                      'sessionAttributes': session_attributes,
+                      'promptSessionAttributes': prompt_session_attributes
+                  }
+
+                  print(f"Error: {str(e)}")
+                  return action_response
+
+  WarrantyInfoRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: 'sts:AssumeRole'
+      ManagedPolicyArns:
+        - 'arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole'
+      Policies:
+        - PolicyName: DynamoDBAccess
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - 'dynamodb:PutItem'
+                Resource: !GetAtt WarrantyInfoTable.Arn
+
+  InsertWarrantyInfoFunction:
+    Type: AWS::Lambda::Function
+    DependsOn: WarrantyInfoTable
+    Properties:
+      FunctionName: InsertWarrantyInfo
+      Handler: index.handler
+      Role: !GetAtt WarrantyInfoRole.Arn
+      Runtime: python3.13
+      Timeout: 60
+      MemorySize: 256
+      Code:
+        ZipFile: |
+          import boto3
+          import json
+          import urllib.request
+          from datetime import datetime, timedelta
+          
+          def handler(event, context):
+              print(f"Received event: {json.dumps(event)}")
+              
+              # Extract request details
+              response_url = event.get('ResponseURL')
+              stack_id = event.get('StackId')
+              request_id = event.get('RequestId')
+              logical_resource_id = event.get('LogicalResourceId')
+              physical_resource_id = event.get('PhysicalResourceId', 'WarrantyInfoDataPopulation')
+              
+              # Prepare the response payload
+              response_body = {
+                  'Status': 'SUCCESS',
+                  'PhysicalResourceId': physical_resource_id,
+                  'StackId': stack_id,
+                  'RequestId': request_id,
+                  'LogicalResourceId': logical_resource_id
+              }
+              
+              # For Delete requests, just send success response
+              if event.get('RequestType') == 'Delete':
+                  print("Delete request - sending success response")
+                  send_response(response_url, response_body)
+                  return
+              
+              try:
+                  dynamodb = boto3.resource('dynamodb')
+                  table = dynamodb.Table('warranty-info')
+                  
+                  # Current date for warranty calculations
+                  current_date = datetime.now()
+                  
+                  # Sample warranty info data using VINs from the customer profiles
+                  sample_warranty_info = [
+                      {
+                          'VIN': '1GCNCPEX5DZ000001',
+                          'make': 'Chevrolet',
+                          'model': 'Silverado',
+                          'year': '2023',
+                          'warranty_active': True,
+                          'warranty_end_date': (current_date + timedelta(days=730)).strftime('%Y-%m-%d')  # 2 years from now
+                      },
+                      {
+                          'VIN': '1GCNCPEX5DZ000002',
+                          'make': 'Chevrolet',
+                          'model': 'Equinox',
+                          'year': '2022',
+                          'warranty_active': True,
+                          'warranty_end_date': (current_date + timedelta(days=365)).strftime('%Y-%m-%d')  # 1 year from now
+                      },
+                      {
+                          'VIN': '1GCNCPEX5DZ000003',
+                          'make': 'GMC',
+                          'model': 'Sierra',
+                          'year': '2021',
+                          'warranty_active': False,
+                          'warranty_end_date': (current_date - timedelta(days=30)).strftime('%Y-%m-%d')  # Expired 30 days ago
+                      },
+                      {
+                          'VIN': '1GCNCPEX5DZ000004',
+                          'make': 'Buick',
+                          'model': 'Enclave',
+                          'year': '2024',
+                          'warranty_active': True,
+                          'warranty_end_date': (current_date + timedelta(days=1095)).strftime('%Y-%m-%d')  # 3 years from now
+                      },
+                      {
+                          'VIN': '1GCNCPEX5DZ000005',
+                          'make': 'Cadillac',
+                          'model': 'Escalade',
+                          'year': '2023',
+                          'warranty_active': True,
+                          'warranty_end_date': (current_date + timedelta(days=1460)).strftime('%Y-%m-%d')  # 4 years from now
+                      }
+                  ]
+                  
+                  # Put the items
+                  for item in sample_warranty_info:
+                      table.put_item(Item=item)
+                      print(f"Added warranty info for VIN: {item['VIN']} - {item['make']} {item['model']}")
+                  
+                  print(f"Successfully added {len(sample_warranty_info)} warranty records")
+                  
+                  # Add data to response
+                  response_body['Data'] = {'Message': f"Added {len(sample_warranty_info)} warranty records"}
+                  
+                  # Send success response
+                  send_response(response_url, response_body)
+              except Exception as e:
+                  error_message = str(e)
+                  print(f"Error adding warranty data: {error_message}")
+                  
+                  # Send failure response
+                  response_body['Status'] = 'FAILED'
+                  response_body['Reason'] = error_message
+                  send_response(response_url, response_body)
+          
+          def send_response(response_url, response_body):
+              """Send a response to CloudFormation to handle the custom resource."""
+              json_response_body = json.dumps(response_body)
+              
+              print(f"Sending response to: {response_url}")
+              print(f"Response body: {json_response_body}")
+              
+              headers = {
+                  'content-type': '',
+                  'content-length': str(len(json_response_body))
+              }
+              
+              try:
+                  req = urllib.request.Request(response_url, 
+                                              data=json_response_body.encode('utf-8'),
+                                              headers=headers,
+                                              method='PUT')
+                  
+                  response = urllib.request.urlopen(req)
+                  print(f"Status code: {response.getcode()}")
+                  print(f"Status message: {response.msg}")
+                  return True
+              except Exception as e:
+                  print(f"Failed to send response: {str(e)}")
+                  print(f"Error details: {str(e)}")
+                  return False
+
+  # Custom Resource to Populate Data
+  PopulateWarrantyData:
+    Type: Custom::PopulateWarrantyData
+    DependsOn: InsertWarrantyInfoFunction
+    Properties:
+      ServiceToken: !GetAtt InsertWarrantyInfoFunction.Arn
+
+Outputs:
+  WarrantyInfoTableName:
+    Description: Name of the warranty info DynamoDB table
+    Value: !Ref WarrantyInfoTable
+  WarrantyInfoTableArn:
+    Description: ARN of the warranty info DynamoDB table
+    Value: !GetAtt WarrantyInfoTable.Arn
+  InsertWarrantyInfoFunctionName:
+    Description: Name of the Lambda function
+    Value: !Ref InsertWarrantyInfoFunction
+  InsertWarrantyInfoFunctionArn:
+    Description: ARN of the Lambda function
+    Value: !GetAtt InsertWarrantyInfoFunction.Arn
+  GetWarrantyDataFunctionName:
+    Description: Name of the Get Warranty Data Lambda function
+    Value: !Ref GetWarrantyDataFunction
+  GetWarrantyDataFunctionArn:
+    Description: ARN of the Get Warranty Data Lambda function
+    Value: !GetAtt GetWarrantyDataFunction.Arn
