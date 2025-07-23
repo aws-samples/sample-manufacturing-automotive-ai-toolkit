@@ -2,6 +2,8 @@
 
 A toolkit to accelerate the adoption of agentic AI in the Automotive & Manufacturing industry, providing a flexible framework for implementing AI agents.
 
+![MA3T User Interface](docs/ui.png)
+
 ## Framework Todo
 - [] Deployment
    - [x] Deploy Bedrock Native Agents
