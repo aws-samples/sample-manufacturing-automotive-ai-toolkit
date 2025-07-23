@@ -1,0 +1,62 @@
+version: 0.2
+
+phases:
+  install:
+    runtime-versions:
+      python: latest
+    commands:
+      - echo "Installing dependencies..."
+      - pip install --upgrade pip
+      - pip install bedrock-agentcore-starter-toolkit boto3==1.39.9 bedrock-agentcore
+
+  pre_build:
+    commands:
+      - echo "Starting pre-build phase at $(date)"
+      - echo "Checking AWS credentials and configuration..."
+      - aws sts get-caller-identity
+      - echo $AWS_REGION
+      - echo $EXECUTION_ROLE_ARN
+
+  build:
+    commands:
+      - echo "Starting build phase at $(date)"
+      - echo "Deploying AgentCore agents..."
+      - python scripts/build_launch_agentcore.py --region $AWS_REGION --execution-role-arn $EXECUTION_ROLE_ARN
+      - echo "AgentCore deployment completed"
+      
+  post_build:
+    commands:
+      - echo "Starting post-build phase at $(date)"
+      - echo "Checking deployment results..."
+      - cat agentcore_deployment_results.json
+      - |
+        if [ -f agentcore_deployment_results.json ]; then
+          FAILED_AGENTS=$(cat agentcore_deployment_results.json | grep -c "error")
+          if [ $FAILED_AGENTS -gt 0 ]; then
+            echo "WARNING: $FAILED_AGENTS agents failed to deploy"
+            cat agentcore_deployment_results.json | grep -A 2 "error"
+          else
+            echo "All agents deployed successfully"
+          fi
+        else
+          echo "ERROR: Deployment results file not found"
+          exit 1
+        fi
+      - echo "Build completed at $(date)"
+
+artifacts:
+  files:
+    - agentcore_deployment_results.json
+    - agents.json
+    - ui/src/config/agents.json
+  discard-paths: no
+
+cache:
+  paths:
+    - '/root/.cache/pip/**/*'
+
+env:
+  variables:
+    PYTHONUNBUFFERED: "1"
+  parameter-store:
+    EXECUTION_ROLE_ARN: "/ma3t/agent-execution-role-arn"

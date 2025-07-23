@@ -1,0 +1,122 @@
+{
+  "agents": [
+    {
+      "id": "vista-supervisor",
+      "name": "Vista Agent Orchestrator",
+      "description": "Orchestrates interactions between specialized automotive service agents to provide comprehensive vehicle support.",
+      "type": "bedrock",
+      "role": "supervisor"
+    },
+    {
+      "id": "sam-orchestrator",
+      "name": "SAM Orchestrator",
+      "description": "Main supervisor agent that coordinates between specialized automotive service agents to provide comprehensive vehicle support.",
+      "type": "bedrock",
+      "bedrock": {
+        "agentName": "SAM-agent-orchestrater",
+        "override": {
+          "name": "SAM Orchestrator",
+          "role": "supervisor",
+          "icon": "/images/orchestrator.png",
+          "description": "Main supervisor agent that coordinates between specialized automotive service agents to provide comprehensive vehicle support.",
+          "tags": ["supervisor", "orchestrator", "coordinator"]
+        }
+      }
+    },
+    {
+      "id": "vista-warranty-recall",
+      "name": "Vista Warranty and Recalls Agent",
+      "description": "Provides information about vehicle warranties and recalls.",
+      "type": "bedrock",
+      "bedrock": {
+        "agentName": "SAM-agent-warrantyandrecalls",
+        "override": {
+          "name": "Vista Warranty and Recalls Agent",
+          "role": "individual",
+          "icon": "",
+          "description": "Provides information about vehicle warranties and recalls."
+        }
+      }
+    },
+    {
+      "id": "sam-vehicle-symptom",
+      "name": "Vehicle Symptom Analysis",
+      "description": "Analyzes vehicle symptoms and provides diagnostic recommendations. Example: 'I am hearing a loud noise from my vehicle while driving. What action should I take?'",
+      "type": "bedrock",
+      "bedrock": {
+        "agentName": "SAM-agent-analyze_vehiclesymptom",
+        "override": {
+          "name": "Vehicle Symptom Analysis",
+          "role": "individual",
+          "icon": "/images/vehicle-symptom.png",
+          "description": "Analyzes vehicle symptoms and provides diagnostic recommendations. Example: 'I am hearing a loud noise from my vehicle while driving. What action should I take?'",
+          "tags": ["diagnostics", "troubleshooting", "vehicle symptoms"]
+        }
+      }
+    },
+    {
+      "id": "sam-parts-availability",
+      "name": "Parts Availability",
+      "description": "Checks if specific parts are available at dealerships. Example: 'Can you check if Apex Autos has the necessary parts for diagnostic trouble code P0442?'",
+      "type": "bedrock",
+      "bedrock": {
+        "agentName": "SAM-agent-parts-availability",
+        "override": {
+          "name": "Parts Availability",
+          "role": "individual",
+          "icon": "/images/parts.png",
+          "description": "Checks if specific parts are available at dealerships. Example: 'Can you check if Apex Autos has the necessary parts for diagnostic trouble code P0442?'",
+          "tags": ["parts", "inventory", "service"]
+        }
+      }
+    },
+    {
+      "id": "sam-book-appointment",
+      "name": "Appointment Booking",
+      "description": "Helps schedule service appointments with dealerships. Example: 'I would like to book an appointment with Apex Autos for June 18 at 10:00 AM for my vehicle.'",
+      "type": "bedrock",
+      "bedrock": {
+        "agentName": "SAM-agent-bookdealerappt",
+        "override": {
+          "name": "Appointment Booking",
+          "role": "individual",
+          "icon": "/images/calendar.png",
+          "description": "Helps schedule service appointments with dealerships. Example: 'I would like to book an appointment with Apex Autos for June 18 at 10:00 AM for my vehicle.'",
+          "tags": ["scheduling", "appointments", "service"]
+        }
+      }
+    },
+    {
+      "id": "sam-nearest-dealership",
+      "name": "Dealer Lookup",
+      "description": "Finds authorized dealerships near a specified location. Example: 'Is there an authorized dealer near Fremont?'",
+      "type": "bedrock",
+      "bedrock": {
+        "agentName": "SAM-agent-find-nearestdealership",
+        "override": {
+          "name": "Dealer Lookup",
+          "role": "individual",
+          "icon": "/images/location.png",
+          "description": "Finds authorized dealerships near a specified location. Example: 'Is there an authorized dealer near Fremont?'",
+          "tags": ["dealership", "location", "search"]
+        }
+      }
+    },
+    {
+      "id": "sam-dealer-availability",
+      "name": "Dealer Availability",
+      "description": "Checks available appointment slots at dealerships. Example: 'What appointment slots are available at Apex Autos?'",
+      "type": "bedrock",
+      "bedrock": {
+        "agentName": "SAM-agent-finddealeravailability",
+        "override": {
+          "name": "Dealer Availability",
+          "role": "individual",
+          "icon": "/images/availability.png",
+          "description": "Checks available appointment slots at dealerships. Example: 'What appointment slots are available at Apex Autos?'",
+          "tags": ["scheduling", "availability", "dealership"]
+        }
+      }
+    }
+  ]
+}

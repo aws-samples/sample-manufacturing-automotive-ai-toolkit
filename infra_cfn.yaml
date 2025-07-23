@@ -1,0 +1,221 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: "Manufacturing & Automotive AI Toolkit (MA3T) Infrastructure"
+
+Parameters:
+  BedrockModelId:
+    Type: String
+    Description: "The Bedrock model ID to use for the agents"
+    Default: "anthropic.claude-3-haiku-20240307-v1:0"
+  
+  DeployApplication:
+    Type: String
+    Description: "Whether to deploy the application"
+    Default: "false"
+    AllowedValues:
+      - "true"
+      - "false"
+      
+  UseLocalCode:
+    Type: String
+    Description: "Whether to use local code instead of GitHub. Set to true when using deploy.sh script."
+    Default: "false"
+    AllowedValues:
+      - "true"
+      - "false"
+      
+  GitHubUrl:
+    Type: String
+    Description: "URL of the GitHub repository to download (only used if UseLocalCode is false)"
+    Default: "https://github.com/aws-samples/manufacturing-automotive-ai-toolkit.git"
+    
+  GitBranch:
+    Type: String
+    Description: "Branch name to download (only used if UseLocalCode is false)"
+    Default: "main"
+    
+  S3BucketName:
+    Type: String
+    Description: "Name of the S3 bucket to use for code storage"
+    Default: ""
+
+Conditions:
+  UseGitHubCode: !Equals [!Ref UseLocalCode, "false"]
+  CreateS3Bucket: !Equals [!Ref S3BucketName, ""]
+
+Resources:
+  ##################################################################
+  # S3
+  ##################################################################
+
+  S3Bucket:
+    Type: AWS::S3::Bucket
+    Condition: CreateS3Bucket
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      BucketName: !Sub "ma3t-toolkit-${AWS::AccountId}-${AWS::Region}"
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+      Tags:
+        - Key: Project
+          Value: "ma3t-agent-toolkit"
+
+  ##################################################################
+  # Copy Code to S3 (Only if using GitHub code)
+  ##################################################################
+
+  CodeRepo:
+    Type: AWS::CloudFormation::Stack
+    Condition: UseGitHubCode
+    Properties:
+      TemplateURL: build/copy_github_repo.yaml
+      Parameters:
+        GitHubUrl: !Ref GitHubUrl
+        BranchName: !Ref GitBranch
+        S3Bucket: !If [CreateS3Bucket, !Ref S3Bucket, !Ref S3BucketName]
+        S3KeyPrefix: "repo"
+      TimeoutInMinutes: 5
+      Tags:
+        - Key: Project
+          Value: "ma3t-agent-toolkit"
+
+  ##################################################################
+  # Amazon Bedrock Service Role
+  ##################################################################
+
+  # Helper resources to avoid nested intrinsic functions
+  S3BucketNameForPolicy:
+    Type: AWS::SSM::Parameter
+    Properties:
+      Type: String
+      Value: !If [CreateS3Bucket, !Ref S3Bucket, !Ref S3BucketName]
+      Description: "S3 bucket name for IAM policy"
+
+  AgentRole:
+    Type: AWS::IAM::Role
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    DependsOn: S3BucketNameForPolicy
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service:
+                - bedrock.amazonaws.com
+                - lambda.amazonaws.com
+                - bedrock-agentcore.amazonaws.com
+                - codebuild.amazonaws.com
+            Action:
+              - sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+      Policies:
+        - PolicyName: BedrockAgentPermissions
+          PolicyDocument:
+            Version: 2012-10-17
+            Statement:
+              - Effect: Allow
+                Action:
+                  - bedrock:*
+                Resource:
+                  - !Sub "arn:${AWS::Partition}:bedrock:*::foundation-model/*"
+                  - !Sub "arn:${AWS::Partition}:bedrock:${AWS::Region}:${AWS::AccountId}:knowledge-base/*"
+                  - !Sub "arn:${AWS::Partition}:bedrock:${AWS::Region}:${AWS::AccountId}:agent-alias/*"
+                  - !Sub "arn:${AWS::Partition}:bedrock:${AWS::Region}:${AWS::AccountId}:agent/*"
+                  - !Sub "arn:${AWS::Partition}:bedrock:${AWS::Region}:${AWS::AccountId}:inference-profile/*"
+                  - !Sub "arn:${AWS::Partition}:bedrock:${AWS::Region}:${AWS::AccountId}:application-inference-profile/*"
+                  - !Sub "arn:${AWS::Partition}:bedrock:${AWS::Region}:${AWS::AccountId}:guardrail/*"
+              - Effect: Allow
+                Action:
+                  - ecr:CreateRepository
+                  - ecr:GetAuthorizationToken
+                  - ecr:BatchCheckLayerAvailability
+                  - ecr:GetDownloadUrlForLayer
+                  - ecr:BatchGetImage
+                  - ecr:InitiateLayerUpload
+                  - ecr:UploadLayerPart
+                  - ecr:CompleteLayerUpload
+                  - ecr:PutImage
+                  - ecr:TagResource
+                  - ecr:DescribeRepositories
+                Resource: "*"
+              - Effect: Allow
+                Action:
+                  - bedrock-agentcore:*
+                Resource: "*"
+              - Effect: Allow
+                Action:
+                  - s3:GetObject
+                  - s3:GetObjectVersion
+                  - s3:ListBucket
+                Resource:
+                  - !Sub "arn:aws:s3:::${S3BucketNameForPolicy.Value}"
+                  - !Sub "arn:aws:s3:::${S3BucketNameForPolicy.Value}/*"
+              - Effect: Allow
+                Action:
+                  - logs:CreateLogGroup
+                  - logs:CreateLogStream
+                  - logs:PutLogEvents
+                Resource: "*"
+              - Effect: Allow
+                Action:
+                  - ssm:GetParameter
+                Resource: !Sub "arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/${S3BucketNameForPolicy}"
+              - Effect: Allow
+                Action:
+                  - iam:PassRole
+                Resource: !Sub "arn:aws:iam::${AWS::AccountId}:role/${AWS::StackName}-AgentRole-*"
+                Condition:
+                  StringEquals:
+                    "iam:PassedToService": 
+                      - "bedrock-agentcore.amazonaws.com"
+                      - "bedrock.amazonaws.com"
+      Tags:
+        - Key: Project
+          Value: "ma3t-agents-toolkit"
+
+  ##################################################################
+  # AgentCore Deployment
+  ##################################################################
+
+  AgentCoreDeploymentProject:
+    Type: AWS::CodeBuild::Project
+    DependsOn: 
+      - AgentRole
+    Properties:
+      Name: !Sub "${AWS::StackName}-agent-deployment"
+      ServiceRole: !GetAtt AgentRole.Arn
+      Environment:
+        ComputeType: BUILD_GENERAL1_SMALL
+        Image: aws/codebuild/amazonlinux2-aarch64-standard:3.0
+        Type: ARM_CONTAINER
+        EnvironmentVariables:
+          - Name: EXECUTION_ROLE_ARN
+            Value: !GetAtt AgentRole.Arn
+          - Name: AWS_REGION
+            Value: !Ref "AWS::Region"
+      Source:
+        Type: S3
+        Location: !Sub "${S3BucketNameForPolicy.Value}/repo"
+        BuildSpec: build/codebuild_agentcore.yml
+      Artifacts:
+        Type: NO_ARTIFACTS
+      Tags:
+        - Key: Project
+          Value: "ma3t-agents-toolkit"
+
+Outputs:
+  AgentRole:
+    Value: !GetAtt AgentRole.Arn
+    Description: Amazon Bedrock Service Role ARN
+  AgentCoreDeploymentProject:
+    Value: !Ref AgentCoreDeploymentProject
+    Description: CodeBuild project for deploying AgentCore agents
+  S3BucketName:
+    Value: !GetAtt S3BucketNameForPolicy.Value
+    Description: S3 bucket name used for code storage
