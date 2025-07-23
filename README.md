@@ -5,23 +5,24 @@ A toolkit to accelerate the adoption of agentic AI in the Automotive & Manufactu
 ![MA3T User Interface](docs/ui.png)
 
 ## Framework Todo
-- [] Deployment
+- [ ] Deployment
    - [x] Deploy Bedrock Native Agents
    - [x] Deploy AgentCore Agents
    - [x] Build UI w/ CodeBuild
-   - [] Deploy UI
+   - [ ] Deploy UI
 - [x] Add example for Bedrock-based Cfn
 - [x] Add example for AgentCore w/ Strands
-- [] Add example for AgentCore w/MCP
-- [] Only pull Bedrock agents by tag
-- [] Multi agents with mixed types
-- [] Test 1-click on Github
-- [] Change HCLS to MA3T
+- [ ] Add example for AgentCore w/MCP
+- [ ] Only pull Bedrock agents by tag
+- [ ] Multi agents with mixed types
+- [ ] Test 1-click on Github
+- [ ] Change HCLS to MA3T
+- [ ] Enable custom UIs for agents
 
 ## AWS Samples Todo
-- [] Confirm repo name and change internal links
-- [] Add/confirm license to top of all files
-- [] Set up Git secret and search codebase
+- [ ] Confirm repo name and change internal links
+- [ ] Add/confirm license to top of all files
+- [ ] Set up Git secret and search codebase
 
 ## Deployment
 MA3T supports deployment via cloning this repository to your local machine and launching via a shell script or via one-click deploy.
