@@ -24,11 +24,8 @@ const agentNameMap: { [key: string]: string } = {
 };
 
 function sanitizeCollaboratorName(name: string): string {
-    // Convert to lowercase, replace spaces with underscores
     let sanitized = name.toLowerCase().replace(/\s+/g, '_');
-    // Remove any characters that aren't alphanumeric, underscore, or hyphen
     sanitized = sanitized.replace(/[^a-z0-9_-]/g, '');
-    // Ensure it starts with a letter or number
     if (!/^[a-z0-9]/.test(sanitized)) {
         sanitized = 'agent_' + sanitized;
     }
@@ -62,16 +59,15 @@ async function listAgents() {
   try {
     const command = new ListAgentsCommand({ maxResults: 100 });
     const response = await client.send(command);
-    console.log("Fetched Agents count:", response.agentSummaries?.length);
+    console.log("Fetched Bedrock Agents count:", response.agentSummaries?.length);
     return response.agentSummaries || [];
   } catch (error) {
-    console.error("Error fetching agents:", error);
+    console.error("Error fetching Bedrock agents:", error);
     return [];
   }
 }
 
 function findConfigFile(agentId: string, agentName: string): string | null {
-    // First try to find config using the agent name mapping
     if (agentName && agentNameMap[agentName]) {
         const mappedConfigPath = path.join(CONFIG_DIR, `${agentNameMap[agentName]}.json`);
         console.log(`Trying mapped config path for ${agentName}: ${mappedConfigPath}`);
@@ -81,11 +77,9 @@ function findConfigFile(agentId: string, agentName: string): string | null {
         }
     }
 
-    // List all available config files
     const files = fs.readdirSync(CONFIG_DIR);
     console.log('Available config files:', files);
 
-    // Try exact match with agent ID
     const exactMatch = files.find(file => file === `${agentId}.json`);
     if (exactMatch) {
         const configPath = path.join(CONFIG_DIR, exactMatch);
@@ -111,6 +105,48 @@ function getAgentConfig(agentId: string, agentName: string) {
     return null;
 }
 
+function loadAgentCoreAgents(): any[] {
+    try {
+        const files = fs.readdirSync(CONFIG_DIR);
+        const agents = [];
+
+        for (const file of files) {
+            try {
+                const filePath = path.join(CONFIG_DIR, file);
+                const content = fs.readFileSync(filePath, 'utf8');
+                const agent = JSON.parse(content);
+
+                // Only include AgentCore agents
+                if (agent.agentType?.toLowerCase() === 'agentcore') {
+                    console.log(`Found AgentCore agent: ${agent.name}`);
+                    agents.push({
+                        id: agent.id,
+                        name: agent.name,
+                        collaboratorName: sanitizeCollaboratorName(agent.name),
+                        description: agent.description || "No description available.",
+                        agentType: agent.agentType,
+                        role: agent.role || 'standalone',
+                        image: agent.image || "/images/default_agent_icon.png",
+                        tags: agent.tags || [],
+                        createdAt: agent.createdAt || new Date().toISOString(),
+                        updatedAt: agent.updatedAt || new Date().toISOString(),
+                        category: "HCLS",
+                        agentStatus: "READY",
+                        bedrock_agentcore: agent.bedrock_agentcore
+                    });
+                }
+            } catch (error) {
+                console.error(`Error processing file ${file}:`, error);
+            }
+        }
+
+        return agents;
+    } catch (error) {
+        console.error("Error loading AgentCore agents:", error);
+        return [];
+    }
+}
+
 async function getAgentDetails(agentId: string) {
     try {
         console.log(`Getting details for agent: ${agentId}`);
@@ -122,26 +158,23 @@ async function getAgentDetails(agentId: string) {
           return null;
         }
 
-        // Get configuration overrides if they exist
         const config = getAgentConfig(agentId, response.agent.agentName || '');
         console.log(`Config retrieved for ${agentId} (${response.agent.agentName}):`, config);
         
-        // Only get collaborator details if agent has collaboration enabled
         const collaborators = ['SUPERVISOR', 'SUPERVISOR_ROUTER'].includes(response.agent.agentCollaboration)
             ? await getAgentCollaboratorDetails(response.agent.agentId)
             : null;
 
         const displayName = config?.name || response.agent.agentName;
         const tags = config?.tags || [];
-        console.log(`Final tags for agent ${agentId}:`, tags);
 
         const agentDetails = {
             id: response.agent.agentId,
             name: displayName,
-            // Add a sanitized name for collaboration
             collaboratorName: sanitizeCollaboratorName(displayName),
             description: config?.description || response.agent.description || "No description available.",
             version: response.agent.agentVersion,
+            agentType: 'bedrock',  // Explicitly set type for Bedrock agents
             foundationModel: response.agent.foundationModel || "N/A",
             orchestrationType: response.agent.orchestrationType || "Default",
             createdAt: config?.createdAt || (response.agent.createdAt ? response.agent.createdAt.toISOString() : "N/A"),
@@ -193,19 +226,32 @@ async function getAgentCollaboratorDetails(agentId: string) {
 export async function GET() {
     try {
       console.log('Starting GET request handler');
-      const agents = await listAgents();
-      console.log('Retrieved agents list, fetching details...');
       
-      const detailedAgents = await Promise.all(
-       agents.map(async (agent) => {
+      // Get Bedrock agents
+      const bedrockAgents = await listAgents();
+      console.log('Retrieved Bedrock agents list, fetching details...');
+      
+      const detailedBedrockAgents = await Promise.all(
+        bedrockAgents.map(async (agent) => {
           if (!agent.agentId) {
             return null;
           }
-          return getAgentDetails(agent.agentId)}));
+          return getAgentDetails(agent.agentId)
+        })
+      );
 
-      const validAgents = detailedAgents.filter(agent => agent !== null);
-      console.log('Final agents list:', validAgents);
+      // Get AgentCore agents
+      console.log('Loading AgentCore agents...');
+      const agentCoreAgents = loadAgentCoreAgents();
+      console.log('Loaded AgentCore agents:', agentCoreAgents);
 
+      // Combine both types of agents
+      const validAgents = [
+        ...detailedBedrockAgents.filter(agent => agent !== null),
+        ...agentCoreAgents
+      ];
+
+      console.log('Final combined agents list:', validAgents);
       return NextResponse.json(validAgents);
     } catch (error) {
       console.error("Error fetching agents:", error);

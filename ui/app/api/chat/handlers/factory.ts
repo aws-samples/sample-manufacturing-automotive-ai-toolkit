@@ -1,10 +1,11 @@
 import { ChatHandler, ChatError } from './base';
 import { BedrockChatHandler } from './bedrock';
+import { AgentCoreChatHandler } from './agentcore';
 
 export class ChatHandlerFactory {
     private static handlers: ChatHandler[] = [
         new BedrockChatHandler(),
-        // Add new handlers here as they are implemented
+        new AgentCoreChatHandler(),
     ];
 
     static getHandler(agentType: string | undefined): ChatHandler {
