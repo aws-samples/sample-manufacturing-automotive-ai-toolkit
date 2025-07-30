@@ -18,6 +18,7 @@ A toolkit to accelerate the adoption of agentic AI in the Automotive & Manufactu
 - [ ] Test 1-click on Github
 - [ ] Change HCLS to MA3T
 - [ ] Enable custom UIs for agents
+- [ ] UI Build process includes agentcore yaml and manifest
 
 ## AWS Samples Todo
 - [ ] Confirm repo name and change internal links
