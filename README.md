@@ -29,6 +29,36 @@ A toolkit to accelerate the adoption of agentic AI in the Automotive & Manufactu
 MA3T supports deployment via cloning this repository to your local machine and launching via a shell script or via one-click deploy.
 
 ### From Local Machine
+
+#### Configuration
+Before deploying, configure your deployment settings:
+
+1. Copy the example environment file:
+   ```bash
+   cp .env.example .env
+   ```
+
+2. Edit `.env` and update the values for your deployment:
+   ```bash
+   # Stack name for CloudFormation
+   STACK_NAME=ma3t-toolkit-stack
+   
+   # S3 bucket for storing application code (include your AWS account ID)
+   S3_BUCKET=ma3t-toolkit-<account-id>-<region>
+   
+   # Temporary S3 bucket for CloudFormation packaging
+   TEMP_BUCKET=ma3t-toolkit-temp-<account-id>-<region>
+   
+   # AWS region for deployment
+   REGION=us-west-2
+   ```
+
+3. Run the deployment:
+   ```bash
+   ./deploy.sh
+   ```
+
+You can also override configuration values using command-line arguments:
 ```bash
 ./deploy.sh --stack-name ma3t-toolkit-stack --bucket ma3t-toolkit-XXXXXXXXXXXX-us-west-2 --region us-west-2
 ```

@@ -5,6 +5,7 @@ agenteval_*
 node_modules
 .next
 .kiro
+.claude
 .amazonq
 __pycache__
 *-packaged.yaml
@@ -14,3 +15,5 @@ Dockerfile
 .bedrock_agentcore.yaml
 ui/app/api/agents/config/*
 packaged_infra_cfn.yaml
+.env
+**/cdk.out/
