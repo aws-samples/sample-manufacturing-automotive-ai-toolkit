@@ -1,14 +1,21 @@
 #!/bin/bash
 
-# Configuration
-export STACK_NAME="ma3t-toolkit-stack-14"
-export S3_BUCKET="ma3t-toolkit-149536462911-us-west-2"  # This is the bucket name we'll use
-export TEMP_BUCKET="ma3t-toolkit-temp-149536462911-us-west-2"  # This is for CloudFormation packaging
-export REGION="us-west-2"
-export CODE_PREFIX="repo"  # This will be the object key, not a prefix
-
-# Temporary
-export VISTA_DEPLOY_REGION="us-west-2"
+# Load environment variables from .env file if it exists
+if [ -f .env ]; then
+  echo "Loading configuration from .env file..."
+  export $(grep -v '^#' .env | xargs)
+else
+  echo "Warning: .env file not found. Using default values."
+  echo "Please copy .env.example to .env and customize the values."
+  
+  # Default configuration (fallback values)
+  export STACK_NAME="ma3t-toolkit-stack"
+  export S3_BUCKET="ma3t-toolkit-$(aws sts get-caller-identity --query Account --output text)-${AWS_DEFAULT_REGION:-us-west-2}"
+  export TEMP_BUCKET="ma3t-toolkit-temp-$(aws sts get-caller-identity --query Account --output text)-${AWS_DEFAULT_REGION:-us-west-2}"
+  export REGION="${AWS_DEFAULT_REGION:-us-west-2}"
+  export CODE_PREFIX="repo"
+  export VISTA_DEPLOY_REGION="${AWS_DEFAULT_REGION:-us-west-2}"
+fi
 
 # Parse command line arguments
 while [[ $# -gt 0 ]]; do
