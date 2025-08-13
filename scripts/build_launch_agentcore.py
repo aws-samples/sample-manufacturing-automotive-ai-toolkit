@@ -52,7 +52,7 @@ def find_agentcore_agents(base_dir="agents_catalog"):
         if "manifest.json" in files:
             manifest_path = os.path.join(root, "manifest.json")
             try:
-                with open(manifest_path, 'r') as f:
+                with open(manifest_path, 'r', encoding='utf-8') as f:
                     manifest = json.load(f)
                 
                 # Check if any agent in the manifest is of type 'agentcore'
@@ -138,7 +138,7 @@ def deploy_agentcore_agent(agent_path, agent_id, agent_name, entrypoint, region,
             
             # Read the current config
             import yaml
-            with open(config_path, 'r') as f:
+            with open(config_path, 'r', encoding='utf-8') as f:
                 config_data = yaml.safe_load(f)
             
             # Update platform for all agents
@@ -149,7 +149,7 @@ def deploy_agentcore_agent(agent_path, agent_id, agent_name, entrypoint, region,
                         agent_config['platform'] = 'linux/amd64'
             
             # Write the updated config back
-            with open(config_path, 'w') as f:
+            with open(config_path, 'w', encoding='utf-8') as f:
                 yaml.dump(config_data, f, default_flow_style=False)
             
             logger.info(f"Updated configuration saved to {config_path}")
@@ -215,7 +215,7 @@ def main():
         results.append(result)
     
     # Save all deployment results to the output file
-    with open(args.output_file, 'w') as f:
+    with open(args.output_file, 'w', encoding='utf-8') as f:
         json.dump(results, f, indent=2)
     
     logger.info(f"Deployment results saved to {args.output_file}")

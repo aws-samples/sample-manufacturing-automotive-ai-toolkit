@@ -69,7 +69,9 @@ async function listAgents() {
 
 function findConfigFile(agentId: string, agentName: string): string | null {
     if (agentName && agentNameMap[agentName]) {
-        const mappedConfigPath = path.join(CONFIG_DIR, `${agentNameMap[agentName]}.json`);
+        // Sanitize the mapped name to prevent path traversal
+        const sanitizedMappedName = agentNameMap[agentName].replace(/[^a-zA-Z0-9_-]/g, '_');
+        const mappedConfigPath = path.join(CONFIG_DIR, `${sanitizedMappedName}.json`);
         console.log(`Trying mapped config path for ${agentName}: ${mappedConfigPath}`);
         if (fs.existsSync(mappedConfigPath)) {
             console.log(`Found config file using agent name mapping: ${mappedConfigPath}`);
@@ -80,14 +82,16 @@ function findConfigFile(agentId: string, agentName: string): string | null {
     const files = fs.readdirSync(CONFIG_DIR);
     console.log('Available config files:', files);
 
-    const exactMatch = files.find(file => file === `${agentId}.json`);
+    // Sanitize agentId to prevent path traversal
+    const sanitizedAgentId = agentId.replace(/[^a-zA-Z0-9_-]/g, '_');
+    const exactMatch = files.find(file => file === `${sanitizedAgentId}.json`);
     if (exactMatch) {
         const configPath = path.join(CONFIG_DIR, exactMatch);
         console.log(`Found exact match config file: ${configPath}`);
         return configPath;
     }
 
-    console.log(`No config file found for agent ${agentId} (${agentName})`);
+    console.log(`No config file found for agent ${sanitizedAgentId} (${agentName})`);
     return null;
 }
 

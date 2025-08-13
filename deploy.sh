@@ -44,29 +44,29 @@ echo "  Temp Bucket: $TEMP_BUCKET"
 echo "  Region: $REGION"
 
 # Check if the S3 bucket exists, create it if it doesn't
-if ! aws s3api head-bucket --bucket $S3_BUCKET --region $REGION 2>/dev/null; then
+if ! aws s3api head-bucket --bucket "$S3_BUCKET" --region "$REGION" 2>/dev/null; then
   echo "Creating S3 bucket: $S3_BUCKET"
-  aws s3 mb s3://$S3_BUCKET --region $REGION
+  aws s3 mb "s3://$S3_BUCKET" --region "$REGION"
   
   # Block public access
   aws s3api put-public-access-block \
-    --bucket $S3_BUCKET \
+    --bucket "$S3_BUCKET" \
     --public-access-block-configuration "BlockPublicAcls=true,IgnorePublicAcls=true,BlockPublicPolicy=true,RestrictPublicBuckets=true" \
-    --region $REGION
+    --region "$REGION"
 else
   echo "S3 bucket already exists: $S3_BUCKET"
 fi
 
 # Check if the temp bucket exists, create it if it doesn't
-if ! aws s3api head-bucket --bucket $TEMP_BUCKET --region $REGION 2>/dev/null; then
+if ! aws s3api head-bucket --bucket "$TEMP_BUCKET" --region "$REGION" 2>/dev/null; then
   echo "Creating temp S3 bucket: $TEMP_BUCKET"
-  aws s3 mb s3://$TEMP_BUCKET --region $REGION
+  aws s3 mb "s3://$TEMP_BUCKET" --region "$REGION"
   
   # Block public access
   aws s3api put-public-access-block \
-    --bucket $TEMP_BUCKET \
+    --bucket "$TEMP_BUCKET" \
     --public-access-block-configuration "BlockPublicAcls=true,IgnorePublicAcls=true,BlockPublicPolicy=true,RestrictPublicBuckets=true" \
-    --region $REGION
+    --region "$REGION"
 else
   echo "Temp S3 bucket already exists: $TEMP_BUCKET"
 fi
@@ -95,7 +95,7 @@ zip -r "$ZIP_FILE" . \
 
 # Upload the zip file to S3 with the key "repo" (not "repo.zip")
 echo "Uploading zip file to S3..."
-aws s3 cp "$ZIP_FILE" s3://$S3_BUCKET/$CODE_PREFIX --region $REGION
+aws s3 cp "$ZIP_FILE" "s3://$S3_BUCKET/$CODE_PREFIX" --region "$REGION"
 
 echo "Local code uploaded to s3://$S3_BUCKET/$CODE_PREFIX"
 
@@ -106,22 +106,22 @@ rm -rf "$TEMP_DIR"
 echo "Packaging CloudFormation template..."
 aws cloudformation package \
   --template-file "infra_cfn.yaml" \
-  --s3-bucket $TEMP_BUCKET \
+  --s3-bucket "$TEMP_BUCKET" \
   --output-template-file "packaged_infra_cfn.yaml" \
-  --region $REGION
+  --region "$REGION"
 
 # Deploy CloudFormation stack
 echo "Deploying CloudFormation stack..."
 aws cloudformation deploy \
   --template-file "packaged_infra_cfn.yaml" \
-  --s3-bucket $TEMP_BUCKET \
+  --s3-bucket "$TEMP_BUCKET" \
   --capabilities CAPABILITY_IAM \
-  --stack-name $STACK_NAME \
-  --region $REGION \
+  --stack-name "$STACK_NAME" \
+  --region "$REGION" \
   --parameter-overrides \
     DeployApplication=false \
     UseLocalCode=true \
-    S3BucketName=$S3_BUCKET
+    S3BucketName="$S3_BUCKET"
 
 # Check if the deployment was successful
 if [ $? -eq 0 ]; then
@@ -129,15 +129,15 @@ if [ $? -eq 0 ]; then
   
   # Get the CodeBuild project name
   CODEBUILD_PROJECT=$(aws cloudformation describe-stacks \
-    --stack-name $STACK_NAME \
+    --stack-name "$STACK_NAME" \
     --query "Stacks[0].Outputs[?OutputKey=='AgentCoreDeploymentProject'].OutputValue" \
     --output text \
-    --region $REGION)
+    --region "$REGION")
   
   # Start the CodeBuild project to deploy the agents
   if [ ! -z "$CODEBUILD_PROJECT" ]; then
     echo "Starting CodeBuild project to deploy agents: $CODEBUILD_PROJECT"
-    aws codebuild start-build --project-name $CODEBUILD_PROJECT --region $REGION
+    aws codebuild start-build --project-name "$CODEBUILD_PROJECT" --region "$REGION"
   else
     echo "CodeBuild project not found in stack outputs"
   fi

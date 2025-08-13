@@ -100,6 +100,7 @@ Resources:
     Properties:
       RepositoryName: !Ref ContainerName
       EmptyOnDelete: True
+      ImageTagMutability: IMMUTABLE
       EncryptionConfiguration:
         EncryptionType: KMS
         KmsKey: !Ref EncryptionKey
