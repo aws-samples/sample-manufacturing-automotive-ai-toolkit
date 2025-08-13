@@ -19,11 +19,13 @@ A toolkit to accelerate the adoption of agentic AI in the Automotive & Manufactu
 - [ ] Change HCLS to MA3T
 - [ ] Enable custom UIs for agents
 - [ ] UI Build process includes agentcore yaml and manifest
+- [ ] AgentCore pull agents in RT (potential for bugs)
 
 ## AWS Samples Todo
 - [ ] Confirm repo name and change internal links
 - [ ] Add/confirm license to top of all files
 - [ ] Set up Git secret and search codebase
+- [ ] [Run RepoLinter](https://w.amazon.com/bin/view/Open_Source/Tools/Repolinter/)
 
 ## Deployment
 MA3T supports deployment via cloning this repository to your local machine and launching via a shell script or via one-click deploy.
