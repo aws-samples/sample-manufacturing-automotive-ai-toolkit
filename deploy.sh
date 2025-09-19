@@ -1,21 +1,11 @@
 #!/bin/bash
 
-# Load environment variables from .env file if it exists
-if [ -f .env ]; then
-  echo "Loading configuration from .env file..."
-  export $(grep -v '^#' .env | xargs)
-else
-  echo "Warning: .env file not found. Using default values."
-  echo "Please copy .env.example to .env and customize the values."
-  
-  # Default configuration (fallback values)
-  export STACK_NAME="ma3t-toolkit-stack"
-  export S3_BUCKET="ma3t-toolkit-$(aws sts get-caller-identity --query Account --output text)-${AWS_DEFAULT_REGION:-us-west-2}"
-  export TEMP_BUCKET="ma3t-toolkit-temp-$(aws sts get-caller-identity --query Account --output text)-${AWS_DEFAULT_REGION:-us-west-2}"
-  export REGION="${AWS_DEFAULT_REGION:-us-west-2}"
-  export CODE_PREFIX="repo"
-  export VISTA_DEPLOY_REGION="${AWS_DEFAULT_REGION:-us-west-2}"
-fi
+# Default configuration (no .env file needed)
+export STACK_NAME="ma3t-toolkit-stack"
+export S3_BUCKET="ma3t-toolkit-$(aws sts get-caller-identity --query Account --output text)-${AWS_DEFAULT_REGION:-us-west-2}"
+export TEMP_BUCKET="ma3t-toolkit-temp-$(aws sts get-caller-identity --query Account --output text)-${AWS_DEFAULT_REGION:-us-west-2}"
+export REGION="${AWS_DEFAULT_REGION:-us-west-2}"
+export CODE_PREFIX="repo"
 
 # Parse command line arguments
 while [[ $# -gt 0 ]]; do
@@ -134,7 +124,51 @@ aws cloudformation deploy \
 if [ $? -eq 0 ]; then
   echo "Stack deployment successful!"
   
-  # Get the CodeBuild project name
+  # Get the CDK synthesis project name and trigger it
+  CDK_PROJECT=$(aws cloudformation describe-stacks \
+    --stack-name "$STACK_NAME" \
+    --query "Stacks[0].Outputs[?OutputKey=='CDKSynthesisProject'].OutputValue" \
+    --output text \
+    --region "$REGION")
+  
+  if [ ! -z "$CDK_PROJECT" ]; then
+    echo "Starting CDK synthesis project: $CDK_PROJECT"
+    BUILD_ID=$(aws codebuild start-build --project-name "$CDK_PROJECT" --region "$REGION" --query 'build.id' --output text)
+    
+    echo "Waiting for CDK synthesis to complete..."
+    aws codebuild batch-get-builds --ids "$BUILD_ID" --region "$REGION" --query 'builds[0].buildStatus' --output text
+    
+    # Wait for build to complete
+    while true; do
+      BUILD_STATUS=$(aws codebuild batch-get-builds --ids "$BUILD_ID" --region "$REGION" --query 'builds[0].buildStatus' --output text)
+      if [ "$BUILD_STATUS" = "SUCCEEDED" ]; then
+        echo "CDK synthesis completed successfully"
+        break
+      elif [ "$BUILD_STATUS" = "FAILED" ] || [ "$BUILD_STATUS" = "FAULT" ] || [ "$BUILD_STATUS" = "STOPPED" ] || [ "$BUILD_STATUS" = "TIMED_OUT" ]; then
+        echo "CDK synthesis failed with status: $BUILD_STATUS"
+        exit 1
+      else
+        echo "CDK synthesis in progress... Status: $BUILD_STATUS"
+        sleep 10
+      fi
+    done
+    
+    # Now update the stack to deploy the Vista agents
+    echo "Updating stack to deploy Vista agents..."
+    aws cloudformation deploy \
+      --template-file "packaged_infra_cfn.yaml" \
+      --s3-bucket "$TEMP_BUCKET" \
+      --capabilities CAPABILITY_IAM \
+      --stack-name "$STACK_NAME" \
+      --region "$REGION" \
+      --parameter-overrides \
+        DeployApplication=false \
+        UseLocalCode=true \
+        S3BucketName="$S3_BUCKET" \
+        DeployVistaAgents=true
+  fi
+  
+  # Get the CodeBuild project name for AgentCore deployment
   CODEBUILD_PROJECT=$(aws cloudformation describe-stacks \
     --stack-name "$STACK_NAME" \
     --query "Stacks[0].Outputs[?OutputKey=='AgentCoreDeploymentProject'].OutputValue" \

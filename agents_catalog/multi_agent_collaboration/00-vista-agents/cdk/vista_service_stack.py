@@ -28,8 +28,28 @@ class VistaServiceStack(Stack):
     def __init__(self, scope: Construct, construct_id: str, foundation_model: str = None, **kwargs) -> None:
         super().__init__(scope, construct_id, **kwargs)
         
-        # Use provided foundation model or default
-        self.foundation_model = foundation_model or DEFAULT_MODEL_ID
+        # CloudFormation Parameters (no hardcoded values)
+        bedrock_model_param = cdk.CfnParameter(
+            self, "BedrockModelId",
+            type="String",
+            default="anthropic.claude-3-haiku-20240307-v1:0",
+            description="The Bedrock model ID to use for the agents"
+        )
+        
+        s3_bucket_param = cdk.CfnParameter(
+            self, "S3BucketName",
+            type="String",
+            description="Name of the S3 bucket for resources"
+        )
+        
+        agent_role_param = cdk.CfnParameter(
+            self, "AgentRoleArn",
+            type="String",
+            description="ARN of the IAM role for agents"
+        )
+        
+        # Use parameters instead of hardcoded values
+        self.foundation_model = foundation_model or bedrock_model_param.value_as_string
         print(f"Using foundation model: {self.foundation_model}")
         
         # Load templates from lambda-layer directory
@@ -41,12 +61,10 @@ class VistaServiceStack(Stack):
         for template_name, counts in self.template_data.get('summary', {}).items():
             print(f"  {template_name}: {counts}")
         
-        # Create S3 bucket for resources
-        self.resource_bucket = s3.Bucket(
+        # Use existing S3 bucket instead of creating new one
+        self.resource_bucket = s3.Bucket.from_bucket_name(
             self, "VistaResourceBucket",
-            bucket_name=f"vista-service-resources-{self.region}-{self.account}",
-            removal_policy=RemovalPolicy.DESTROY,
-            auto_delete_objects=True
+            bucket_name=s3_bucket_param.value_as_string
         )
         
         # Create DynamoDB tables from templates

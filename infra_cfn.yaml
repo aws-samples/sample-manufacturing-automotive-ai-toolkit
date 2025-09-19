@@ -38,9 +38,18 @@ Parameters:
     Description: "Name of the S3 bucket to use for code storage"
     Default: ""
 
+  DeployVistaAgents:
+    Type: String
+    Description: "Whether to deploy Vista agents (requires CDK synthesis to be completed first)"
+    Default: "false"
+    AllowedValues:
+      - "true"
+      - "false"
+
 Conditions:
   UseGitHubCode: !Equals [!Ref UseLocalCode, "false"]
   CreateS3Bucket: !Equals [!Ref S3BucketName, ""]
+  DeployVistaAgentsCondition: !Equals [!Ref DeployVistaAgents, "true"]
 
 Resources:
   ##################################################################
@@ -239,13 +248,73 @@ Resources:
 
 
   ##################################################################
-  # Cfn Based Agents
+  # CDK Synthesis and Deployment
   ##################################################################
+
+  CDKSynthesisProject:
+    Type: AWS::CodeBuild::Project
+    DependsOn:
+      - AgentRole
+    Properties:
+      Name: !Sub "${AWS::StackName}-cdk-synthesis"
+      ServiceRole: !GetAtt AgentRole.Arn
+      Environment:
+        ComputeType: BUILD_GENERAL1_SMALL
+        Image: aws/codebuild/amazonlinux2-aarch64-standard:3.0
+        Type: ARM_CONTAINER
+        EnvironmentVariables:
+          - Name: AWS_REGION
+            Value: !Ref "AWS::Region"
+          - Name: CDK_DEFAULT_REGION
+            Value: !Ref "AWS::Region"
+          - Name: CDK_DEFAULT_ACCOUNT
+            Value: !Ref "AWS::AccountId"
+          - Name: VISTA_FOUNDATION_MODEL
+            Value: !Ref BedrockModelId
+          - Name: S3_BUCKET_NAME
+            Value: !GetAtt S3BucketNameForPolicy.Value
+      Source:
+        Type: S3
+        Location: !Sub "${S3BucketNameForPolicy.Value}/repo"
+        BuildSpec: |
+          version: 0.2
+          phases:
+            install:
+              runtime-versions:
+                python: latest
+                nodejs: latest
+              commands:
+                - echo "Installing CDK and dependencies..."
+                - npm install -g aws-cdk
+                - pip install --upgrade pip
+            build:
+              commands:
+                - echo "Synthesizing CDK templates..."
+                - cd agents_catalog/multi_agent_collaboration/00-vista-agents/cdk
+                - pip install -r requirements.txt
+                - cdk synth --output cdk.out
+                - echo "CDK synthesis completed"
+                - ls -la cdk.out/
+          artifacts:
+            files:
+              - 'agents_catalog/multi_agent_collaboration/00-vista-agents/cdk/cdk.out/**/*'
+      Artifacts:
+        Type: S3
+        Location: !Sub "${S3BucketNameForPolicy.Value}/cdk-templates"
+      Tags:
+        - Key: Project
+          Value: "ma3t-agents-toolkit"
 
   VistaAgentStack:
     Type: AWS::CloudFormation::Stack
+    Condition: DeployVistaAgentsCondition
+    DependsOn: CDKSynthesisProject
     Properties:
-      TemplateURL: agents_catalog/multi_agent_collaboration/00-vista-agents/cdk/cdk.out/VistaServiceStack.template.json
+      TemplateURL: !Sub "https://${S3BucketNameForPolicy.Value}.s3.${AWS::Region}.amazonaws.com/cdk-templates/agents_catalog/multi_agent_collaboration/00-vista-agents/cdk/cdk.out/VistaServiceStack.template.json"
+      Parameters:
+        BedrockModelId: !Ref BedrockModelId
+        S3BucketName: !GetAtt S3BucketNameForPolicy.Value
+        AgentRoleArn: !GetAtt AgentRole.Arn
       Tags:
         - Key: Project
           Value: "ma3t-agents-toolkit"
@@ -286,6 +355,9 @@ Outputs:
   AgentCoreDeploymentProject:
     Value: !Ref AgentCoreDeploymentProject
     Description: CodeBuild project for deploying AgentCore agents
+  CDKSynthesisProject:
+    Value: !Ref CDKSynthesisProject
+    Description: CodeBuild project for synthesizing CDK templates
   S3BucketName:
     Value: !GetAtt S3BucketNameForPolicy.Value
     Description: S3 bucket name used for code storage
