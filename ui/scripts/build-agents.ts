@@ -103,9 +103,11 @@ function findManifestFiles(): string[] {
     
     // Filter for numbered directories (starts with at least 2 digits followed by dash)
     const numberedDirs: string[] = entries.filter((entry: string) => {
-      const isDir = fs.statSync(path.join(typePath, entry)).isDirectory();
-      const matchesPattern = /^\d{2,}-/.test(entry);
-      console.log(`Entry ${entry}: isDir=${isDir}, matchesPattern=${matchesPattern}`);
+      // Sanitize entry to prevent path traversal
+      const sanitizedEntry = entry.replace(/\.\./g, '');
+      const isDir = fs.statSync(path.join(typePath, sanitizedEntry)).isDirectory();
+      const matchesPattern = /^\d{2,}-/.test(sanitizedEntry);
+      console.log(`Entry ${sanitizedEntry}: isDir=${isDir}, matchesPattern=${matchesPattern}`);
       return isDir && matchesPattern;
     });
 
@@ -173,8 +175,11 @@ function findAgentCoreYamlFiles(): Map<string, any> {
     
     // Filter for numbered directories
     const numberedDirs: string[] = entries.filter((entry: string) => {
-      const isDir = fs.statSync(path.join(typePath, entry)).isDirectory();
-      const matchesPattern = /^\d{2,}-/.test(entry);
+      // Sanitize entry to prevent path traversal
+      const sanitizedEntry = entry.replace(/\.\./g, '');
+      const fullPath = path.join(typePath, sanitizedEntry);
+      const isDir = fs.statSync(fullPath).isDirectory();
+      const matchesPattern = /^\d{2,}-/.test(sanitizedEntry);
       return isDir && matchesPattern;
     });
 
@@ -213,12 +218,16 @@ function findAgentCoreYamlFiles(): Map<string, any> {
       
       // Then check subdirectories
       try {
-        const agentDirs = fs.readdirSync(dirPath).filter((entry: string) => 
-          fs.statSync(path.join(dirPath, entry)).isDirectory()
-        );
+        const agentDirs = fs.readdirSync(dirPath).filter((entry: string) => {
+          // Sanitize entry to prevent path traversal
+          const sanitizedEntry = entry.replace(/\.\./g, '');
+          return fs.statSync(path.join(dirPath, sanitizedEntry)).isDirectory();
+        });
 
         for (const agentDir of agentDirs) {
-          const yamlPath = path.join(dirPath, agentDir, '.bedrock_agentcore.yaml');
+          // Sanitize agentDir to prevent path traversal
+          const sanitizedAgentDir = agentDir.replace(/\.\./g, '');
+          const yamlPath = path.join(dirPath, sanitizedAgentDir, '.bedrock_agentcore.yaml');
           if (fs.existsSync(yamlPath)) {
             try {
               const content = fs.readFileSync(yamlPath, 'utf8');
@@ -506,7 +515,9 @@ async function loadBedrockAgents(): Promise<BedrockAgent[]> {
 }
 
 function writeAgentConfig(config: AgentConfig) {
-  const filePath = path.join(CONFIG_DIR, `${config.id}.json`);
+  // Sanitize config.id to prevent path traversal
+  const sanitizedId = config.id.replace(/[^a-zA-Z0-9_-]/g, '_');
+  const filePath = path.join(CONFIG_DIR, `${sanitizedId}.json`);
   const content = JSON.stringify(config, null, 2);
   fs.writeFileSync(filePath, content);
   console.log(`Generated config for agent: ${config.name} (type: ${config.agentType}, role: ${config.role})`);
