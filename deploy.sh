@@ -1,14 +1,11 @@
 #!/bin/bash
 
-# Configuration
-export STACK_NAME="ma3t-toolkit-stack-14"
-export S3_BUCKET="ma3t-toolkit-149536462911-us-west-2"  # This is the bucket name we'll use
-export TEMP_BUCKET="ma3t-toolkit-temp-149536462911-us-west-2"  # This is for CloudFormation packaging
-export REGION="us-west-2"
-export CODE_PREFIX="repo"  # This will be the object key, not a prefix
-
-# Temporary
-export VISTA_DEPLOY_REGION="us-west-2"
+# Default configuration (no .env file needed)
+export STACK_NAME="ma3t-toolkit-stack"
+export S3_BUCKET="ma3t-toolkit-$(aws sts get-caller-identity --query Account --output text)-${AWS_DEFAULT_REGION:-us-west-2}"
+export TEMP_BUCKET="ma3t-toolkit-temp-$(aws sts get-caller-identity --query Account --output text)-${AWS_DEFAULT_REGION:-us-west-2}"
+export REGION="${AWS_DEFAULT_REGION:-us-west-2}"
+export CODE_PREFIX="repo"
 
 # Parse command line arguments
 while [[ $# -gt 0 ]]; do
@@ -44,29 +41,29 @@ echo "  Temp Bucket: $TEMP_BUCKET"
 echo "  Region: $REGION"
 
 # Check if the S3 bucket exists, create it if it doesn't
-if ! aws s3api head-bucket --bucket $S3_BUCKET --region $REGION 2>/dev/null; then
+if ! aws s3api head-bucket --bucket "$S3_BUCKET" --region "$REGION" 2>/dev/null; then
   echo "Creating S3 bucket: $S3_BUCKET"
-  aws s3 mb s3://$S3_BUCKET --region $REGION
+  aws s3 mb "s3://$S3_BUCKET" --region "$REGION"
   
   # Block public access
   aws s3api put-public-access-block \
-    --bucket $S3_BUCKET \
+    --bucket "$S3_BUCKET" \
     --public-access-block-configuration "BlockPublicAcls=true,IgnorePublicAcls=true,BlockPublicPolicy=true,RestrictPublicBuckets=true" \
-    --region $REGION
+    --region "$REGION"
 else
   echo "S3 bucket already exists: $S3_BUCKET"
 fi
 
 # Check if the temp bucket exists, create it if it doesn't
-if ! aws s3api head-bucket --bucket $TEMP_BUCKET --region $REGION 2>/dev/null; then
+if ! aws s3api head-bucket --bucket "$TEMP_BUCKET" --region "$REGION" 2>/dev/null; then
   echo "Creating temp S3 bucket: $TEMP_BUCKET"
-  aws s3 mb s3://$TEMP_BUCKET --region $REGION
+  aws s3 mb "s3://$TEMP_BUCKET" --region "$REGION"
   
   # Block public access
   aws s3api put-public-access-block \
-    --bucket $TEMP_BUCKET \
+    --bucket "$TEMP_BUCKET" \
     --public-access-block-configuration "BlockPublicAcls=true,IgnorePublicAcls=true,BlockPublicPolicy=true,RestrictPublicBuckets=true" \
-    --region $REGION
+    --region "$REGION"
 else
   echo "Temp S3 bucket already exists: $TEMP_BUCKET"
 fi
@@ -95,7 +92,7 @@ zip -r "$ZIP_FILE" . \
 
 # Upload the zip file to S3 with the key "repo" (not "repo.zip")
 echo "Uploading zip file to S3..."
-aws s3 cp "$ZIP_FILE" s3://$S3_BUCKET/$CODE_PREFIX --region $REGION
+aws s3 cp "$ZIP_FILE" "s3://$S3_BUCKET/$CODE_PREFIX" --region "$REGION"
 
 echo "Local code uploaded to s3://$S3_BUCKET/$CODE_PREFIX"
 
@@ -106,38 +103,82 @@ rm -rf "$TEMP_DIR"
 echo "Packaging CloudFormation template..."
 aws cloudformation package \
   --template-file "infra_cfn.yaml" \
-  --s3-bucket $TEMP_BUCKET \
+  --s3-bucket "$TEMP_BUCKET" \
   --output-template-file "packaged_infra_cfn.yaml" \
-  --region $REGION
+  --region "$REGION"
 
 # Deploy CloudFormation stack
 echo "Deploying CloudFormation stack..."
 aws cloudformation deploy \
   --template-file "packaged_infra_cfn.yaml" \
-  --s3-bucket $TEMP_BUCKET \
+  --s3-bucket "$TEMP_BUCKET" \
   --capabilities CAPABILITY_IAM \
-  --stack-name $STACK_NAME \
-  --region $REGION \
+  --stack-name "$STACK_NAME" \
+  --region "$REGION" \
   --parameter-overrides \
     DeployApplication=false \
     UseLocalCode=true \
-    S3BucketName=$S3_BUCKET
+    S3BucketName="$S3_BUCKET"
 
 # Check if the deployment was successful
 if [ $? -eq 0 ]; then
   echo "Stack deployment successful!"
   
-  # Get the CodeBuild project name
+  # Get the CDK synthesis project name and trigger it
+  CDK_PROJECT=$(aws cloudformation describe-stacks \
+    --stack-name "$STACK_NAME" \
+    --query "Stacks[0].Outputs[?OutputKey=='CDKSynthesisProject'].OutputValue" \
+    --output text \
+    --region "$REGION")
+  
+  if [ ! -z "$CDK_PROJECT" ]; then
+    echo "Starting CDK synthesis project: $CDK_PROJECT"
+    BUILD_ID=$(aws codebuild start-build --project-name "$CDK_PROJECT" --region "$REGION" --query 'build.id' --output text)
+    
+    echo "Waiting for CDK synthesis to complete..."
+    aws codebuild batch-get-builds --ids "$BUILD_ID" --region "$REGION" --query 'builds[0].buildStatus' --output text
+    
+    # Wait for build to complete
+    while true; do
+      BUILD_STATUS=$(aws codebuild batch-get-builds --ids "$BUILD_ID" --region "$REGION" --query 'builds[0].buildStatus' --output text)
+      if [ "$BUILD_STATUS" = "SUCCEEDED" ]; then
+        echo "CDK synthesis completed successfully"
+        break
+      elif [ "$BUILD_STATUS" = "FAILED" ] || [ "$BUILD_STATUS" = "FAULT" ] || [ "$BUILD_STATUS" = "STOPPED" ] || [ "$BUILD_STATUS" = "TIMED_OUT" ]; then
+        echo "CDK synthesis failed with status: $BUILD_STATUS"
+        exit 1
+      else
+        echo "CDK synthesis in progress... Status: $BUILD_STATUS"
+        sleep 10
+      fi
+    done
+    
+    # Now update the stack to deploy the Vista agents
+    echo "Updating stack to deploy Vista agents..."
+    aws cloudformation deploy \
+      --template-file "packaged_infra_cfn.yaml" \
+      --s3-bucket "$TEMP_BUCKET" \
+      --capabilities CAPABILITY_IAM \
+      --stack-name "$STACK_NAME" \
+      --region "$REGION" \
+      --parameter-overrides \
+        DeployApplication=false \
+        UseLocalCode=true \
+        S3BucketName="$S3_BUCKET" \
+        DeployVistaAgents=true
+  fi
+  
+  # Get the CodeBuild project name for AgentCore deployment
   CODEBUILD_PROJECT=$(aws cloudformation describe-stacks \
-    --stack-name $STACK_NAME \
+    --stack-name "$STACK_NAME" \
     --query "Stacks[0].Outputs[?OutputKey=='AgentCoreDeploymentProject'].OutputValue" \
     --output text \
-    --region $REGION)
+    --region "$REGION")
   
   # Start the CodeBuild project to deploy the agents
   if [ ! -z "$CODEBUILD_PROJECT" ]; then
     echo "Starting CodeBuild project to deploy agents: $CODEBUILD_PROJECT"
-    aws codebuild start-build --project-name $CODEBUILD_PROJECT --region $REGION
+    aws codebuild start-build --project-name "$CODEBUILD_PROJECT" --region "$REGION"
   else
     echo "CodeBuild project not found in stack outputs"
   fi

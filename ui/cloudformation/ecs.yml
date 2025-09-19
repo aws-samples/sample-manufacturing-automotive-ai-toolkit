@@ -80,6 +80,9 @@ Resources:
     Type: AWS::ECS::Cluster
     Properties:
       ClusterName: !Join ["-", [!Ref "AWS::StackName", "ecs-cluster"]]
+      ClusterSettings:
+        - Name: containerInsights
+          Value: enabled
 
   FargateContainerSecurityGroup:
     Type: AWS::EC2::SecurityGroup
@@ -88,6 +91,7 @@ Resources:
       VpcId: !Ref VPCId
       SecurityGroupEgress:
         - Name: FargateSecurityGroupEgressRule
+          Description: Allow all outbound traffic for Fargate containers
           CidrIp: "0.0.0.0/0"
           IpProtocol: -1
 
@@ -114,10 +118,12 @@ Resources:
       VpcId: !Ref VPCId
       SecurityGroupIngress:
         - Name: PubLBSecurityGroupIngressRule
+          Description: Allow inbound traffic from allowed CIDR
           CidrIp: !Ref AllowedCidr
           IpProtocol: -1
       SecurityGroupEgress:
         - Name: PubLBSecurityGroupEgressRule
+          Description: Allow all outbound traffic from load balancer
           CidrIp: "0.0.0.0/0"
           IpProtocol: -1
 
