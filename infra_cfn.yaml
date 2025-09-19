@@ -119,21 +119,63 @@ Resources:
           PolicyDocument:
             Version: 2012-10-17
             Statement:
+              # Bedrock permissions - specific actions only
               - Effect: Allow
                 Action:
-                  - bedrock:*
+                  - bedrock:InvokeModel
+                  - bedrock:InvokeModelWithResponseStream
+                  - bedrock:GetFoundationModel
+                  - bedrock:ListFoundationModels
                 Resource:
                   - !Sub "arn:${AWS::Partition}:bedrock:*::foundation-model/*"
-                  - !Sub "arn:${AWS::Partition}:bedrock:${AWS::Region}:${AWS::AccountId}:knowledge-base/*"
-                  - !Sub "arn:${AWS::Partition}:bedrock:${AWS::Region}:${AWS::AccountId}:agent-alias/*"
+              - Effect: Allow
+                Action:
+                  - bedrock:CreateAgent
+                  - bedrock:UpdateAgent
+                  - bedrock:GetAgent
+                  - bedrock:ListAgents
+                  - bedrock:DeleteAgent
+                  - bedrock:CreateAgentAlias
+                  - bedrock:UpdateAgentAlias
+                  - bedrock:GetAgentAlias
+                  - bedrock:ListAgentAliases
+                  - bedrock:DeleteAgentAlias
+                  - bedrock:PrepareAgent
+                Resource:
                   - !Sub "arn:${AWS::Partition}:bedrock:${AWS::Region}:${AWS::AccountId}:agent/*"
+                  - !Sub "arn:${AWS::Partition}:bedrock:${AWS::Region}:${AWS::AccountId}:agent-alias/*"
+              - Effect: Allow
+                Action:
+                  - bedrock:CreateKnowledgeBase
+                  - bedrock:UpdateKnowledgeBase
+                  - bedrock:GetKnowledgeBase
+                  - bedrock:ListKnowledgeBases
+                  - bedrock:DeleteKnowledgeBase
+                  - bedrock:AssociateAgentKnowledgeBase
+                  - bedrock:DisassociateAgentKnowledgeBase
+                Resource:
+                  - !Sub "arn:${AWS::Partition}:bedrock:${AWS::Region}:${AWS::AccountId}:knowledge-base/*"
+              - Effect: Allow
+                Action:
+                  - bedrock:GetInferenceProfile
+                  - bedrock:ListInferenceProfiles
+                Resource:
                   - !Sub "arn:${AWS::Partition}:bedrock:${AWS::Region}:${AWS::AccountId}:inference-profile/*"
                   - !Sub "arn:${AWS::Partition}:bedrock:${AWS::Region}:${AWS::AccountId}:application-inference-profile/*"
+              - Effect: Allow
+                Action:
+                  - bedrock:GetGuardrail
+                  - bedrock:ListGuardrails
+                Resource:
                   - !Sub "arn:${AWS::Partition}:bedrock:${AWS::Region}:${AWS::AccountId}:guardrail/*"
+              # ECR permissions - scoped to specific repositories
+              - Effect: Allow
+                Action:
+                  - ecr:GetAuthorizationToken
+                Resource: "*"
               - Effect: Allow
                 Action:
                   - ecr:CreateRepository
-                  - ecr:GetAuthorizationToken
                   - ecr:BatchCheckLayerAvailability
                   - ecr:GetDownloadUrlForLayer
                   - ecr:BatchGetImage
@@ -143,11 +185,21 @@ Resources:
                   - ecr:PutImage
                   - ecr:TagResource
                   - ecr:DescribeRepositories
-                Resource: "*"
+                Resource:
+                  - !Sub "arn:aws:ecr:${AWS::Region}:${AWS::AccountId}:repository/ma3t-*"
+                  - !Sub "arn:aws:ecr:${AWS::Region}:${AWS::AccountId}:repository/bedrock-*"
+              # Bedrock AgentCore permissions - specific actions only
               - Effect: Allow
                 Action:
-                  - bedrock-agentcore:*
-                Resource: "*"
+                  - bedrock-agentcore:CreateAgent
+                  - bedrock-agentcore:UpdateAgent
+                  - bedrock-agentcore:GetAgent
+                  - bedrock-agentcore:ListAgents
+                  - bedrock-agentcore:DeleteAgent
+                  - bedrock-agentcore:InvokeAgent
+                Resource:
+                  - !Sub "arn:aws:bedrock-agentcore:${AWS::Region}:${AWS::AccountId}:agent/*"
+              # S3 permissions
               - Effect: Allow
                 Action:
                   - s3:GetObject
@@ -156,16 +208,22 @@ Resources:
                 Resource:
                   - !Sub "arn:aws:s3:::${S3BucketNameForPolicy.Value}"
                   - !Sub "arn:aws:s3:::${S3BucketNameForPolicy.Value}/*"
+              # CloudWatch Logs permissions - scoped to specific log groups
               - Effect: Allow
                 Action:
                   - logs:CreateLogGroup
                   - logs:CreateLogStream
                   - logs:PutLogEvents
-                Resource: "*"
+                Resource:
+                  - !Sub "arn:aws:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/codebuild/${AWS::StackName}-*"
+                  - !Sub "arn:aws:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/lambda/*"
+                  - !Sub "arn:aws:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/bedrock/*"
+              # SSM permissions
               - Effect: Allow
                 Action:
                   - ssm:GetParameter
                 Resource: !Sub "arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/${S3BucketNameForPolicy}"
+              # IAM PassRole permissions
               - Effect: Allow
                 Action:
                   - iam:PassRole
