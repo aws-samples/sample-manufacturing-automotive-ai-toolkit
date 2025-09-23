@@ -391,7 +391,7 @@ class IAMConstruct(Construct):
                 }
             )
         )
-        
+
         # Add IAM permissions needed by AgentCore toolkit
         self.bedrock_agent_role.add_to_policy(
             iam.PolicyStatement(
@@ -412,7 +412,27 @@ class IAMConstruct(Construct):
                 ]
             )
         )
-        
+
+        # Add PassRole permissions for AgentCore SDK roles
+        self.bedrock_agent_role.add_to_policy(
+            iam.PolicyStatement(
+                effect=iam.Effect.ALLOW,
+                actions=["iam:PassRole"],
+                resources=[
+                    f"arn:aws:iam::{Stack.of(self).account}:role/AmazonBedrockAgentCoreSDK*"
+                ],
+                conditions={
+                    "StringEquals": {
+                        "iam:PassedToService": [
+                            "codebuild.amazonaws.com",
+                            "bedrock-agentcore.amazonaws.com",
+                            "bedrock.amazonaws.com"
+                        ]
+                    }
+                }
+            )
+        )
+
         # Add CodeBuild permissions needed by AgentCore toolkit
         self.bedrock_agent_role.add_to_policy(
             iam.PolicyStatement(
@@ -430,7 +450,7 @@ class IAMConstruct(Construct):
                 ]
             )
         )
-        
+
         # Add S3 bucket creation permissions needed by AgentCore toolkit
         self.bedrock_agent_role.add_to_policy(
             iam.PolicyStatement(
@@ -449,7 +469,7 @@ class IAMConstruct(Construct):
                 ]
             )
         )
-        
+
         # Add S3 object permissions for AgentCore toolkit buckets
         self.bedrock_agent_role.add_to_policy(
             iam.PolicyStatement(
