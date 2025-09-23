@@ -2,6 +2,9 @@
 """
 Vehicle Service Management CDK App
 Multi-Agent Collaboration with Supervisor Routing
+
+This file exports the VistaServiceStack class for use as a nested stack.
+When used as a nested stack, the main stack will import and instantiate this class.
 """
 
 import os
@@ -9,6 +12,10 @@ import boto3
 import aws_cdk as cdk
 from constructs import Construct
 from vista_service_stack import VistaServiceStack
+from typing import Dict, Any, Optional
+
+# Export the stack class for nested stack usage
+__all__ = ['VistaServiceStack']
 
 def get_aws_account():
     """Automatically detect AWS account ID"""
@@ -83,6 +90,11 @@ def get_foundation_model():
     return foundation_model
 
 class VistaServiceApp(cdk.App):
+    """
+    Standalone CDK app for Vista agents.
+    This is used when deploying Vista agents independently.
+    When used as a nested stack, the VistaServiceStack class is imported directly.
+    """
     def __init__(self):
         super().__init__()
         
@@ -101,7 +113,7 @@ class VistaServiceApp(cdk.App):
         
         print(f"🚀 Deploying to Account: {account}, Region: {region}")
         
-        # Create the main stack
+        # Create the main stack (standalone mode)
         VistaServiceStack(
             self, 
             "VistaServiceStack",
@@ -110,6 +122,8 @@ class VistaServiceApp(cdk.App):
             description="Vehicle Service Management System - Multi-Agent Collaboration with Supervisor Routing"
         )
 
-# Create and synthesize the app
-app = VistaServiceApp()
-app.synth()
+# Only run as standalone app if this file is executed directly
+if __name__ == "__main__":
+    # Create and synthesize the app
+    app = VistaServiceApp()
+    app.synth()

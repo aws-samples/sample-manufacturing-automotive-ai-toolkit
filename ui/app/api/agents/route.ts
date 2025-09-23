@@ -5,7 +5,7 @@ import path from 'path';
 import dotenv from "dotenv";
 dotenv.config();
 
-const REGION: string = process.env.AWS_REGION
+const REGION: string = process.env.AWS_REGION || 'us-west-2';
 const CONFIG_DIR = path.join(process.cwd(), 'app', 'api', 'agents', 'config');
 
 const client = new BedrockAgentClient({ 
@@ -165,8 +165,8 @@ async function getAgentDetails(agentId: string) {
         const config = getAgentConfig(agentId, response.agent.agentName || '');
         console.log(`Config retrieved for ${agentId} (${response.agent.agentName}):`, config);
         
-        const collaborators = ['SUPERVISOR', 'SUPERVISOR_ROUTER'].includes(response.agent.agentCollaboration)
-            ? await getAgentCollaboratorDetails(response.agent.agentId)
+        const collaborators = ['SUPERVISOR', 'SUPERVISOR_ROUTER'].includes(response.agent.agentCollaboration || '')
+            ? await getAgentCollaboratorDetails(response.agent.agentId || '')
             : null;
 
         const displayName = config?.name || response.agent.agentName;
