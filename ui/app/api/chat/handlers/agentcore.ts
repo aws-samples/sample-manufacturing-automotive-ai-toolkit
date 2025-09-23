@@ -117,10 +117,12 @@ export class AgentCoreChatHandler implements ChatHandler {
                             }
                         } else {
                             // Handle non-streaming response
-                            const bytes = await response.response.transformToByteArray();
-                            const text = new TextDecoder().decode(bytes);
-                            const parsedText = parseChunk(text);
-                            finalMessage = parsedText || text;
+                            const bytes = await (response.response as any)?.transformToByteArray();
+                            if (bytes) {
+                                const text = new TextDecoder().decode(bytes);
+                                const parsedText = parseChunk(text);
+                                finalMessage = parsedText || text;
+                            }
 
                             controller.enqueue(encoder.encode(`data: ${JSON.stringify({
                                 type: 'chunk',

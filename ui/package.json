@@ -25,6 +25,13 @@
     "react": "^19.0.0",
     "react-dom": "^19.0.0"
   },
+  "optionalDependencies": {
+    "sharp": "0.0.0"
+  },
+  "overrides": {
+    "sharp": "0.0.0",
+    "caniuse-lite": "0.0.0"
+  },
   "devDependencies": {
     "@svgr/webpack": "^8.0.1",
     "@types/js-yaml": "^4.0.9",

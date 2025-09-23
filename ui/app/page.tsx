@@ -1,7 +1,6 @@
 "use client";
 
 import React, { useState, useEffect } from 'react';
-import Image from 'next/image';
 import { motion } from 'framer-motion';
 
 // SVG Icons as components
@@ -68,7 +67,7 @@ export default function Home() {
 
   // Close tag filter dropdown when clicking outside
   useEffect(() => {
-    function handleClickOutside(event) {
+    function handleClickOutside(event: any) {
       if (showTagFilter && !event.target.closest('.tag-filter-container')) {
         setShowTagFilter(false);
       }
@@ -78,7 +77,7 @@ export default function Home() {
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, [showTagFilter]);
 
-  const isSupervisorType = (a) => a.agentCollaboration === 'SUPERVISOR' || a.agentCollaboration === 'SUPERVISOR_ROUTER';
+  const isSupervisorType = (a: any) => a.agentCollaboration === 'SUPERVISOR' || a.agentCollaboration === 'SUPERVISOR_ROUTER';
 
   useEffect(() => {
     async function fetchAgents() {
@@ -95,9 +94,9 @@ export default function Home() {
     fetchAgents();
   }, []);
 
-  const toggleAgentSelection = (agent) => {
-    setSelectedAgents((prev) => {
-      const isAlreadySelected = prev.find((a) => a.id === agent.id);
+  const toggleAgentSelection = (agent: any) => {
+    setSelectedAgents((prev: any) => {
+      const isAlreadySelected = prev.find((a: any) => a.id === agent.id);
       return isAlreadySelected ? [] : [agent];
     });
   };
