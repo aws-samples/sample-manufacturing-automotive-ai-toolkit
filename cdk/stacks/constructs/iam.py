@@ -254,6 +254,33 @@ class IAMConstruct(Construct):
             )
         )
 
+        # Add the missing bedrock-agentcore permissions to CodeBuild role
+        self.codebuild_service_role.add_to_policy(
+            iam.PolicyStatement(
+                sid="BedrockAgentCoreRuntimeAccess",
+                effect=iam.Effect.ALLOW,
+                actions=[
+                    "bedrock-agentcore:CreateAgentRuntime",
+                    "bedrock-agentcore:DeleteAgentRuntime",
+                    "bedrock-agentcore:GetAgentRuntime",
+                    "bedrock-agentcore:ListAgentRuntimes",
+                    "bedrock-agentcore:UpdateAgentRuntime",
+                    "bedrock-agentcore:CreateAgent",
+                    "bedrock-agentcore:UpdateAgent",
+                    "bedrock-agentcore:GetAgent",
+                    "bedrock-agentcore:ListAgents",
+                    "bedrock-agentcore:DeleteAgent",
+                    "bedrock-agentcore:InvokeAgent",
+                    "bedrock-agentcore:GetWorkloadAccessToken",
+                    "bedrock-agentcore:GetWorkloadAccessTokenForJWT",
+                    "bedrock-agentcore:GetWorkloadAccessTokenForUserId"
+                ],
+                resources=[
+                    f"arn:aws:bedrock-agentcore:{Stack.of(self).region}:{Stack.of(self).account}:*"
+                ]
+            )
+        )
+
     def _add_bedrock_permissions(self) -> None:
         """Add Bedrock-specific permissions to the agent role"""
 
@@ -518,6 +545,77 @@ class IAMConstruct(Construct):
                 effect=iam.Effect.ALLOW,
                 actions=["ecr:GetAuthorizationToken"],
                 resources=["*"]
+            )
+        )
+
+        # Additional AgentCore Runtime Permissions
+        self.bedrock_agent_role.add_to_policy(
+            iam.PolicyStatement(
+                sid="BedrockAgentCoreRuntimeAccess",
+                effect=iam.Effect.ALLOW,
+                actions=[
+                    "bedrock-agentcore:CreateAgentRuntime",
+                    "bedrock-agentcore:DeleteAgentRuntime",
+                    "bedrock-agentcore:GetAgentRuntime",
+                    "bedrock-agentcore:ListAgentRuntimes",
+                    "bedrock-agentcore:UpdateAgentRuntime",
+                    "bedrock-agentcore:CreateAgent",
+                    "bedrock-agentcore:UpdateAgent",
+                    "bedrock-agentcore:GetAgent",
+                    "bedrock-agentcore:ListAgents",
+                    "bedrock-agentcore:DeleteAgent",
+                    "bedrock-agentcore:InvokeAgent",
+                    "bedrock-agentcore:GetWorkloadAccessToken",
+                    "bedrock-agentcore:GetWorkloadAccessTokenForJWT",
+                    "bedrock-agentcore:GetWorkloadAccessTokenForUserId"
+                ],
+                resources=[
+                    f"arn:aws:bedrock-agentcore:{Stack.of(self).region}:{Stack.of(self).account}:*"
+                ]
+            )
+        )
+
+        # Additional CloudWatch and X-Ray permissions
+        self.bedrock_agent_role.add_to_policy(
+            iam.PolicyStatement(
+                sid="AdditionalLogsAccess",
+                effect=iam.Effect.ALLOW,
+                actions=[
+                    "logs:CreateLogGroup",
+                    "logs:CreateLogStream",
+                    "logs:PutLogEvents"
+                ],
+                resources=[
+                    f"arn:aws:logs:{Stack.of(self).region}:{Stack.of(self).account}:log-group:/aws/bedrock-agentcore/runtimes/*"
+                ]
+            )
+        )
+
+        self.bedrock_agent_role.add_to_policy(
+            iam.PolicyStatement(
+                sid="XRayAccess",
+                effect=iam.Effect.ALLOW,
+                actions=[
+                    "xray:PutTraceSegments",
+                    "xray:PutTelemetryRecords",
+                    "xray:GetSamplingRules",
+                    "xray:GetSamplingTargets"
+                ],
+                resources=["*"]
+            )
+        )
+
+        self.bedrock_agent_role.add_to_policy(
+            iam.PolicyStatement(
+                sid="CloudWatchMetrics",
+                effect=iam.Effect.ALLOW,
+                actions=["cloudwatch:PutMetricData"],
+                resources=["*"],
+                conditions={
+                    "StringEquals": {
+                        "cloudwatch:namespace": "bedrock-agentcore"
+                    }
+                }
             )
         )
 
