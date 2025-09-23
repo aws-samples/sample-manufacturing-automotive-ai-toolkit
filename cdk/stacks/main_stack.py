@@ -1,6 +1,5 @@
 """
 Manufacturing & Automotive AI Toolkit (MA3T) Main Stack
-Replaces the CloudFormation template with CDK constructs
 """
 
 import aws_cdk as cdk
@@ -24,7 +23,6 @@ from .nested_stack_registry import AgentRegistry, CDKStackConfig, AgentCoreConfi
 
 class MainStack(cdk.Stack):
     """
-    Main CDK stack that replaces the CloudFormation template.
     Manages all core infrastructure and orchestrates nested stacks.
     """
 
