@@ -1,7 +1,7 @@
 {
     "agents": [
       {
-        "id": "template-agent",
+        "id": "templateagent",
         "name": "Product Knowledge Agent",
         "description": "",
         "type": "agentcore",

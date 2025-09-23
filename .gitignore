@@ -17,3 +17,4 @@ ui/app/api/agents/config/*
 packaged_infra_cfn.yaml
 .env
 **/cdk.out/
+.dockerignore
