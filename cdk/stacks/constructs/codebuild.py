@@ -114,7 +114,7 @@ class CodeBuildConstruct(Construct):
             ),
             source=codebuild.Source.s3(
                 bucket=self.resource_bucket,
-                path="repo"
+                path=""  # Root of bucket where repo zip file is located
             ),
             build_spec=codebuild.BuildSpec.from_object(self._get_agentcore_buildspec()),
             timeout=Duration.minutes(60),
@@ -179,6 +179,22 @@ class CodeBuildConstruct(Construct):
                 "pre_build": {
                     "commands": [
                         "echo 'Starting pre-build phase at $(date)'",
+                        "echo 'Current working directory:'",
+                        "pwd",
+                        "echo 'Listing ALL files in current directory:'",
+                        "ls -la",
+                        "echo 'Looking for repo file:'",
+                        "find . -name 'repo*' -type f || echo 'No repo files found'",
+                        "echo 'Checking if repo file exists:'",
+                        "if [ -f repo ]; then echo 'repo file exists'; else echo 'repo file does not exist'; fi",
+                        "echo 'Trying to extract project files...'",
+                        "if [ -f repo ]; then unzip -q repo -d . && echo 'Extraction successful'; else echo 'Cannot extract - repo file missing'; fi",
+                        "echo 'Listing directory contents after extraction:'",
+                        "ls -la",
+                        "echo 'Checking for agents_catalog directory:'",
+                        "ls -la agents_catalog/ || echo 'agents_catalog directory not found'",
+                        "echo 'Checking for manifest files:'",
+                        "find . -name 'manifest.json' -type f || echo 'No manifest.json files found'",
                         "echo 'Checking AWS credentials and configuration...'",
                         "aws sts get-caller-identity",
                         "echo $AWS_REGION",
@@ -188,9 +204,9 @@ class CodeBuildConstruct(Construct):
                 "build": {
                     "commands": [
                         "echo 'Starting build phase at $(date)'",
-                        "echo 'Deploying AgentCore agents...'",
+                        "echo 'Listing and managing AgentCore agents...'",
                         "python scripts/build_launch_agentcore.py --region $AWS_REGION --execution-role-arn $EXECUTION_ROLE_ARN",
-                        "echo 'AgentCore deployment completed'"
+                        "echo 'AgentCore management completed'"
                     ]
                 },
                 "post_build": {
