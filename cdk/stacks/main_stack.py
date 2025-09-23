@@ -33,44 +33,44 @@ class MainStack(cdk.Stack):
 
         # Create CDK parameters matching CloudFormation template
         self._create_parameters()
-        
+
         # Create conditions
         self._create_conditions()
-        
+
         # Create shared infrastructure in proper order
         self._create_shared_infrastructure()
-        
+
         # Auto-discover and deploy agents
         self._setup_agent_registry()
-        
+
         # Create stack outputs
         self._create_outputs()
-        
+
         # Upload local code to S3
         self._upload_local_code()
-        
+
         # Trigger agent deployments after stack creation
         self._create_deployment_trigger()
 
     def _create_shared_infrastructure(self) -> None:
         """Create shared infrastructure constructs in proper order"""
-        
+
         # 1. Create Storage construct (S3 bucket and DynamoDB tables)
         bucket_name = None
         if self.s3_bucket_name_param.value_as_string:
             bucket_name = self.s3_bucket_name_param.value_as_string
-        
+
         self.storage_construct = StorageConstruct(
             self, "Storage",
             s3_bucket_name=bucket_name
         )
-        
+
         # 2. Create IAM construct (roles and policies)
         self.iam_construct = IAMConstruct(
             self, "IAM",
             resource_bucket=self.storage_construct.resource_bucket
         )
-        
+
         # 3. Create Compute construct (Lambda functions)
         self.compute_construct = ComputeConstruct(
             self, "Compute",
@@ -78,7 +78,7 @@ class MainStack(cdk.Stack):
             lambda_role=self.iam_construct.lambda_execution_role,
             resource_bucket=self.storage_construct.resource_bucket
         )
-        
+
         # 4. Create CodeBuild construct (deployment projects)
         self.codebuild_construct = CodeBuildConstruct(
             self, "CodeBuild",
@@ -86,7 +86,7 @@ class MainStack(cdk.Stack):
             resource_bucket=self.storage_construct.resource_bucket,
             bedrock_model_id=self.bedrock_model_param.value_as_string
         )
-        
+
         # Store references for easy access
         self.resource_bucket = self.storage_construct.resource_bucket
         self.agent_role = self.iam_construct.bedrock_agent_role
@@ -100,31 +100,33 @@ class MainStack(cdk.Stack):
 
     def _setup_agent_registry(self) -> None:
         """Set up agent registry and auto-discover agents"""
-        
+
         # Create agent registry
         self.agent_registry = AgentRegistry(self)
-        
+
         # Discover agents
         cdk_stacks, agentcore_agents = self.agent_registry.discover_agents()
-        
+
         # Get shared resources for nested stacks
         shared_resources = self.get_shared_resources()
-        
+
         # Register CDK nested stacks
         self.nested_stacks = []
         for cdk_config in cdk_stacks:
-            nested_stack = self.agent_registry.register_cdk_stack(cdk_config, shared_resources)
+            nested_stack = self.agent_registry.register_cdk_stack(
+                cdk_config, shared_resources)
             if nested_stack:
                 self.nested_stacks.append(nested_stack)
-        
+
         # AgentCore agents will be discovered and deployed by build_launch_agentcore.py
         # running in the CodeBuild project - no need to create individual projects here
         self.agentcore_projects = []
-        print(f"Discovered {len(agentcore_agents)} AgentCore agents - will be deployed by CodeBuild")
+        print(
+            f"Discovered {len(agentcore_agents)} AgentCore agents - will be deployed by CodeBuild")
 
     def _create_parameters(self) -> None:
         """Create CDK parameters matching the CloudFormation template"""
-        
+
         self.bedrock_model_param = CfnParameter(
             self, "BedrockModelId",
             type="String",
@@ -179,50 +181,59 @@ class MainStack(cdk.Stack):
 
     def _create_conditions(self) -> None:
         """Create conditions matching the CloudFormation template"""
-        
+
         self.use_github_code_condition = CfnCondition(
             self, "UseGitHubCode",
-            expression=Fn.condition_equals(self.use_local_code_param.value_as_string, "false")
+            expression=Fn.condition_equals(
+                self.use_local_code_param.value_as_string, "false")
         )
 
         self.create_s3_bucket_condition = CfnCondition(
             self, "CreateS3Bucket",
-            expression=Fn.condition_equals(self.s3_bucket_name_param.value_as_string, "")
+            expression=Fn.condition_equals(
+                self.s3_bucket_name_param.value_as_string, "")
         )
 
         self.deploy_vista_agents_condition = CfnCondition(
             self, "DeployVistaAgentsCondition",
-            expression=Fn.condition_equals(self.deploy_vista_agents_param.value_as_string, "true")
+            expression=Fn.condition_equals(
+                self.deploy_vista_agents_param.value_as_string, "true")
         )
 
     def _create_outputs(self) -> None:
         """Create stack outputs matching the CloudFormation template"""
-        
+
         # Core infrastructure outputs
         CfnOutput(
             self, "AgentRole",
             value=self.agent_role.role_arn,
             description="Amazon Bedrock Service Role ARN"
         )
-        
+
         CfnOutput(
             self, "S3BucketNameOutput",
             value=self.resource_bucket.bucket_name,
             description="S3 bucket name used for code storage"
         )
-        
+
+        CfnOutput(
+            self, "ResourceBucketName",
+            value=self.resource_bucket.bucket_name,
+            description="Resource bucket name for deploy script"
+        )
+
         CfnOutput(
             self, "CDKSynthesisProject",
             value=self.codebuild_construct.cdk_synthesis_project.project_name,
             description="CodeBuild project for synthesizing CDK templates"
         )
-        
+
         CfnOutput(
             self, "AgentCoreDeploymentProject",
             value=self.codebuild_construct.agentcore_deployment_project.project_name,
             description="CodeBuild project for deploying AgentCore agents"
         )
-        
+
         # Additional outputs for discovered agents
         if hasattr(self, 'nested_stacks') and self.nested_stacks:
             CfnOutput(
@@ -230,14 +241,14 @@ class MainStack(cdk.Stack):
                 value=str(len(self.nested_stacks)),
                 description="Number of CDK nested stacks deployed"
             )
-        
+
         if hasattr(self, 'agentcore_projects') and self.agentcore_projects:
             CfnOutput(
                 self, "AgentCoreProjectsCount",
                 value=str(len(self.agentcore_projects)),
                 description="Number of AgentCore CodeBuild projects created"
             )
-        
+
         # Table names output
         if self.tables:
             table_names = list(self.tables.keys())
@@ -246,7 +257,7 @@ class MainStack(cdk.Stack):
                 value=",".join(table_names),
                 description="Names of created DynamoDB tables"
             )
-        
+
         # Lambda function names output
         if self.lambda_functions:
             function_names = list(self.lambda_functions.keys())
@@ -261,7 +272,7 @@ class MainStack(cdk.Stack):
         from aws_cdk import aws_lambda as lambda_
         from aws_cdk import custom_resources as cr
         from aws_cdk import CustomResource
-        
+
         # Create a Lambda function to trigger CodeBuild
         trigger_function = lambda_.Function(
             self, "DeploymentTriggerFunction",
@@ -310,21 +321,22 @@ def handler(event, context):
 """),
             timeout=cdk.Duration.minutes(5)
         )
-        
+
         # Grant permissions to start CodeBuild projects
         trigger_function.add_to_role_policy(
             cdk.aws_iam.PolicyStatement(
                 actions=["codebuild:StartBuild"],
-                resources=[f"arn:aws:codebuild:{self.region}:{self.account}:project/*"]
+                resources=[
+                    f"arn:aws:codebuild:{self.region}:{self.account}:project/*"]
             )
         )
-        
+
         # Create custom resource provider
         provider = cr.Provider(
             self, "DeploymentTriggerProvider",
             on_event_handler=trigger_function
         )
-        
+
         # Create custom resource to trigger AgentCore deployment
         CustomResource(
             self, "TriggerAgentCoreDeployment",
@@ -335,139 +347,14 @@ def handler(event, context):
         )
 
     def _upload_local_code(self) -> None:
-        """Upload local code to S3 for CodeBuild projects using CDK BucketDeployment"""
-        from aws_cdk import aws_s3_deployment as s3deploy
-        
-        # Use CDK's BucketDeployment to upload the entire project as a zip
-        # BucketDeployment with extract=False creates individual files, not a single zip
-        # We need to use a different approach to create a single 'repo' zip file
-        from aws_cdk import aws_lambda as lambda_
-        from aws_cdk import custom_resources as cr
-        from aws_cdk import CustomResource
-        
-        # Create Lambda to zip and upload the project directory
-        upload_lambda = lambda_.Function(
-            self, "ProjectUploadFunction",
-            runtime=lambda_.Runtime.PYTHON_3_9,
-            handler="index.handler",
-            timeout=cdk.Duration.minutes(10),
-            memory_size=1024,
-            code=lambda_.Code.from_inline("""
-import boto3
-import json
-import zipfile
-import os
-import tempfile
-import subprocess
+        """
+        Upload local code to S3 for CodeBuild projects
 
-def handler(event, context):
-    print(f"Upload function called with event: {event['RequestType']}")
-    
-    if event['RequestType'] == 'Create' or event['RequestType'] == 'Update':
-        s3 = boto3.client('s3')
-        bucket_name = event['ResourceProperties']['BucketName']
-        
-        try:
-            # Create a zip file with the Lambda's own code as a starting point
-            # This is a limitation - we can't access the original source from Lambda
-            # But we can create a minimal structure that CodeBuild can work with
-            
-            with tempfile.NamedTemporaryFile(suffix='.zip', delete=False) as tmp_file:
-                with zipfile.ZipFile(tmp_file.name, 'w', zipfile.ZIP_DEFLATED) as zip_file:
-                    # Add the build configuration
-                    zip_file.writestr('build/codebuild_agentcore.yml', '''version: 0.2
-phases:
-  install:
-    runtime-versions:
-      python: 3.9
-  build:
-    commands:
-      - echo "Building AgentCore agents..."
-      - python scripts/build_launch_agentcore.py
-''')
-                    
-                    # Add the build script
-                    zip_file.writestr('scripts/build_launch_agentcore.py', '''#!/usr/bin/env python3
-import os
-import json
-
-def main():
-    print("AgentCore deployment script running...")
-    print("This is a placeholder - actual agents would be deployed here")
-    
-    # In the real implementation, this would:
-    # 1. Discover agents in agents_catalog/
-    # 2. Deploy each AgentCore agent
-    # 3. Register with Bedrock
-    
-    return True
-
-if __name__ == "__main__":
-    main()
-''')
-                    
-                    # Add a sample agent
-                    zip_file.writestr('agents_catalog/standalone_agents/00-products-agent/manifest.json', '''{
-  "agents": [
-    {
-      "id": "00-products-agent",
-      "name": "Products Agent",
-      "type": "agentcore",
-      "entrypoint": "agent.py",
-      "tags": ["products"]
-    }
-  ]
-}''')
-                    
-                    zip_file.writestr('agents_catalog/standalone_agents/00-products-agent/agent.py', '''def handler(event, context):
-    return {"statusCode": 200, "body": "Products Agent"}
-''')
-                
-                # Upload as single zip file with key 'repo'
-                s3.upload_file(tmp_file.name, bucket_name, 'repo')
-                os.unlink(tmp_file.name)
-                
-                print(f"Project uploaded to s3://{bucket_name}/repo")
-                
-                return {
-                    'PhysicalResourceId': f"project-upload-{bucket_name}",
-                    'Data': {'BucketName': bucket_name, 'Key': 'repo'}
-                }
-                
-        except Exception as e:
-            print(f"Error: {str(e)}")
-            import traceback
-            traceback.print_exc()
-            return {
-                'PhysicalResourceId': 'project-upload-failed',
-                'Data': {'Error': str(e)}
-            }
-    
-    return {
-        'PhysicalResourceId': event.get('PhysicalResourceId', 'project-upload'),
-        'Data': {}
-    }
-""")
-        )
-        
-        # Grant S3 permissions
-        upload_lambda.add_to_role_policy(
-            cdk.aws_iam.PolicyStatement(
-                actions=["s3:PutObject", "s3:PutObjectAcl"],
-                resources=[f"{self.resource_bucket.bucket_arn}/*"]
-            )
-        )
-        
-        # Create custom resource
-        upload_provider = cr.Provider(
-            self, "ProjectUploadProvider",
-            on_event_handler=upload_lambda
-        )
-        
-        CustomResource(
-            self, "ProjectUpload",
-            service_token=upload_provider.service_token
-        )
+        Note: Code upload is handled manually after CDK deployment
+        using the deploy_cdk.sh script, just like the CloudFormation version.
+        This avoids CDK asset bundling issues.
+        """
+        pass
 
     def get_shared_resources(self) -> Dict[str, Any]:
         """
@@ -482,35 +369,35 @@ if __name__ == "__main__":
             'git_branch': self.git_branch_param.value_as_string,
             's3_bucket_name': self.s3_bucket_name_param.value_as_string,
             'deploy_vista_agents': self.deploy_vista_agents_param.value_as_string,
-            
+
             # Stack information
             'stack_name': self.stack_name,
             'region': self.region,
             'account': self.account,
-            
+
             # Storage resources
             'resource_bucket': self.resource_bucket,
             'resource_bucket_name': self.resource_bucket.bucket_name if self.resource_bucket else None,
             'resource_bucket_arn': self.resource_bucket.bucket_arn if self.resource_bucket else None,
             'tables': self.tables,
-            
+
             # IAM resources
             'agent_role': self.agent_role,
             'agent_role_arn': self.agent_role.role_arn if self.agent_role else None,
             'lambda_execution_role': self.lambda_execution_role,
             'lambda_execution_role_arn': self.lambda_execution_role.role_arn if self.lambda_execution_role else None,
             'codebuild_service_role': getattr(self.iam_construct, 'codebuild_service_role', None),
-            
+
             # Compute resources
             'lambda_functions': self.lambda_functions,
             'business_functions': getattr(self.compute_construct, 'business_functions', {}),
             'data_functions': getattr(self.compute_construct, 'data_functions', {}),
-            
+
             # CodeBuild resources
             'codebuild_projects': self.codebuild_projects,
             'cdk_synthesis_project': self.codebuild_construct.cdk_synthesis_project,
             'agentcore_deployment_project': self.codebuild_construct.agentcore_deployment_project,
-            
+
             # Constructs (for advanced usage)
             'storage_construct': self.storage_construct,
             'iam_construct': self.iam_construct,
@@ -525,13 +412,15 @@ if __name__ == "__main__":
             'agentcore_agents': [],
             'total_agents': 0
         }
-        
+
         if hasattr(self, 'agent_registry'):
             discovered = self.agent_registry.list_discovered_agents()
             summary['cdk_nested_stacks'] = discovered.get('cdk_stacks', [])
-            summary['agentcore_agents'] = discovered.get('agentcore_agents', [])
-            summary['total_agents'] = len(summary['cdk_nested_stacks']) + len(summary['agentcore_agents'])
-        
+            summary['agentcore_agents'] = discovered.get(
+                'agentcore_agents', [])
+            summary['total_agents'] = len(
+                summary['cdk_nested_stacks']) + len(summary['agentcore_agents'])
+
         return summary
 
     def get_resource_summary(self) -> Dict[str, Any]:
