@@ -54,14 +54,14 @@ const RobotIcon = ({ className = "h-12 w-12" }) => (
 );
 
 export default function Home() {
-  const [agents, setAgents] = useState([]);
-  const [selectedAgents, setSelectedAgents] = useState([]);
-  const [selectedAgent, setSelectedAgent] = useState(null);
+  const [agents, setAgents] = useState<any[]>([]);
+  const [selectedAgents, setSelectedAgents] = useState<any[]>([]);
+  const [selectedAgent, setSelectedAgent] = useState<any>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [hoveredCollaborator, setHoveredCollaborator] = useState(null);
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedCategory, setSelectedCategory] = useState('all');
-  const [selectedTags, setSelectedTags] = useState([]);
+  const [selectedTags, setSelectedTags] = useState<string[]>([]);
   const [showTagFilter, setShowTagFilter] = useState(false);
   let previewTimeout = null;
 
@@ -101,7 +101,7 @@ export default function Home() {
     });
   };
 
-  const removeAgent = (agentId) => {
+  const removeAgent = (agentId: string) => {
     setSelectedAgents(prev => prev.filter(a => a.id !== agentId));
   };
 
@@ -355,7 +355,10 @@ export default function Home() {
                           className="w-12 h-12 rounded-full border-2 border-gray-200"
                           onError={(e) => {
                             e.currentTarget.style.display = 'none';
-                            e.currentTarget.nextSibling.style.display = 'flex';
+                            const nextSibling = e.currentTarget.nextSibling as HTMLElement;
+                            if (nextSibling) {
+                              nextSibling.style.display = 'flex';
+                            }
                           }}
                         />
                       ) : (
@@ -383,7 +386,7 @@ export default function Home() {
                   
                   {agent.tags && agent.tags.length > 0 && (
                     <div className="flex flex-wrap gap-1 mt-2">
-                      {agent.tags.slice(0, 3).map(tag => (
+                      {agent.tags.slice(0, 3).map((tag: string) => (
                         <span key={tag} className="bg-gray-100 text-gray-600 text-xs px-2 py-0.5 rounded">
                           {tag}
                         </span>
@@ -432,7 +435,10 @@ export default function Home() {
                     className="w-24 h-24 rounded-full border-4 border-gray-200 mr-4"
                     onError={(e) => {
                       e.currentTarget.style.display = 'none';
-                      e.currentTarget.nextSibling.style.display = 'flex';
+                      const nextSibling = e.currentTarget.nextSibling as HTMLElement;
+                      if (nextSibling) {
+                        nextSibling.style.display = 'flex';
+                      }
                     }}
                   />
                 ) : (
@@ -490,7 +496,7 @@ export default function Home() {
                 <h3 className="font-bold text-md text-gray-800 mb-2">Tags</h3>
                 <div className="flex flex-wrap gap-2">
                   {selectedAgent.tags && selectedAgent.tags.length > 0 ? (
-                    selectedAgent.tags.map((tag) => (
+                    selectedAgent.tags.map((tag: string) => (
                       <span key={tag} className="bg-blue-100 text-blue-800 text-xs px-3 py-1 rounded-full">
                         {tag}
                       </span>
@@ -506,7 +512,7 @@ export default function Home() {
                 <div className="border-t pt-4">
                   <h3 className="font-bold text-md text-gray-800 mb-3">Collaborators</h3>
                   <div className="space-y-3">
-                    {selectedAgent.collaborators.map((collabName) => {
+                    {selectedAgent.collaborators.map((collabName: string) => {
                       const collaboratorAgent = agents.find(a => a.name === collabName);
                       if (!collaboratorAgent) return null;
 
@@ -522,7 +528,10 @@ export default function Home() {
                               className="w-10 h-10 rounded-full border-2 border-gray-200"
                               onError={(e) => {
                                 e.currentTarget.style.display = 'none';
-                                e.currentTarget.nextSibling.style.display = 'flex';
+                                const nextSibling = e.currentTarget.nextSibling as HTMLElement;
+                                if (nextSibling) {
+                                  nextSibling.style.display = 'flex';
+                                }
                               }}
                             />
                           ) : (

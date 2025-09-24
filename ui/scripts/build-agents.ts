@@ -100,7 +100,7 @@ function findManifestFiles(): string[] {
     console.log(`Scanning directory: ${typePath}`);
     const entries: string[] = fs.readdirSync(typePath);
     console.log(`Found entries: ${entries.join(', ')}`);
-    
+
     // Filter for numbered directories (starts with at least 2 digits followed by dash)
     const numberedDirs: string[] = entries.filter((entry: string) => {
       // Sanitize entry to prevent path traversal
@@ -137,10 +137,10 @@ function loadAllManifests(): Map<string, ManifestAgent> {
     try {
       const content = fs.readFileSync(manifestPath, 'utf8');
       console.log(`Manifest content from ${manifestPath}:`, content);
-      
+
       const manifest: ManifestFile = JSON.parse(content);
       console.log(`Parsed manifest agents:`, manifest.agents);
-      
+
       // Add each agent to the map
       for (const agent of manifest.agents) {
         if (agent.bedrock) {
@@ -172,7 +172,7 @@ function findAgentCoreYamlFiles(): Map<string, any> {
     }
 
     const entries: string[] = fs.readdirSync(typePath);
-    
+
     // Filter for numbered directories
     const numberedDirs: string[] = entries.filter((entry: string) => {
       // Sanitize entry to prevent path traversal
@@ -186,7 +186,7 @@ function findAgentCoreYamlFiles(): Map<string, any> {
     // Look for .bedrock_agentcore.yaml in each numbered directory and its subdirectories
     for (const dir of numberedDirs) {
       const dirPath = path.join(typePath, dir);
-      
+
       // First check if the YAML file is directly in the numbered directory
       const directYamlPath = path.join(dirPath, '.bedrock_agentcore.yaml');
       if (fs.existsSync(directYamlPath)) {
@@ -195,12 +195,12 @@ function findAgentCoreYamlFiles(): Map<string, any> {
           const yamlConfig = yaml.load(content);
           if (yamlConfig) {
             console.log(`Found AgentCore YAML directly in directory: ${directYamlPath}`);
-            
+
             // If there's a default_agent field, use that as the key
             if (yamlConfig.default_agent) {
               yamlMap.set(yamlConfig.default_agent, yamlConfig);
             }
-            
+
             // Also add entries for each agent in the agents field
             if (yamlConfig.agents) {
               for (const [agentId, agentConfig] of Object.entries(yamlConfig.agents)) {
@@ -215,7 +215,7 @@ function findAgentCoreYamlFiles(): Map<string, any> {
           console.warn(`Warning: Error parsing YAML file ${directYamlPath}:`, error);
         }
       }
-      
+
       // Then check subdirectories
       try {
         const agentDirs = fs.readdirSync(dirPath).filter((entry: string) => {
@@ -234,12 +234,12 @@ function findAgentCoreYamlFiles(): Map<string, any> {
               const yamlConfig = yaml.load(content);
               if (yamlConfig) {
                 console.log(`Found AgentCore YAML in subdirectory: ${yamlPath}`);
-                
+
                 // If there's a default_agent field, use that as the key
                 if (yamlConfig.default_agent) {
                   yamlMap.set(yamlConfig.default_agent, yamlConfig);
                 }
-                
+
                 // Also add entries for each agent in the agents field
                 if (yamlConfig.agents) {
                   for (const [agentId, agentConfig] of Object.entries(yamlConfig.agents)) {
@@ -249,7 +249,7 @@ function findAgentCoreYamlFiles(): Map<string, any> {
                     });
                   }
                 }
-                
+
                 // Also map by directory name
                 yamlMap.set(agentDir, yamlConfig);
               }
@@ -278,14 +278,14 @@ function createAgentCoreConfigs(manifestAgents: Map<string, ManifestAgent>): Age
   for (const [id, agent] of manifestAgents.entries()) {
     if (agent.type === 'agentcore') {
       console.log(`Processing AgentCore agent from manifest: ${agent.id}`);
-      
+
       // Try to find YAML config for this agent
       let yamlConfig = yamlMap.get(agent.id);
-      
+
       if (!yamlConfig) {
         // If not found by ID, try to find by name or other means
         console.log(`No direct YAML match for agent ID ${agent.id}, trying alternative lookups`);
-        
+
         // Look for partial matches in keys
         for (const [key, value] of yamlMap.entries()) {
           if (key.includes(agent.id) || agent.id.includes(key)) {
@@ -295,7 +295,7 @@ function createAgentCoreConfigs(manifestAgents: Map<string, ManifestAgent>): Age
           }
         }
       }
-      
+
       // Create config
       const config: AgentConfig = {
         id: agent.id,
@@ -308,13 +308,13 @@ function createAgentCoreConfigs(manifestAgents: Map<string, ManifestAgent>): Age
         createdAt: new Date().toISOString(),
         updatedAt: new Date().toISOString(),
       };
-      
+
       // Add bedrock_agentcore if we found a YAML config
       if (yamlConfig) {
         // Try to get agent_arn from different possible locations in the YAML
         let agentArn: string | undefined;
         let agentId: string | undefined;
-        
+
         // Check in agents.<agent_id>.bedrock_agentcore
         if (yamlConfig.agents && yamlConfig.agents[agent.id] && yamlConfig.agents[agent.id].bedrock_agentcore) {
           agentArn = yamlConfig.agents[agent.id].bedrock_agentcore.agent_arn;
@@ -330,16 +330,16 @@ function createAgentCoreConfigs(manifestAgents: Map<string, ManifestAgent>): Age
           agentArn = yamlConfig.bedrock_agentcore.agent_arn;
           agentId = yamlConfig.bedrock_agentcore.agent_id;
         }
-        
+
         if (agentArn) {
           config.bedrock_agentcore = {
             agent_arn: agentArn
           };
-          
+
           if (agentId) {
             config.bedrock_agentcore.agent_id = agentId;
           }
-          
+
           console.log(`Added agent_arn to config for ${agent.id}: ${agentArn}`);
         } else {
           console.warn(`Warning: Could not find agent_arn in YAML config for ${agent.id}`);
@@ -347,30 +347,30 @@ function createAgentCoreConfigs(manifestAgents: Map<string, ManifestAgent>): Age
       } else {
         console.warn(`Warning: No YAML config found for AgentCore agent ${agent.id}`);
       }
-      
+
       agentCoreConfigs.push(config);
       processedIds.add(agent.id);
     }
   }
-  
+
   // Process any YAML configs that don't have a corresponding manifest entry
   for (const [key, yamlConfig] of yamlMap.entries()) {
     // Skip if we've already processed this ID
     if (processedIds.has(key)) {
       continue;
     }
-    
+
     // Skip if this doesn't look like an agent ID
     if (key.includes('/') || key.includes('\\')) {
       continue;
     }
-    
+
     console.log(`Processing AgentCore agent from YAML only: ${key}`);
-    
+
     // Try to get agent_arn from different possible locations in the YAML
     let agentArn: string | undefined;
     let agentId: string | undefined;
-    
+
     // Check in agents.<agent_id>.bedrock_agentcore
     if (yamlConfig.agents && yamlConfig.agents[key] && yamlConfig.agents[key].bedrock_agentcore) {
       agentArn = yamlConfig.agents[key].bedrock_agentcore.agent_arn;
@@ -386,7 +386,7 @@ function createAgentCoreConfigs(manifestAgents: Map<string, ManifestAgent>): Age
       agentArn = yamlConfig.bedrock_agentcore.agent_arn;
       agentId = yamlConfig.bedrock_agentcore.agent_id;
     }
-    
+
     if (agentArn) {
       const config: AgentConfig = {
         id: key,
@@ -402,11 +402,11 @@ function createAgentCoreConfigs(manifestAgents: Map<string, ManifestAgent>): Age
           agent_arn: agentArn
         }
       };
-      
+
       if (agentId) {
         config.bedrock_agentcore!.agent_id = agentId;
       }
-      
+
       agentCoreConfigs.push(config);
       processedIds.add(key);
     }
@@ -430,58 +430,49 @@ async function main() {
     // Load all manifests from agents_catalog
     const manifestAgents = loadAllManifests();
     console.log(`Loaded ${manifestAgents.size} agent manifests`);
-    
+
     // Load all agents from Bedrock
     const bedrockAgents = await loadBedrockAgents();
-    console.log(`Loaded ${bedrockAgents.length} Bedrock agents:`, 
+    console.log(`Loaded ${bedrockAgents.length} Bedrock agents:`,
       bedrockAgents.map((a: BedrockAgent) => ({ name: a.agentName, id: a.agentId })));
-    
-    // Process Bedrock agents
+
+    // Process only Bedrock agents that have manifest entries
     const processedIds = new Set(); // Track processed agent IDs
-    
+
     for (const agent of bedrockAgents) {
       if (processedIds.has(agent.agentId)) {
         console.log(`Skipping duplicate agent: ${agent.agentName}`);
         continue;
       }
-      
+
       const manifestAgent = manifestAgents.get(agent.agentName || '');
+
+      // Only process if there's a manifest entry for this Bedrock agent
+      if (!manifestAgent || !manifestAgent.bedrock) {
+        console.log(`Skipping Bedrock agent ${agent.agentName} - no manifest entry found`);
+        continue;
+      }
+
       console.log(`Processing agent ${agent.agentName}, found manifest:`, manifestAgent);
 
       // Get Bedrock agent details
       const bedrockDetails = await getBedrockAgentDetails(client, agent.agentId || '');
-      
-      if (manifestAgent && manifestAgent.bedrock) {
-        // Agent has a manifest override
-        const config: AgentConfig = {
-          id: manifestAgent.id,
-          name: manifestAgent.bedrock.override.name,
-          description: manifestAgent.bedrock.override.description || manifestAgent.description || bedrockDetails.description,
-          agentType: 'bedrock',
-          role: manifestAgent.bedrock.override.role || manifestAgent.role || 'individual',
-          image: manifestAgent.bedrock.override.icon || '/images/default-agent.png',
-          tags: manifestAgent.bedrock.override.tags || manifestAgent.tags || [],
-          createdAt: agent.updatedAt?.toISOString(),
-          updatedAt: agent.updatedAt?.toISOString()
-        };
-        console.log(`Writing config for agent with override:`, config);
-        writeAgentConfig(config);
-      } else {
-        // No manifest override, use defaults
-        const config: AgentConfig = {
-          id: agent.agentId || '',
-          name: agent.agentName || '',
-          description: bedrockDetails.description,
-          agentType: 'bedrock',
-          role: 'individual',
-          image: '/images/default-agent.png',
-          tags: [],
-          createdAt: agent.updatedAt?.toISOString(),
-          updatedAt: agent.updatedAt?.toISOString()
-        };
-        writeAgentConfig(config);
-      }
-      
+
+      // Agent has a manifest override
+      const config: AgentConfig = {
+        id: manifestAgent.id,
+        name: manifestAgent.bedrock.override.name,
+        description: manifestAgent.bedrock.override.description || manifestAgent.description || bedrockDetails.description,
+        agentType: 'bedrock',
+        role: manifestAgent.bedrock.override.role || manifestAgent.role || 'individual',
+        image: manifestAgent.bedrock.override.icon || '/images/default-agent.png',
+        tags: manifestAgent.bedrock.override.tags || manifestAgent.tags || [],
+        createdAt: agent.updatedAt?.toISOString(),
+        updatedAt: agent.updatedAt?.toISOString()
+      };
+      console.log(`Writing config for agent with override:`, config);
+      writeAgentConfig(config);
+
       processedIds.add(agent.agentId);
     }
 
