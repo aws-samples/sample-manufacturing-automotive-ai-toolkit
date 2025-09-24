@@ -74,7 +74,7 @@ if [ $? -eq 0 ]; then
     -x "*/*/*/__pycache__/*" \
     -x "*/*/*/*/__pycache__/*" \
     -x "*.zip" \
-    -x "cdk.out/*" \
+    -x "*/cdk.out/*" \
     -x "*.pyc" \
     -x ".DS_Store"
   
