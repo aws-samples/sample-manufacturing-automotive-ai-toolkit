@@ -61,6 +61,7 @@ interface AgentConfig {
   tags?: string[];
   createdAt?: string;
   updatedAt?: string;
+  originalAgentId?: string;
   bedrock_agentcore?: {
     agent_arn: string;
     agent_id?: string;
@@ -303,7 +304,7 @@ function createAgentCoreConfigs(manifestAgents: Map<string, ManifestAgent>): Age
         description: agent.description || '',
         agentType: 'agentcore',
         role: agent.agentcore?.override?.role || agent.role || 'standalone',
-        image: agent.agentcore?.override?.icon || '/images/default-agent.png',
+        image: '',
         tags: agent.tags || [],
         createdAt: new Date().toISOString(),
         updatedAt: new Date().toISOString(),
@@ -394,7 +395,7 @@ function createAgentCoreConfigs(manifestAgents: Map<string, ManifestAgent>): Age
         description: '',
         agentType: 'agentcore',
         role: 'standalone',
-        image: '/images/default-agent.png',
+        image: '',
         tags: [],
         createdAt: new Date().toISOString(),
         updatedAt: new Date().toISOString(),
@@ -436,7 +437,7 @@ async function main() {
     console.log(`Loaded ${bedrockAgents.length} Bedrock agents:`,
       bedrockAgents.map((a: BedrockAgent) => ({ name: a.agentName, id: a.agentId })));
 
-    // Process only Bedrock agents that have manifest entries
+    // Process Bedrock agents
     const processedIds = new Set(); // Track processed agent IDs
 
     for (const agent of bedrockAgents) {
@@ -465,10 +466,11 @@ async function main() {
         description: manifestAgent.bedrock.override.description || manifestAgent.description || bedrockDetails.description,
         agentType: 'bedrock',
         role: manifestAgent.bedrock.override.role || manifestAgent.role || 'individual',
-        image: manifestAgent.bedrock.override.icon || '/images/default-agent.png',
+        image: '',
         tags: manifestAgent.bedrock.override.tags || manifestAgent.tags || [],
         createdAt: agent.updatedAt?.toISOString(),
-        updatedAt: agent.updatedAt?.toISOString()
+        updatedAt: agent.updatedAt?.toISOString(),
+        originalAgentId: agent.agentId // Store original Bedrock agent ID
       };
       console.log(`Writing config for agent with override:`, config);
       writeAgentConfig(config);
