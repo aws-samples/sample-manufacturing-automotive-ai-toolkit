@@ -25,70 +25,20 @@ class CodeBuildConstruct(Construct):
                  bedrock_model_id: str = "anthropic.claude-3-haiku-20240307-v1:0",
                  **kwargs) -> None:
         super().__init__(scope, construct_id)
-        
+
         self.agent_role = agent_role
         self.resource_bucket = resource_bucket
         self.bedrock_model_id = bedrock_model_id
-        
-        # Create CDK synthesis project
-        self._create_cdk_synthesis_project()
-        
+
         # Create AgentCore deployment project
         self._create_agentcore_deployment_project()
-        
+
         # Apply tags
         self._apply_tags()
 
-    def _create_cdk_synthesis_project(self) -> None:
-        """Create CodeBuild project for CDK synthesis"""
-        
-        # Define environment variables for CDK synthesis
-        environment_variables = {
-            'AWS_REGION': codebuild.BuildEnvironmentVariable(
-                value=Stack.of(self).region
-            ),
-            'CDK_DEFAULT_REGION': codebuild.BuildEnvironmentVariable(
-                value=Stack.of(self).region
-            ),
-            'CDK_DEFAULT_ACCOUNT': codebuild.BuildEnvironmentVariable(
-                value=Stack.of(self).account
-            ),
-            'VISTA_FOUNDATION_MODEL': codebuild.BuildEnvironmentVariable(
-                value=self.bedrock_model_id
-            ),
-            'S3_BUCKET_NAME': codebuild.BuildEnvironmentVariable(
-                value=self.resource_bucket.bucket_name
-            )
-        }
-        
-        # Create the CDK synthesis project
-        self.cdk_synthesis_project = codebuild.Project(
-            self, "CDKSynthesisProject",
-            project_name=f"{Stack.of(self).stack_name}-cdk-synthesis",
-            role=self.agent_role,
-            environment=codebuild.BuildEnvironment(
-                build_image=codebuild.LinuxBuildImage.AMAZON_LINUX_2_ARM_3,
-                compute_type=codebuild.ComputeType.SMALL,
-                environment_variables=environment_variables
-            ),
-            source=codebuild.Source.s3(
-                bucket=self.resource_bucket,
-                path="repo"
-            ),
-            build_spec=codebuild.BuildSpec.from_object(self._get_cdk_synthesis_buildspec()),
-            artifacts=codebuild.Artifacts.s3(
-                bucket=self.resource_bucket,
-                path="cdk-templates",
-                include_build_id=False,
-                package_zip=False
-            ),
-            timeout=Duration.minutes(30),
-            cache=codebuild.Cache.local(codebuild.LocalCacheMode.DOCKER_LAYER)
-        )
-
     def _create_agentcore_deployment_project(self) -> None:
         """Create CodeBuild project for AgentCore deployment"""
-        
+
         # Define environment variables for AgentCore deployment
         environment_variables = {
             'EXECUTION_ROLE_ARN': codebuild.BuildEnvironmentVariable(
@@ -101,7 +51,7 @@ class CodeBuildConstruct(Construct):
                 value="1"
             )
         }
-        
+
         # Create the AgentCore deployment project
         self.agentcore_deployment_project = codebuild.Project(
             self, "AgentCoreDeploymentProject",
@@ -116,50 +66,11 @@ class CodeBuildConstruct(Construct):
                 bucket=self.resource_bucket,
                 path=""  # Root of bucket where repo zip file is located
             ),
-            build_spec=codebuild.BuildSpec.from_object(self._get_agentcore_buildspec()),
+            build_spec=codebuild.BuildSpec.from_object(
+                self._get_agentcore_buildspec()),
             timeout=Duration.minutes(60),
             cache=codebuild.Cache.local(codebuild.LocalCacheMode.DOCKER_LAYER)
         )
-
-    def _get_cdk_synthesis_buildspec(self) -> Dict[str, Any]:
-        """Get the build specification for CDK synthesis"""
-        return {
-            "version": "0.2",
-            "phases": {
-                "install": {
-                    "runtime-versions": {
-                        "python": "latest",
-                        "nodejs": "latest"
-                    },
-                    "commands": [
-                        "echo 'Installing CDK and dependencies...'",
-                        "npm install -g aws-cdk",
-                        "pip install --upgrade pip"
-                    ]
-                },
-                "build": {
-                    "commands": [
-                        "echo 'Synthesizing CDK templates...'",
-                        "cd agents_catalog/multi_agent_collaboration/00-vista-agents/cdk",
-                        "pip install -r requirements.txt",
-                        "cdk synth --output cdk.out",
-                        "echo 'CDK synthesis completed'",
-                        "ls -la cdk.out/"
-                    ]
-                }
-            },
-            "artifacts": {
-                "files": [
-                    "agents_catalog/multi_agent_collaboration/00-vista-agents/cdk/cdk.out/**/*"
-                ]
-            },
-            "cache": {
-                "paths": [
-                    "/root/.npm/**/*",
-                    "/root/.cache/pip/**/*"
-                ]
-            }
-        }
 
     def _get_agentcore_buildspec(self) -> Dict[str, Any]:
         """Get the build specification for AgentCore deployment"""
@@ -253,7 +164,7 @@ class CodeBuildConstruct(Construct):
 
     def create_dynamic_agentcore_project(self, agent_name: str, agent_config: Dict[str, Any]) -> codebuild.Project:
         """Create a dynamic CodeBuild project for a specific AgentCore agent"""
-        
+
         # Define environment variables for the specific agent
         environment_variables = {
             'EXECUTION_ROLE_ARN': codebuild.BuildEnvironmentVariable(
@@ -269,11 +180,12 @@ class CodeBuildConstruct(Construct):
                 value="1"
             )
         }
-        
+
         # Add any agent-specific environment variables
         for key, value in agent_config.get('environment', {}).items():
-            environment_variables[key] = codebuild.BuildEnvironmentVariable(value=str(value))
-        
+            environment_variables[key] = codebuild.BuildEnvironmentVariable(
+                value=str(value))
+
         # Create the agent-specific CodeBuild project
         project = codebuild.Project(
             self, f"AgentProject{self._sanitize_name(agent_name)}",
@@ -294,17 +206,18 @@ class CodeBuildConstruct(Construct):
             timeout=Duration.minutes(30),
             cache=codebuild.Cache.local(codebuild.LocalCacheMode.DOCKER_LAYER)
         )
-        
+
         # Apply tags
         Tags.of(project).add("Project", "ma3t-agents-toolkit")
         Tags.of(project).add("AgentName", agent_name)
-        
+
         return project
 
     def _get_agent_specific_buildspec(self, agent_name: str, agent_config: Dict[str, Any]) -> Dict[str, Any]:
         """Get the build specification for a specific AgentCore agent"""
-        agent_path = agent_config.get('path', f'agents_catalog/standalone_agents/{agent_name}')
-        
+        agent_path = agent_config.get(
+            'path', f'agents_catalog/standalone_agents/{agent_name}')
+
         return {
             "version": "0.2",
             "phases": {
@@ -354,16 +267,10 @@ class CodeBuildConstruct(Construct):
 
     def _apply_tags(self) -> None:
         """Apply consistent tags to all CodeBuild projects"""
-        Tags.of(self.cdk_synthesis_project).add("Project", "ma3t-agents-toolkit")
-        Tags.of(self.cdk_synthesis_project).add("ProjectType", "CDKSynthesis")
-        
-        Tags.of(self.agentcore_deployment_project).add("Project", "ma3t-agents-toolkit")
-        Tags.of(self.agentcore_deployment_project).add("ProjectType", "AgentCoreDeployment")
-
-    @property
-    def cdk_synthesis_project_name(self) -> str:
-        """Returns the CDK synthesis project name"""
-        return self.cdk_synthesis_project.project_name
+        Tags.of(self.agentcore_deployment_project).add(
+            "Project", "ma3t-agents-toolkit")
+        Tags.of(self.agentcore_deployment_project).add(
+            "ProjectType", "AgentCoreDeployment")
 
     @property
     def agentcore_deployment_project_name(self) -> str:
@@ -372,8 +279,6 @@ class CodeBuildConstruct(Construct):
 
     def get_project_by_name(self, project_name: str) -> Optional[codebuild.Project]:
         """Get a CodeBuild project by name"""
-        if project_name == self.cdk_synthesis_project.project_name:
-            return self.cdk_synthesis_project
-        elif project_name == self.agentcore_deployment_project.project_name:
+        if project_name == self.agentcore_deployment_project.project_name:
             return self.agentcore_deployment_project
         return None
