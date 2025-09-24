@@ -47,6 +47,9 @@ class CodeBuildConstruct(Construct):
             'AWS_REGION': codebuild.BuildEnvironmentVariable(
                 value=Stack.of(self).region
             ),
+            'S3_BUCKET': codebuild.BuildEnvironmentVariable(
+                value=self.resource_bucket.bucket_name
+            ),
             'PYTHONUNBUFFERED': codebuild.BuildEnvironmentVariable(
                 value="1"
             )
@@ -117,7 +120,15 @@ class CodeBuildConstruct(Construct):
                         "echo 'Starting build phase at $(date)'",
                         "echo 'Listing and managing AgentCore agents...'",
                         "python scripts/build_launch_agentcore.py --region $AWS_REGION --execution-role-arn $EXECUTION_ROLE_ARN",
-                        "echo 'AgentCore management completed'"
+                        "echo 'AgentCore management completed'",
+                        "",
+                        "echo 'Starting UI build...'",
+                        "cd ui",
+                        "echo 'Installing UI dependencies...'",
+                        "npm ci",
+                        "echo 'Running UI build...'",
+                        "npm run build",
+                        "echo 'UI build completed'"
                     ]
                 },
                 "post_build": {
@@ -125,19 +136,7 @@ class CodeBuildConstruct(Construct):
                         "echo 'Starting post-build phase at $(date)'",
                         "echo 'Checking deployment results...'",
                         "cat agentcore_deployment_results.json || echo 'No results file found'",
-                        """
-                        if [ -f agentcore_deployment_results.json ]; then
-                          FAILED_AGENTS=$(cat agentcore_deployment_results.json | grep -c "error" || echo "0")
-                          if [ $FAILED_AGENTS -gt 0 ]; then
-                            echo "WARNING: $FAILED_AGENTS agents failed to deploy"
-                            cat agentcore_deployment_results.json | grep -A 2 "error" || echo "No error details found"
-                          else
-                            echo "All agents deployed successfully"
-                          fi
-                        else
-                          echo "WARNING: Deployment results file not found"
-                        fi
-                        """,
+                        "if [ -f agentcore_deployment_results.json ]; then FAILED_AGENTS=$(cat agentcore_deployment_results.json | grep -c \"error\" || echo \"0\"); if [ $FAILED_AGENTS -gt 0 ]; then echo \"WARNING: $FAILED_AGENTS agents failed to deploy\"; cat agentcore_deployment_results.json | grep -A 2 \"error\" || echo \"No error details found\"; else echo \"All agents deployed successfully\"; fi; else echo \"WARNING: Deployment results file not found\"; fi",
                         "echo 'Build completed at $(date)'"
                     ]
                 }
