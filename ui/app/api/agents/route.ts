@@ -55,16 +55,45 @@ async function getLatestAgentVersionByUpdatedTimeStamp(agentId: string) {
     }
 }
 
-async function listAgents() {
-  try {
-    const command = new ListAgentsCommand({ maxResults: 100 });
-    const response = await client.send(command);
-    console.log("Fetched Bedrock Agents count:", response.agentSummaries?.length);
-    return response.agentSummaries || [];
-  } catch (error) {
-    console.error("Error fetching Bedrock agents:", error);
-    return [];
-  }
+function loadBedrockAgentsFromConfig(): any[] {
+    try {
+        const files = fs.readdirSync(CONFIG_DIR);
+        const agents = [];
+
+        for (const file of files) {
+            try {
+                const filePath = path.join(CONFIG_DIR, file);
+                const content = fs.readFileSync(filePath, 'utf8');
+                const agent = JSON.parse(content);
+
+                // Only include Bedrock agents (not AgentCore)
+                if (agent.agentType?.toLowerCase() === 'bedrock') {
+                    console.log(`Found Bedrock agent config: ${agent.name}`);
+                    agents.push({
+                        id: agent.id,
+                        name: agent.name,
+                        collaboratorName: sanitizeCollaboratorName(agent.name),
+                        description: agent.description || "No description available.",
+                        agentType: agent.agentType,
+                        role: agent.role || 'individual',
+                        image: agent.image || "/images/default_agent_icon.png",
+                        tags: agent.tags || [],
+                        createdAt: agent.createdAt || new Date().toISOString(),
+                        updatedAt: agent.updatedAt || new Date().toISOString(),
+                        category: "MA3T",
+                        agentStatus: "READY"
+                    });
+                }
+            } catch (error) {
+                console.error(`Error processing file ${file}:`, error);
+            }
+        }
+
+        return agents;
+    } catch (error) {
+        console.error("Error loading Bedrock agents from config:", error);
+        return [];
+    }
 }
 
 function findConfigFile(agentId: string, agentName: string): string | null {
@@ -134,7 +163,7 @@ function loadAgentCoreAgents(): any[] {
                         tags: agent.tags || [],
                         createdAt: agent.createdAt || new Date().toISOString(),
                         updatedAt: agent.updatedAt || new Date().toISOString(),
-                        category: "HCLS",
+                        category: "MA3T",
                         agentStatus: "READY",
                         bedrock_agentcore: agent.bedrock_agentcore
                     });
@@ -185,7 +214,7 @@ async function getAgentDetails(agentId: string) {
             updatedAt: config?.updatedAt || (response.agent.updatedAt ? response.agent.updatedAt.toISOString() : "N/A"),
             tags: tags,
             image: config?.image || "/images/default_agent_icon.png",
-            category: "HCLS",
+            category: "MA3T",
             agentCollaboration: response.agent.agentCollaboration || "N/A",
             agentResourceRoleArn: response.agent.agentResourceRoleArn || "N/A",
             agentStatus: response.agent.agentStatus,
@@ -231,18 +260,10 @@ export async function GET() {
     try {
       console.log('Starting GET request handler');
       
-      // Get Bedrock agents
-      const bedrockAgents = await listAgents();
-      console.log('Retrieved Bedrock agents list, fetching details...');
-      
-      const detailedBedrockAgents = await Promise.all(
-        bedrockAgents.map(async (agent) => {
-          if (!agent.agentId) {
-            return null;
-          }
-          return getAgentDetails(agent.agentId)
-        })
-      );
+      // Get Bedrock agents from config files only (no direct API calls)
+      console.log('Loading Bedrock agents from config files...');
+      const bedrockAgents = loadBedrockAgentsFromConfig();
+      console.log('Loaded Bedrock agents from config:', bedrockAgents);
 
       // Get AgentCore agents
       console.log('Loading AgentCore agents...');
@@ -251,7 +272,7 @@ export async function GET() {
 
       // Combine both types of agents
       const validAgents = [
-        ...detailedBedrockAgents.filter(agent => agent !== null),
+        ...bedrockAgents,
         ...agentCoreAgents
       ];
 

@@ -22,6 +22,6 @@
       "@/*": ["./app/*"]
     }
   },
-  "include": ["hcls-agents-ui/next-env.d.ts", "**/*.ts", "**/*.tsx", ".next/types/**/*.ts"],
+  "include": ["ma3t-agents-ui/next-env.d.ts", "**/*.ts", "**/*.tsx", ".next/types/**/*.ts"],
   "exclude": ["node_modules"]
 }
