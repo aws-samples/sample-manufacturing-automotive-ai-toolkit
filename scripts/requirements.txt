@@ -1,1 +1,1 @@
-bedrock-agentcore-starter-toolkit
+bedrock-agentcore-starter-toolkit==0.1.12
