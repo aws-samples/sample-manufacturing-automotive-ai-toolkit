@@ -92,7 +92,6 @@ class MainStack(cdk.Stack):
         self.tables = self.storage_construct.tables
         self.lambda_functions = self.compute_construct.get_all_functions()
         self.codebuild_projects = {
-            'cdk_synthesis': self.codebuild_construct.cdk_synthesis_project,
             'agentcore_deployment': self.codebuild_construct.agentcore_deployment_project
         }
 
@@ -220,11 +219,7 @@ class MainStack(cdk.Stack):
             description="Resource bucket name for deploy script"
         )
 
-        CfnOutput(
-            self, "CDKSynthesisProject",
-            value=self.codebuild_construct.cdk_synthesis_project.project_name,
-            description="CodeBuild project for synthesizing CDK templates"
-        )
+
 
         CfnOutput(
             self, "AgentCoreDeploymentProject",
@@ -393,7 +388,6 @@ def handler(event, context):
 
             # CodeBuild resources
             'codebuild_projects': self.codebuild_projects,
-            'cdk_synthesis_project': self.codebuild_construct.cdk_synthesis_project,
             'agentcore_deployment_project': self.codebuild_construct.agentcore_deployment_project,
 
             # Constructs (for advanced usage)
