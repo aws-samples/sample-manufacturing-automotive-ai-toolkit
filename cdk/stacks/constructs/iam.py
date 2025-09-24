@@ -59,7 +59,7 @@ class IAMConstruct(Construct):
         # Add ECR permissions
         self._add_ecr_permissions()
 
-        # Add Bedrock AgentCore permissions
+        # Add Bedrock AgentCore permissions (comprehensive set matching working version)
         self._add_bedrock_agentcore_permissions()
 
         # Add S3 permissions
@@ -273,7 +273,9 @@ class IAMConstruct(Construct):
                     "bedrock-agentcore:InvokeAgent",
                     "bedrock-agentcore:GetWorkloadAccessToken",
                     "bedrock-agentcore:GetWorkloadAccessTokenForJWT",
-                    "bedrock-agentcore:GetWorkloadAccessTokenForUserId"
+                    "bedrock-agentcore:GetWorkloadAccessTokenForUserId",
+                    "bedrock-agentcore:GetAgentRuntimeEndpoint",
+                    "bedrock-agentcore:CreateWorkloadIdentity"
                 ],
                 resources=[
                     f"arn:aws:bedrock-agentcore:{Stack.of(self).region}:{Stack.of(self).account}:*"
@@ -283,514 +285,165 @@ class IAMConstruct(Construct):
 
     def _add_bedrock_permissions(self) -> None:
         """Add Bedrock-specific permissions to the agent role"""
-
-        # Foundation model permissions
-        self.bedrock_agent_role.add_to_policy(
-            iam.PolicyStatement(
-                effect=iam.Effect.ALLOW,
-                actions=[
-                    "bedrock:InvokeModel",
-                    "bedrock:InvokeModelWithResponseStream",
-                    "bedrock:GetFoundationModel",
-                    "bedrock:ListFoundationModels"
-                ],
-                resources=[
-                    f"arn:{Stack.of(self).partition}:bedrock:*::foundation-model/*"
-                ]
-            )
-        )
-
-        # Agent management permissions
-        self.bedrock_agent_role.add_to_policy(
-            iam.PolicyStatement(
-                effect=iam.Effect.ALLOW,
-                actions=[
-                    "bedrock:CreateAgent",
-                    "bedrock:UpdateAgent",
-                    "bedrock:GetAgent",
-                    "bedrock:ListAgents",
-                    "bedrock:DeleteAgent",
-                    "bedrock:CreateAgentAlias",
-                    "bedrock:UpdateAgentAlias",
-                    "bedrock:GetAgentAlias",
-                    "bedrock:ListAgentAliases",
-                    "bedrock:DeleteAgentAlias",
-                    "bedrock:PrepareAgent"
-                ],
-                resources=[
-                    f"arn:{Stack.of(self).partition}:bedrock:{Stack.of(self).region}:{Stack.of(self).account}:agent/*",
-                    f"arn:{Stack.of(self).partition}:bedrock:{Stack.of(self).region}:{Stack.of(self).account}:agent-alias/*"
-                ]
-            )
-        )
-
-        # Knowledge base permissions
-        self.bedrock_agent_role.add_to_policy(
-            iam.PolicyStatement(
-                effect=iam.Effect.ALLOW,
-                actions=[
-                    "bedrock:CreateKnowledgeBase",
-                    "bedrock:UpdateKnowledgeBase",
-                    "bedrock:GetKnowledgeBase",
-                    "bedrock:ListKnowledgeBases",
-                    "bedrock:DeleteKnowledgeBase",
-                    "bedrock:AssociateAgentKnowledgeBase",
-                    "bedrock:DisassociateAgentKnowledgeBase"
-                ],
-                resources=[
-                    f"arn:{Stack.of(self).partition}:bedrock:{Stack.of(self).region}:{Stack.of(self).account}:knowledge-base/*"
-                ]
-            )
-        )
-
-        # Inference profile permissions
-        self.bedrock_agent_role.add_to_policy(
-            iam.PolicyStatement(
-                effect=iam.Effect.ALLOW,
-                actions=[
-                    "bedrock:GetInferenceProfile",
-                    "bedrock:ListInferenceProfiles"
-                ],
-                resources=[
-                    f"arn:{Stack.of(self).partition}:bedrock:{Stack.of(self).region}:{Stack.of(self).account}:inference-profile/*",
-                    f"arn:{Stack.of(self).partition}:bedrock:{Stack.of(self).region}:{Stack.of(self).account}:application-inference-profile/*"
-                ]
-            )
-        )
-
-        # Guardrail permissions
-        self.bedrock_agent_role.add_to_policy(
-            iam.PolicyStatement(
-                effect=iam.Effect.ALLOW,
-                actions=[
-                    "bedrock:GetGuardrail",
-                    "bedrock:ListGuardrails"
-                ],
-                resources=[
-                    f"arn:{Stack.of(self).partition}:bedrock:{Stack.of(self).region}:{Stack.of(self).account}:guardrail/*"
-                ]
-            )
-        )
+        # Comprehensive Bedrock permissions are handled in _add_bedrock_agentcore_permissions
+        pass
 
     def _add_ecr_permissions(self) -> None:
         """Add ECR permissions to the agent role"""
+        # Comprehensive ECR permissions are handled in _add_bedrock_agentcore_permissions
+        pass
 
-        # ECR authorization token
-        self.bedrock_agent_role.add_to_policy(
-            iam.PolicyStatement(
-                effect=iam.Effect.ALLOW,
-                actions=["ecr:GetAuthorizationToken"],
-                resources=["*"]
-            )
-        )
-
-        # ECR repository operations
+    def _add_bedrock_agentcore_permissions(self) -> None:
+        """Add comprehensive permissions matching the working cdk-test version"""
+        
+        # Basic CodeBuild permissions
         self.bedrock_agent_role.add_to_policy(
             iam.PolicyStatement(
                 effect=iam.Effect.ALLOW,
                 actions=[
-                    "ecr:CreateRepository",
+                    "logs:CreateLogGroup",
+                    "logs:CreateLogStream", 
+                    "logs:PutLogEvents",
+                    "logs:PutResourcePolicy"
+                ],
+                resources=["*"]
+            )
+        )
+        
+        # S3 permissions
+        self.bedrock_agent_role.add_to_policy(
+            iam.PolicyStatement(
+                effect=iam.Effect.ALLOW,
+                actions=[
+                    "s3:GetObject",
+                    "s3:GetObjectVersion",
+                    "s3:PutObject",
+                    "s3:GetBucketAcl",
+                    "s3:GetBucketLocation",
+                    "s3:ListBucket",
+                    "s3:CreateBucket",
+                    "s3:PutBucketPolicy"
+                ],
+                resources=["*"]
+            )
+        )
+        
+        # ECR permissions
+        self.bedrock_agent_role.add_to_policy(
+            iam.PolicyStatement(
+                effect=iam.Effect.ALLOW,
+                actions=[
+                    "ecr:GetAuthorizationToken",
                     "ecr:BatchCheckLayerAvailability",
                     "ecr:GetDownloadUrlForLayer",
                     "ecr:BatchGetImage",
+                    "ecr:CreateRepository",
                     "ecr:InitiateLayerUpload",
                     "ecr:UploadLayerPart",
                     "ecr:CompleteLayerUpload",
                     "ecr:PutImage",
                     "ecr:TagResource",
-                    "ecr:DescribeRepositories"
+                    "ecr:DescribeRepositories",
+                    "ecr-public:*"
                 ],
-                resources=[
-                    f"arn:aws:ecr:{Stack.of(self).region}:{Stack.of(self).account}:repository/ma3t-*",
-                    f"arn:aws:ecr:{Stack.of(self).region}:{Stack.of(self).account}:repository/bedrock-*"
-                ]
+                resources=["*"]
             )
         )
-
-    def _add_bedrock_agentcore_permissions(self) -> None:
-        """Add Bedrock AgentCore permissions to the agent role based on official docs"""
-
-        # IAM Role Management for BedrockAgentCore
+        
+        # Bedrock permissions
         self.bedrock_agent_role.add_to_policy(
             iam.PolicyStatement(
-                sid="IAMRoleManagement",
                 effect=iam.Effect.ALLOW,
                 actions=[
-                    "iam:CreateRole",
-                    "iam:DeleteRole",
+                    "bedrock:*",
+                    "bedrock-agentcore:*"
+                ],
+                resources=["*"]
+            )
+        )
+        
+        # IAM permissions for AgentCore
+        self.bedrock_agent_role.add_to_policy(
+            iam.PolicyStatement(
+                effect=iam.Effect.ALLOW,
+                actions=[
                     "iam:GetRole",
-                    "iam:PutRolePolicy",
-                    "iam:DeleteRolePolicy",
+                    "iam:CreateRole",
                     "iam:AttachRolePolicy",
-                    "iam:DetachRolePolicy",
+                    "iam:PutRolePolicy",
                     "iam:TagRole",
+                    "iam:PassRole",
+                    "iam:GetRolePolicy",
+                    "iam:ListAttachedRolePolicies",
                     "iam:ListRolePolicies",
-                    "iam:ListAttachedRolePolicies"
+                    "iam:ListRoles",
+                    "iam:CreateServiceLinkedRole"
                 ],
-                resources=[
-                    f"arn:aws:iam::{Stack.of(self).account}:role/*BedrockAgentCore*",
-                    f"arn:aws:iam::{Stack.of(self).account}:role/service-role/*BedrockAgentCore*"
-                ]
+                resources=["*"]
             )
         )
-
-        # CodeBuild Project Access
+        
+        # CodeBuild permissions
         self.bedrock_agent_role.add_to_policy(
             iam.PolicyStatement(
-                sid="CodeBuildProjectAccess",
                 effect=iam.Effect.ALLOW,
                 actions=[
-                    "codebuild:StartBuild",
-                    "codebuild:BatchGetBuilds",
-                    "codebuild:ListBuildsForProject",
                     "codebuild:CreateProject",
                     "codebuild:UpdateProject",
-                    "codebuild:BatchGetProjects"
-                ],
-                resources=[
-                    f"arn:aws:codebuild:{Stack.of(self).region}:{Stack.of(self).account}:project/bedrock-agentcore-*",
-                    f"arn:aws:codebuild:{Stack.of(self).region}:{Stack.of(self).account}:build/bedrock-agentcore-*"
-                ]
-            )
-        )
-
-        # CodeBuild List Access
-        self.bedrock_agent_role.add_to_policy(
-            iam.PolicyStatement(
-                sid="CodeBuildListAccess",
-                effect=iam.Effect.ALLOW,
-                actions=["codebuild:ListProjects"],
-                resources=["*"]
-            )
-        )
-
-        # IAM PassRole Access for BedrockAgentCore
-        self.bedrock_agent_role.add_to_policy(
-            iam.PolicyStatement(
-                sid="IAMPassRoleAccess",
-                effect=iam.Effect.ALLOW,
-                actions=["iam:PassRole"],
-                resources=[
-                    f"arn:aws:iam::{Stack.of(self).account}:role/AmazonBedrockAgentCore*",
-                    f"arn:aws:iam::{Stack.of(self).account}:role/service-role/AmazonBedrockAgentCore*"
-                ]
-            )
-        )
-
-        # CloudWatch Logs Access
-        self.bedrock_agent_role.add_to_policy(
-            iam.PolicyStatement(
-                sid="CloudWatchLogsAccess",
-                effect=iam.Effect.ALLOW,
-                actions=[
-                    "logs:GetLogEvents",
-                    "logs:DescribeLogGroups",
-                    "logs:DescribeLogStreams"
-                ],
-                resources=[
-                    f"arn:aws:logs:{Stack.of(self).region}:{Stack.of(self).account}:log-group:/aws/bedrock-agentcore/*",
-                    f"arn:aws:logs:{Stack.of(self).region}:{Stack.of(self).account}:log-group:/aws/codebuild/*"
-                ]
-            )
-        )
-
-        # S3 Access for AgentCore
-        self.bedrock_agent_role.add_to_policy(
-            iam.PolicyStatement(
-                sid="S3Access",
-                effect=iam.Effect.ALLOW,
-                actions=[
-                    "s3:GetObject",
-                    "s3:PutObject",
-                    "s3:ListBucket",
-                    "s3:CreateBucket",
-                    "s3:PutLifecycleConfiguration"
-                ],
-                resources=[
-                    "arn:aws:s3:::bedrock-agentcore-*",
-                    "arn:aws:s3:::bedrock-agentcore-*/*"
-                ]
-            )
-        )
-
-        # ECR Repository Access
-        self.bedrock_agent_role.add_to_policy(
-            iam.PolicyStatement(
-                sid="ECRRepositoryAccess",
-                effect=iam.Effect.ALLOW,
-                actions=[
-                    "ecr:CreateRepository",
-                    "ecr:DescribeRepositories",
-                    "ecr:GetRepositoryPolicy",
-                    "ecr:InitiateLayerUpload",
-                    "ecr:CompleteLayerUpload",
-                    "ecr:PutImage",
-                    "ecr:UploadLayerPart",
-                    "ecr:BatchCheckLayerAvailability",
-                    "ecr:GetDownloadUrlForLayer",
-                    "ecr:BatchGetImage",
-                    "ecr:ListImages",
-                    "ecr:TagResource"
-                ],
-                resources=[
-                    f"arn:aws:ecr:{Stack.of(self).region}:{Stack.of(self).account}:repository/bedrock-agentcore-*"
-                ]
-            )
-        )
-
-        # ECR Authorization Access
-        self.bedrock_agent_role.add_to_policy(
-            iam.PolicyStatement(
-                sid="ECRAuthorizationAccess",
-                effect=iam.Effect.ALLOW,
-                actions=["ecr:GetAuthorizationToken"],
-                resources=["*"]
-            )
-        )
-
-        # Additional AgentCore Runtime Permissions
-        self.bedrock_agent_role.add_to_policy(
-            iam.PolicyStatement(
-                sid="BedrockAgentCoreRuntimeAccess",
-                effect=iam.Effect.ALLOW,
-                actions=[
-                    "bedrock-agentcore:CreateAgentRuntime",
-                    "bedrock-agentcore:DeleteAgentRuntime",
-                    "bedrock-agentcore:GetAgentRuntime",
-                    "bedrock-agentcore:ListAgentRuntimes",
-                    "bedrock-agentcore:UpdateAgentRuntime",
-                    "bedrock-agentcore:CreateAgent",
-                    "bedrock-agentcore:UpdateAgent",
-                    "bedrock-agentcore:GetAgent",
-                    "bedrock-agentcore:ListAgents",
-                    "bedrock-agentcore:DeleteAgent",
-                    "bedrock-agentcore:InvokeAgent",
-                    "bedrock-agentcore:GetWorkloadAccessToken",
-                    "bedrock-agentcore:GetWorkloadAccessTokenForJWT",
-                    "bedrock-agentcore:GetWorkloadAccessTokenForUserId"
-                ],
-                resources=[
-                    f"arn:aws:bedrock-agentcore:{Stack.of(self).region}:{Stack.of(self).account}:*"
-                ]
-            )
-        )
-
-        # Additional CloudWatch and X-Ray permissions
-        self.bedrock_agent_role.add_to_policy(
-            iam.PolicyStatement(
-                sid="AdditionalLogsAccess",
-                effect=iam.Effect.ALLOW,
-                actions=[
-                    "logs:CreateLogGroup",
-                    "logs:CreateLogStream",
-                    "logs:PutLogEvents"
-                ],
-                resources=[
-                    f"arn:aws:logs:{Stack.of(self).region}:{Stack.of(self).account}:log-group:/aws/bedrock-agentcore/runtimes/*"
-                ]
-            )
-        )
-
-        self.bedrock_agent_role.add_to_policy(
-            iam.PolicyStatement(
-                sid="XRayAccess",
-                effect=iam.Effect.ALLOW,
-                actions=[
-                    "xray:PutTraceSegments",
-                    "xray:PutTelemetryRecords",
-                    "xray:GetSamplingRules",
-                    "xray:GetSamplingTargets"
+                    "codebuild:StartBuild",
+                    "codebuild:BatchGetBuilds"
                 ],
                 resources=["*"]
             )
         )
-
+        
+        # Additional services
         self.bedrock_agent_role.add_to_policy(
             iam.PolicyStatement(
-                sid="CloudWatchMetrics",
                 effect=iam.Effect.ALLOW,
-                actions=["cloudwatch:PutMetricData"],
-                resources=["*"],
-                conditions={
-                    "StringEquals": {
-                        "cloudwatch:namespace": "bedrock-agentcore"
-                    }
-                }
+                actions=[
+                    "sts:GetServiceBearerToken",
+                    "secretsmanager:*",
+                    "kms:*",
+                    "lambda:ListFunctions",
+                    "application-signals:*",
+                    "cloudwatch:*",
+                    "xray:*"
+                ],
+                resources=["*"]
             )
         )
 
     def _add_s3_permissions(self) -> None:
         """Add S3 permissions to the agent role"""
-        if self.resource_bucket:
-            self.bedrock_agent_role.add_to_policy(
-                iam.PolicyStatement(
-                    effect=iam.Effect.ALLOW,
-                    actions=[
-                        "s3:GetObject",
-                        "s3:GetObjectVersion",
-                        "s3:ListBucket"
-                    ],
-                    resources=[
-                        self.resource_bucket.bucket_arn,
-                        f"{self.resource_bucket.bucket_arn}/*"
-                    ]
-                )
-            )
+        # Comprehensive S3 permissions are handled in _add_bedrock_agentcore_permissions
+        pass
 
     def _add_cloudwatch_logs_permissions(self) -> None:
         """Add CloudWatch Logs permissions to the agent role"""
-        self.bedrock_agent_role.add_to_policy(
-            iam.PolicyStatement(
-                effect=iam.Effect.ALLOW,
-                actions=[
-                    "logs:CreateLogGroup",
-                    "logs:CreateLogStream",
-                    "logs:PutLogEvents"
-                ],
-                resources=[
-                    f"arn:aws:logs:{Stack.of(self).region}:{Stack.of(self).account}:log-group:/aws/codebuild/{Stack.of(self).stack_name}-*",
-                    f"arn:aws:logs:{Stack.of(self).region}:{Stack.of(self).account}:log-group:/aws/lambda/*",
-                    f"arn:aws:logs:{Stack.of(self).region}:{Stack.of(self).account}:log-group:/aws/bedrock/*"
-                ]
-            )
-        )
+        # Comprehensive CloudWatch permissions are handled in _add_bedrock_agentcore_permissions
+        pass
 
     def _add_ssm_permissions(self) -> None:
         """Add SSM permissions to the agent role"""
         self.bedrock_agent_role.add_to_policy(
             iam.PolicyStatement(
                 effect=iam.Effect.ALLOW,
-                actions=["ssm:GetParameter"],
+                actions=[
+                    "ssm:GetParameter",
+                    "ssm:StartSession"
+                ],
                 resources=[
-                    f"arn:aws:ssm:{Stack.of(self).region}:{Stack.of(self).account}:parameter/*"
+                    f"arn:aws:ssm:{Stack.of(self).region}:{Stack.of(self).account}:parameter/*",
+                    f"arn:aws:codebuild:{Stack.of(self).region}:{Stack.of(self).account}:build/*"
                 ]
             )
         )
 
     def _add_iam_passrole_permissions(self) -> None:
         """Add IAM PassRole permissions to the agent role"""
-        self.bedrock_agent_role.add_to_policy(
-            iam.PolicyStatement(
-                effect=iam.Effect.ALLOW,
-                actions=["iam:PassRole"],
-                resources=[
-                    f"arn:aws:iam::{Stack.of(self).account}:role/{Stack.of(self).stack_name}-AgentRole-*"
-                ],
-                conditions={
-                    "StringEquals": {
-                        "iam:PassedToService": [
-                            "bedrock-agentcore.amazonaws.com",
-                            "bedrock.amazonaws.com"
-                        ]
-                    }
-                }
-            )
-        )
-
-        # Add IAM permissions needed by AgentCore toolkit
-        self.bedrock_agent_role.add_to_policy(
-            iam.PolicyStatement(
-                effect=iam.Effect.ALLOW,
-                actions=[
-                    "iam:GetRole",
-                    "iam:CreateRole",
-                    "iam:AttachRolePolicy",
-                    "iam:DetachRolePolicy",
-                    "iam:PutRolePolicy",
-                    "iam:DeleteRolePolicy",
-                    "iam:ListRolePolicies",
-                    "iam:ListAttachedRolePolicies"
-                ],
-                resources=[
-                    f"arn:aws:iam::{Stack.of(self).account}:role/AmazonBedrockAgentCoreSDK*",
-                    f"arn:aws:iam::{Stack.of(self).account}:role/{Stack.of(self).stack_name}-*"
-                ]
-            )
-        )
-
-        # Add PassRole permissions for AgentCore SDK roles
-        self.bedrock_agent_role.add_to_policy(
-            iam.PolicyStatement(
-                effect=iam.Effect.ALLOW,
-                actions=["iam:PassRole"],
-                resources=[
-                    f"arn:aws:iam::{Stack.of(self).account}:role/AmazonBedrockAgentCoreSDK*"
-                ],
-                conditions={
-                    "StringEquals": {
-                        "iam:PassedToService": [
-                            "codebuild.amazonaws.com",
-                            "bedrock-agentcore.amazonaws.com",
-                            "bedrock.amazonaws.com"
-                        ]
-                    }
-                }
-            )
-        )
-
-        # Add CodeBuild permissions needed by AgentCore toolkit
-        self.bedrock_agent_role.add_to_policy(
-            iam.PolicyStatement(
-                effect=iam.Effect.ALLOW,
-                actions=[
-                    "codebuild:CreateProject",
-                    "codebuild:UpdateProject",
-                    "codebuild:DeleteProject",
-                    "codebuild:StartBuild",
-                    "codebuild:BatchGetBuilds",
-                    "codebuild:BatchGetProjects"
-                ],
-                resources=[
-                    f"arn:aws:codebuild:{Stack.of(self).region}:{Stack.of(self).account}:project/bedrock-agentcore-*"
-                ]
-            )
-        )
-
-        # Add S3 bucket creation permissions needed by AgentCore toolkit
-        self.bedrock_agent_role.add_to_policy(
-            iam.PolicyStatement(
-                effect=iam.Effect.ALLOW,
-                actions=[
-                    "s3:CreateBucket",
-                    "s3:DeleteBucket",
-                    "s3:GetBucketLocation",
-                    "s3:ListBucket",
-                    "s3:PutBucketPolicy",
-                    "s3:GetBucketPolicy",
-                    "s3:DeleteBucketPolicy"
-                ],
-                resources=[
-                    f"arn:aws:s3:::bedrock-agentcore-*"
-                ]
-            )
-        )
-
-        # Add S3 object permissions for AgentCore toolkit buckets
-        self.bedrock_agent_role.add_to_policy(
-            iam.PolicyStatement(
-                effect=iam.Effect.ALLOW,
-                actions=[
-                    "s3:GetObject",
-                    "s3:PutObject",
-                    "s3:DeleteObject",
-                    "s3:ListBucket"
-                ],
-                resources=[
-                    f"arn:aws:s3:::bedrock-agentcore-*/*"
-                ]
-            )
-        )
-
-        # Add S3 permissions for AgentCore CodeBuild sources bucket to main agent role
-        self.bedrock_agent_role.add_to_policy(
-            iam.PolicyStatement(
-                effect=iam.Effect.ALLOW,
-                actions=["s3:GetObject"],
-                resources=[
-                    f"arn:aws:s3:::bedrock-agentcore-codebuild-sources-{Stack.of(self).account}-{Stack.of(self).region}/*"
-                ]
-            )
-        )
+        # Comprehensive IAM permissions are handled in _add_bedrock_agentcore_permissions
+        pass
 
     def _apply_tags(self) -> None:
         """Apply consistent tags to all IAM resources"""
