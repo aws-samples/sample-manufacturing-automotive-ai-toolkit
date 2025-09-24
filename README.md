@@ -2,8 +2,6 @@
 
 A collection of sample AI agents for Automotive and Manufacturing use cases.
 
-![MA3T User Interface](docs/ui.png)
-
 ## Deployment (CDK)
 
 **Prerequisites:**
@@ -15,24 +13,10 @@ A collection of sample AI agents for Automotive and Manufacturing use cases.
 ```bash
 ./deploy_cdk.sh
 ```
-
 *Note: The CDK stack automatically triggers agent deployments via CodeBuild after successful deployment.*
 
-**Manual Deploy:**
-```bash
-cd cdk
-cdk bootstrap
-cdk deploy
 
-# Upload code for CodeBuild (after first deployment)
-cd ..
-zip -r repo.zip . -x "*.git*" "*/node_modules/*" "*.venv/*" "*/__pycache__/*" "cdk.out/*" "*.zip"
-aws s3 cp repo.zip s3://$(aws cloudformation describe-stacks --stack-name MA3TMainStack --query "Stacks[0].Outputs[?OutputKey=='S3BucketNameOutput'].OutputValue" --output text)/repo
-rm repo.zip
-
-# Trigger agent deployment
-aws codebuild start-build --project-name MA3TMainStack-agent-deployment
-```
+![MA3T User Interface](docs/ui.png)
 
 ## Architecture
 The MA3T architecture consists of:
