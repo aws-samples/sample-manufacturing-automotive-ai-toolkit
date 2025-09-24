@@ -76,6 +76,7 @@ if [ $? -eq 0 ]; then
     -x "*.zip" \
     -x "*/cdk.out/*" \
     -x "*.pyc" \
+    -x ".kiro/*" \
     -x ".DS_Store"
   
   # Upload the zip file to S3 with the key "repo"
