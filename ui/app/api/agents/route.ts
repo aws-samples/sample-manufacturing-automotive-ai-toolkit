@@ -12,17 +12,6 @@ const client = new BedrockAgentClient({
   region: REGION
 });
 
-// Map of Bedrock agent names to manifest IDs
-const agentNameMap: { [key: string]: string } = {
-  'SAM-agent-bookdealerappt': 'sam-book-appointment',
-  'SAM-agent-finddealeravailability': 'sam-dealer-availability',
-  'SAM-agent-find-nearestdealership': 'sam-nearest-dealership',
-  'SAM-agent-orchestrater': 'sam-orchestrator',
-  'SAM-agent-parts-availability': 'sam-parts-availability',
-  'SAM-agent-analyze_vehiclesymptom': 'sam-vehicle-symptom',
-  'SAM-agent-warrantyandrecalls': 'vista-warranty-recall'
-};
-
 function sanitizeCollaboratorName(name: string): string {
     let sanitized = name.toLowerCase().replace(/\s+/g, '_');
     sanitized = sanitized.replace(/[^a-z0-9_-]/g, '');
@@ -55,72 +44,37 @@ async function getLatestAgentVersionByUpdatedTimeStamp(agentId: string) {
     }
 }
 
-function loadBedrockAgentsFromConfig(): any[] {
-    try {
-        const files = fs.readdirSync(CONFIG_DIR);
-        const agents = [];
-
-        for (const file of files) {
-            try {
-                const filePath = path.join(CONFIG_DIR, file);
-                const content = fs.readFileSync(filePath, 'utf8');
-                const agent = JSON.parse(content);
-
-                // Only include Bedrock agents (not AgentCore)
-                if (agent.agentType?.toLowerCase() === 'bedrock') {
-                    console.log(`Found Bedrock agent config: ${agent.name}`);
-                    agents.push({
-                        id: agent.id,
-                        name: agent.name,
-                        collaboratorName: sanitizeCollaboratorName(agent.name),
-                        description: agent.description || "No description available.",
-                        agentType: agent.agentType,
-                        role: agent.role || 'individual',
-                        image: agent.image || "/images/default_agent_icon.png",
-                        tags: agent.tags || [],
-                        createdAt: agent.createdAt || new Date().toISOString(),
-                        updatedAt: agent.updatedAt || new Date().toISOString(),
-                        category: "MA3T",
-                        agentStatus: "READY"
-                    });
-                }
-            } catch (error) {
-                console.error(`Error processing file ${file}:`, error);
-            }
-        }
-
-        return agents;
-    } catch (error) {
-        console.error("Error loading Bedrock agents from config:", error);
-        return [];
-    }
+async function listAgents() {
+  try {
+    const command = new ListAgentsCommand({ maxResults: 100 });
+    const response = await client.send(command);
+    console.log("Fetched Bedrock Agents count:", response.agentSummaries?.length);
+    return response.agentSummaries || [];
+  } catch (error) {
+    console.error("Error fetching Bedrock agents:", error);
+    return [];
+  }
 }
 
 function findConfigFile(agentId: string, agentName: string): string | null {
-    if (agentName && agentNameMap[agentName]) {
-        // Sanitize the mapped name to prevent path traversal
-        const sanitizedMappedName = agentNameMap[agentName].replace(/[^a-zA-Z0-9_-]/g, '_');
-        const mappedConfigPath = path.join(CONFIG_DIR, `${sanitizedMappedName}.json`);
-        console.log(`Trying mapped config path for ${agentName}: ${mappedConfigPath}`);
-        if (fs.existsSync(mappedConfigPath)) {
-            console.log(`Found config file using agent name mapping: ${mappedConfigPath}`);
-            return mappedConfigPath;
+    const files = fs.readdirSync(CONFIG_DIR);
+
+    // Look through all config files to find one with matching originalAgentId
+    for (const file of files) {
+        try {
+            const filePath = path.join(CONFIG_DIR, file);
+            const content = fs.readFileSync(filePath, 'utf8');
+            const config = JSON.parse(content);
+            
+            // Check if this config was created from our Bedrock agent
+            if (config.originalAgentId === agentId) {
+                return filePath;
+            }
+        } catch (error) {
+            continue;
         }
     }
 
-    const files = fs.readdirSync(CONFIG_DIR);
-    console.log('Available config files:', files);
-
-    // Sanitize agentId to prevent path traversal
-    const sanitizedAgentId = agentId.replace(/[^a-zA-Z0-9_-]/g, '_');
-    const exactMatch = files.find(file => file === `${sanitizedAgentId}.json`);
-    if (exactMatch) {
-        const configPath = path.join(CONFIG_DIR, exactMatch);
-        console.log(`Found exact match config file: ${configPath}`);
-        return configPath;
-    }
-
-    console.log(`No config file found for agent ${sanitizedAgentId} (${agentName})`);
     return null;
 }
 
@@ -260,10 +214,26 @@ export async function GET() {
     try {
       console.log('Starting GET request handler');
       
-      // Get Bedrock agents from config files only (no direct API calls)
-      console.log('Loading Bedrock agents from config files...');
-      const bedrockAgents = loadBedrockAgentsFromConfig();
-      console.log('Loaded Bedrock agents from config:', bedrockAgents);
+      // Get Bedrock agents
+      const bedrockAgents = await listAgents();
+      console.log('Retrieved Bedrock agents list, fetching details...');
+      
+      const detailedBedrockAgents = await Promise.all(
+        bedrockAgents.map(async (agent) => {
+          if (!agent.agentId) {
+            return null;
+          }
+          
+          // Only process agents that have a config file (manifest entry)
+          const configPath = findConfigFile(agent.agentId, agent.agentName || '');
+          if (!configPath) {
+            console.log(`Skipping agent ${agent.agentName} - no config file found`);
+            return null;
+          }
+          
+          return getAgentDetails(agent.agentId)
+        })
+      );
 
       // Get AgentCore agents
       console.log('Loading AgentCore agents...');
@@ -272,7 +242,7 @@ export async function GET() {
 
       // Combine both types of agents
       const validAgents = [
-        ...bedrockAgents,
+        ...detailedBedrockAgents.filter(agent => agent !== null),
         ...agentCoreAgents
       ];
 
