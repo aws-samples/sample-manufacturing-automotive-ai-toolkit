@@ -26,16 +26,16 @@ except ImportError:
 
 class CDKStackConfig:
     """Configuration for a CDK nested stack"""
-    def __init__(self, name: str, path: str, stack_class: str, category: str = ""):
+    def __init__(self, name: str, path: str, stack_class: str, category: str = "", stack_path: str = ""):
         self.name = name
         self.path = path
         self.stack_class = stack_class
         self.category = category
-        self.app_py_path = os.path.join(path, "app.py")
-        self.requirements_path = os.path.join(path, "requirements.txt")
+        self.stack_path = stack_path  # Relative path to stack file from agent directory
+        self.full_stack_path = os.path.join(path, stack_path) if stack_path else ""
 
     def __repr__(self):
-        return f"CDKStackConfig(name='{self.name}', path='{self.path}', stack_class='{self.stack_class}')"
+        return f"CDKStackConfig(name='{self.name}', path='{self.path}', stack_class='{self.stack_class}', stack_path='{self.stack_path}')"
 
 
 class AgentCoreConfig:
@@ -95,7 +95,7 @@ class AgentRegistry:
         Scan agents_catalog for both CDK and AgentCore projects.
         """
         print(f"Starting agent discovery in {self.agents_catalog_path}")
-        
+
         if not os.path.exists(self.agents_catalog_path):
             print(f"Warning: Agents catalog directory {self.agents_catalog_path} does not exist")
             return [], []
@@ -106,23 +106,23 @@ class AgentRegistry:
         # Scan all categories in agents_catalog
         for category in os.listdir(self.agents_catalog_path):
             category_path = os.path.join(self.agents_catalog_path, category)
-            
+
             # Skip files and hidden directories
             if not os.path.isdir(category_path) or category.startswith('.'):
                 continue
 
             print(f"Scanning category: {category}")
-            
+
             # Scan all agents in this category
             for agent_name in os.listdir(category_path):
                 agent_path = os.path.join(category_path, agent_name)
-                
+
                 # Skip files and hidden directories
                 if not os.path.isdir(agent_path) or agent_name.startswith('.'):
                     continue
 
                 print(f"  Examining agent: {agent_name}")
-                
+
                 # Check for CDK stack
                 cdk_config = self._detect_cdk_stack(agent_name, agent_path, category)
                 if cdk_config:
@@ -137,22 +137,55 @@ class AgentRegistry:
 
         self.discovered_cdk_stacks = cdk_stacks
         self.discovered_agentcore_agents = agentcore_agents
-        
+
         print(f"Discovery complete: {len(cdk_stacks)} CDK stacks, {len(agentcore_agents)} AgentCore agents")
         return cdk_stacks, agentcore_agents
 
     def _detect_cdk_stack(self, agent_name: str, agent_path: str, category: str) -> Optional[CDKStackConfig]:
         """Detect if an agent has a CDK stack implementation"""
-        cdk_path = os.path.join(agent_path, "cdk")
-        app_py_path = os.path.join(cdk_path, "app.py")
-        
-        # Check if cdk directory exists and has app.py
-        if not os.path.exists(cdk_path) or not os.path.exists(app_py_path):
+        manifest_path = os.path.join(agent_path, "manifest.json")
+
+        # Check if manifest.json exists and has infrastructure.cdk = true
+        if not os.path.exists(manifest_path):
+            return None
+
+        try:
+            with open(manifest_path, 'r') as f:
+                manifest = json.load(f)
+
+            infrastructure = manifest.get('infrastructure', {})
+            if not infrastructure.get('cdk', False):
+                return None
+
+            stack_class = infrastructure.get('stack_class')
+            stack_path = infrastructure.get('stack_path')
+
+            if not stack_class or not stack_path:
+                print(f"    Warning: {agent_name} has cdk=true but missing stack_class or stack_path")
+                return None
+
+            # Verify the stack file exists
+            full_stack_path = os.path.join(agent_path, stack_path)
+            if not os.path.exists(full_stack_path):
+                print(f"    Warning: {agent_name} stack file not found: {full_stack_path}")
+                return None
+
+            return CDKStackConfig(
+                name=agent_name,
+                path=agent_path,
+                stack_class=stack_class,
+                category=category,
+                stack_path=stack_path
+            )
+
+        except (json.JSONDecodeError, KeyError) as e:
+            print(f"    Warning: Error reading manifest.json for {agent_name}: {e}")
+            return None
             return None
 
         # Try to determine the stack class name from app.py
         stack_class = self._extract_stack_class_name(app_py_path, agent_name)
-        
+
         if stack_class:
             return CDKStackConfig(
                 name=agent_name,
@@ -160,14 +193,14 @@ class AgentRegistry:
                 stack_class=stack_class,
                 category=category
             )
-        
+
         return None
 
     def _detect_agentcore_agent(self, agent_name: str, agent_path: str, category: str) -> Optional[AgentCoreConfig]:
         """Detect if an agent is an AgentCore agent"""
         agentcore_config_path = os.path.join(agent_path, ".bedrock_agentcore.yaml")
         manifest_path = os.path.join(agent_path, "manifest.json")
-        
+
         # Check if .bedrock_agentcore.yaml exists (primary indicator)
         if os.path.exists(agentcore_config_path):
             return AgentCoreConfig(
@@ -176,14 +209,14 @@ class AgentRegistry:
                 manifest_path=manifest_path,
                 category=category
             )
-        
+
         # Alternative: check for manifest.json with agentcore indicators
         if os.path.exists(manifest_path):
             try:
                 with open(manifest_path, 'r') as f:
                     manifest_data = json.load(f)
                     # Check if manifest indicates this is an agentcore agent
-                    if (manifest_data.get('type') == 'agentcore' or 
+                    if (manifest_data.get('type') == 'agentcore' or
                         'agentcore' in manifest_data.get('deployment_method', '').lower()):
                         return AgentCoreConfig(
                             name=agent_name,
@@ -193,7 +226,7 @@ class AgentRegistry:
                         )
             except Exception as e:
                 print(f"Warning: Could not parse manifest for {agent_name}: {e}")
-        
+
         return None
 
     def _extract_stack_class_name(self, app_py_path: str, agent_name: str) -> Optional[str]:
@@ -201,24 +234,24 @@ class AgentRegistry:
         try:
             with open(app_py_path, 'r') as f:
                 content = f.read()
-                
+
             import re
-            
+
             # 1. Look for class definitions that inherit from Stack (defined in this file)
             stack_class_pattern = r'class\s+(\w+)\s*\([^)]*Stack[^)]*\):'
             matches = re.findall(stack_class_pattern, content)
-            
+
             if matches:
                 # Return the first stack class found
                 return matches[0]
-            
+
             # 2. Look for imported stack classes (e.g., "from vista_service_stack import VistaServiceStack")
             import_pattern = r'from\s+\w+\s+import\s+(\w*Stack\w*)'
             import_matches = re.findall(import_pattern, content)
             if import_matches:
                 # Return the first imported Stack class
                 return import_matches[0]
-            
+
             # 3. Look for direct imports (e.g., "import vista_service_stack")
             # Then check if there's a class instantiation
             module_import_pattern = r'import\s+(\w+)'
@@ -229,7 +262,7 @@ class AgentRegistry:
                 usage_matches = re.findall(class_usage_pattern, content)
                 if usage_matches:
                     return usage_matches[0]
-            
+
             # 4. Check if there are any stack files in the same directory
             cdk_dir = os.path.dirname(app_py_path)
             for file in os.listdir(cdk_dir):
@@ -238,7 +271,7 @@ class AgentRegistry:
                     try:
                         with open(stack_file_path, 'r') as f:
                             stack_content = f.read()
-                        
+
                         # Look for stack class in this file
                         stack_matches = re.findall(stack_class_pattern, stack_content)
                         if stack_matches:
@@ -246,24 +279,24 @@ class AgentRegistry:
                             return stack_matches[0]
                     except Exception as e:
                         print(f"    Warning: Could not read {file}: {e}")
-            
+
             # 5. Fallback: try to guess based on agent name
             # Convert agent name to PascalCase and add "Stack"
             fallback_name = self._to_pascal_case(agent_name) + "Stack"
-            
+
             # Check if this class name appears in the file
             if fallback_name in content:
                 return fallback_name
-            
+
             # 6. Another fallback: look for any class that contains "Stack"
             general_class_pattern = r'class\s+(\w*Stack\w*)\s*\([^)]*\):'
             general_matches = re.findall(general_class_pattern, content)
             if general_matches:
                 return general_matches[0]
-                
+
         except Exception as e:
             print(f"Warning: Could not parse app.py for {agent_name}: {e}")
-        
+
         return None
 
     def _to_pascal_case(self, snake_str: str) -> str:
@@ -276,14 +309,14 @@ class AgentRegistry:
         Register and deploy a CDK nested stack.
         """
         print(f"Registering CDK stack: {config.name}")
-        
+
         try:
             # Import the stack class dynamically
             stack_class = self._import_stack_class(config)
             if not stack_class:
                 print(f"Error: Could not import stack class {config.stack_class} from {config.path}")
                 return None
-            
+
             # Create the nested stack with shared resources
             nested_stack = stack_class(
                 self.main_stack,
@@ -291,53 +324,47 @@ class AgentRegistry:
                 shared_resources=shared_resources,
                 description=f"Nested stack for {config.name} agent"
             )
-            
+
             print(f"Successfully registered CDK nested stack: {config.name}")
             return nested_stack
-            
+
         except Exception as e:
             print(f"Error registering CDK stack {config.name}: {str(e)}")
             return None
 
     def _import_stack_class(self, config: CDKStackConfig):
-        """Dynamically import a stack class from the agent's CDK directory"""
+        """Dynamically import a stack class from the agent's stack file"""
         try:
-            # Add the agent's CDK directory to Python path temporarily
+            # Add both the agent's directory and cdk subdirectory to Python path temporarily
             original_path = sys.path.copy()
-            sys.path.insert(0, config.path)
-            
+            cdk_dir = os.path.dirname(config.full_stack_path)
+            sys.path.insert(0, config.path)  # Agent root directory
+            sys.path.insert(0, cdk_dir)      # Agent's cdk directory
+
             try:
-                # Import the app module
-                spec = importlib.util.spec_from_file_location("agent_app", config.app_py_path)
+                # Import the stack module directly
+                module_name = os.path.splitext(os.path.basename(config.stack_path))[0]
+                spec = importlib.util.spec_from_file_location(module_name, config.full_stack_path)
                 if spec is None or spec.loader is None:
                     return None
-                
+
                 module = importlib.util.module_from_spec(spec)
                 spec.loader.exec_module(module)
-                
-                # Get the stack class
+
+                # Get the stack class from the module
                 stack_class = getattr(module, config.stack_class, None)
-                
                 if stack_class is None:
-                    print(f"Warning: Stack class {config.stack_class} not found in {config.app_py_path}")
-                    # Try to find any Stack class in the module
-                    for attr_name in dir(module):
-                        attr = getattr(module, attr_name)
-                        if (isinstance(attr, type) and 
-                            hasattr(attr, '__bases__') and 
-                            any('Stack' in str(base) for base in attr.__bases__)):
-                            print(f"Found alternative stack class: {attr_name}")
-                            stack_class = attr
-                            break
-                
+                    print(f"Error: Stack class {config.stack_class} not found in {config.full_stack_path}")
+                    return None
+
                 return stack_class
-                
+
             finally:
                 # Restore original Python path
                 sys.path = original_path
-                
+
         except Exception as e:
-            print(f"Error importing stack class from {config.path}: {str(e)}")
+            print(f"Error importing stack class {config.stack_class}: {str(e)}")
             return None
 
     def _sanitize_name(self, name: str) -> str:
@@ -349,7 +376,7 @@ class AgentRegistry:
         Create CodeBuild project for AgentCore agent.
         """
         print(f"Registering AgentCore agent: {config.name}")
-        
+
         try:
             # Use the CodeBuild construct to create a dynamic project for this agent
             project = codebuild_construct.create_dynamic_agentcore_project(
@@ -362,10 +389,10 @@ class AgentRegistry:
                     'has_requirements': os.path.exists(config.requirements_path)
                 }
             )
-            
+
             print(f"Successfully registered AgentCore agent: {config.name}")
             return project
-            
+
         except Exception as e:
             print(f"Error registering AgentCore agent {config.name}: {str(e)}")
             return None
@@ -408,7 +435,7 @@ class AgentRegistry:
                     'type': 'cdk',
                     'config': config
                 }
-        
+
         # Check AgentCore agents
         for config in self.discovered_agentcore_agents:
             if config.name == name:
@@ -416,5 +443,5 @@ class AgentRegistry:
                     'type': 'agentcore',
                     'config': config
                 }
-        
+
         return None
