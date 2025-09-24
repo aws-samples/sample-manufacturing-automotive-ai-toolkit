@@ -5,6 +5,7 @@ Storage Construct for S3 and DynamoDB resources
 from aws_cdk import (
     aws_s3 as s3,
     aws_dynamodb as dynamodb,
+    aws_iam as iam,
     RemovalPolicy,
     Tags,
     CfnParameter,

@@ -138,6 +138,7 @@ class IAMConstruct(Construct):
                     actions=[
                         "s3:GetObject",
                         "s3:GetObjectVersion",
+                        "s3:GetObjectAcl",
                         "s3:PutObject",
                         "s3:ListBucket"
                     ],
@@ -317,7 +318,9 @@ class IAMConstruct(Construct):
                 actions=[
                     "s3:GetObject",
                     "s3:GetObjectVersion",
+                    "s3:GetObjectAcl",
                     "s3:PutObject",
+                    "s3:PutObjectAcl",
                     "s3:GetBucketAcl",
                     "s3:GetBucketLocation",
                     "s3:ListBucket",
@@ -443,6 +446,8 @@ class IAMConstruct(Construct):
     def _add_iam_passrole_permissions(self) -> None:
         """Add IAM PassRole permissions to the agent role"""
         # Comprehensive IAM permissions are handled in _add_bedrock_agentcore_permissions
+        pass
+
         pass
 
     def _apply_tags(self) -> None:

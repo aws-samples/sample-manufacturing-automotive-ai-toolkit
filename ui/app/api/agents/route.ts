@@ -57,6 +57,10 @@ async function listAgents() {
 }
 
 function findConfigFile(agentId: string, agentName: string): string | null {
+    if (!fs.existsSync(CONFIG_DIR)) {
+        return null;
+    }
+    
     const files = fs.readdirSync(CONFIG_DIR);
 
     // Look through all config files to find one with matching originalAgentId
