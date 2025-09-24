@@ -1,4 +1,9 @@
 {
+  "infrastructure": {
+    "cdk": true,
+    "stack_class": "VistaServiceStack",
+    "stack_path": "cdk/vista_service_stack.py"
+  },
   "agents": [
     {
       "id": "vista-supervisor",

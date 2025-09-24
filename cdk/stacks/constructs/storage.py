@@ -14,22 +14,16 @@ from typing import Dict, Optional
 import os
 import sys
 
-# Add the template loader path
-sys.path.append(os.path.join(os.path.dirname(__file__), '..', '..', '..', 
-                             'agents_catalog', 'multi_agent_collaboration', 
-                             '00-vista-agents', 'cdk'))
-
-try:
-    from template_loader import load_lambda_templates
-except ImportError:
-    # Fallback if template loader is not available
-    def load_lambda_templates():
-        return {
-            'dynamodb_tables': {},
-            'lambda_functions': {},
-            'sample_data_functions': {},
-            'custom_resources': {}
-        }
+# Template loader is now handled by individual nested stacks
+# No hardcoded paths to specific agents
+def load_lambda_templates():
+    """Fallback template loader - individual stacks should handle their own templates"""
+    return {
+        'dynamodb_tables': {},
+        'lambda_functions': {},
+        'sample_data_functions': {},
+        'custom_resources': {}
+    }
 
 
 class StorageConstruct(Construct):

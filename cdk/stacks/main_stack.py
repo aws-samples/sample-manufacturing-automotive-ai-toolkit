@@ -168,14 +168,6 @@ class MainStack(cdk.Stack):
             description="Name of the S3 bucket to use for code storage"
         )
 
-        self.deploy_vista_agents_param = CfnParameter(
-            self, "DeployVistaAgents",
-            type="String",
-            default="false",
-            allowed_values=["true", "false"],
-            description="Whether to deploy Vista agents (requires CDK synthesis to be completed first)"
-        )
-
     def _create_conditions(self) -> None:
         """Create conditions matching the CloudFormation template"""
 
@@ -189,12 +181,6 @@ class MainStack(cdk.Stack):
             self, "CreateS3Bucket",
             expression=Fn.condition_equals(
                 self.s3_bucket_name_param.value_as_string, "")
-        )
-
-        self.deploy_vista_agents_condition = CfnCondition(
-            self, "DeployVistaAgentsCondition",
-            expression=Fn.condition_equals(
-                self.deploy_vista_agents_param.value_as_string, "true")
         )
 
     def _create_outputs(self) -> None:
@@ -361,7 +347,6 @@ def handler(event, context):
             'github_url': self.github_url_param.value_as_string,
             'git_branch': self.git_branch_param.value_as_string,
             's3_bucket_name': self.s3_bucket_name_param.value_as_string,
-            'deploy_vista_agents': self.deploy_vista_agents_param.value_as_string,
 
             # Stack information
             'stack_name': self.stack_name,
