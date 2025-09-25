@@ -11,10 +11,11 @@ __pycache__
 *-packaged.yaml
 tasks.md
 .venv/
-Dockerfile
+agents_catalog/**/Dockerfile
 .bedrock_agentcore.yaml
 ui/app/api/agents/config/*
 packaged_infra_cfn.yaml
 .env
 **/cdk.out/
 .dockerignore
+.vscode/
