@@ -21,6 +21,23 @@ This interactive wizard will:
 - Create boilerplate code and documentation
 - Optionally set up CDK infrastructure
 
+#### Tips:
+
+When to include infrastructure:
+- **Bedrock agents**: Always required - CDK creates the Bedrock agent resources
+- **AgentCore agents**: Only when you need custom resources (DynamoDB, Lambda, S3, etc.)
+
+Deployment behavior:
+The build system automatically:
+1. Scans manifest.json files in the catalog
+2. For agents with `infrastructure.cdk: true`:
+   - Deploys the CDK stack as a nested stack
+   - Passes agent metadata to the stack
+   - Handles dependencies between stacks
+3. For AgentCore agents without infrastructure:
+   - Deploys directly to the container runtime
+   - No additional AWS resources created
+
 ### Manual Setup
 
 If you prefer manual setup, follow the [Detailed Development Guide](#detailed-development-guide) below.
@@ -114,22 +131,6 @@ Add the `infrastructure` section when you need custom AWS resources:
     "stack_path": "cdk/stack.py"
   }
 }
-```
-
-**When to include infrastructure:**
-- **Bedrock agents**: Always required - CDK creates the Bedrock agent resources
-- **AgentCore agents**: Only when you need custom resources (DynamoDB, Lambda, S3, etc.)
-
-#### Deployment Behavior
-The build system automatically:
-1. Scans manifest.json files in the catalog
-2. For agents with `infrastructure.cdk: true`:
-   - Deploys the CDK stack as a nested stack
-   - Passes agent metadata to the stack
-   - Handles dependencies between stacks
-3. For AgentCore agents without infrastructure:
-   - Deploys directly to the container runtime
-   - No additional AWS resources created
 ```
 
 #### Required Fields
@@ -305,9 +306,7 @@ Brief description of what your agent does.
 ## Setup
 
 1. Install dependencies:
-   ```bash
    pip install -r requirements.txt
-   ```
 
 2. Configure environment variables (if needed)
 
@@ -315,6 +314,9 @@ Brief description of what your agent does.
 
 Describe how to use your agent.
 
+## Testing
+
+python -m pytest tests/
 ```
 
 ## Best Practices
