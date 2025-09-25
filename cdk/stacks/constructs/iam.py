@@ -29,6 +29,9 @@ class IAMConstruct(Construct):
         # Create separate Lambda execution role
         self._create_lambda_execution_role()
 
+        # Create App Runner roles
+        self._create_apprunner_roles()
+
         # Create CodeBuild service role
         self._create_codebuild_service_role()
 
@@ -284,6 +287,72 @@ class IAMConstruct(Construct):
             )
         )
 
+        # Add App Runner permissions
+        self.codebuild_service_role.add_to_policy(
+            iam.PolicyStatement(
+                sid="AppRunnerAccess",
+                effect=iam.Effect.ALLOW,
+                actions=[
+                    "apprunner:CreateService",
+                    "apprunner:UpdateService",
+                    "apprunner:DescribeService",
+                    "apprunner:ListServices",
+                    "apprunner:StartDeployment"
+                ],
+                resources=["*"]
+            )
+        )
+
+        # Add IAM PassRole for App Runner roles
+        self.codebuild_service_role.add_to_policy(
+            iam.PolicyStatement(
+                sid="AppRunnerPassRole",
+                effect=iam.Effect.ALLOW,
+                actions=["iam:PassRole"],
+                resources=[
+                    self.apprunner_access_role.role_arn,
+                    self.apprunner_instance_role.role_arn
+                ]
+            )
+        )
+
+    def _create_apprunner_roles(self) -> None:
+        """Create App Runner access and instance roles"""
+        
+        # App Runner ECR Access Role
+        self.apprunner_access_role = iam.Role(
+            self, "AppRunnerECRAccessRole",
+            assumed_by=iam.ServicePrincipal("build.apprunner.amazonaws.com"),
+            managed_policies=[
+                iam.ManagedPolicy.from_aws_managed_policy_name(
+                    "service-role/AWSAppRunnerServicePolicyForECRAccess"
+                )
+            ]
+        )
+
+        # App Runner Instance Role
+        self.apprunner_instance_role = iam.Role(
+            self, "AppRunnerInstanceRole", 
+            assumed_by=iam.ServicePrincipal("tasks.apprunner.amazonaws.com")
+        )
+
+        # Add Bedrock permissions to instance role
+        self.apprunner_instance_role.add_to_policy(
+            iam.PolicyStatement(
+                effect=iam.Effect.ALLOW,
+                actions=[
+                    "bedrock-agentcore:InvokeAgentRuntime",
+                    "bedrock:ListAgents",
+                    "bedrock:InvokeInlineAgent", 
+                    "bedrock:GetAgentAlias",
+                    "bedrock:GetAgent",
+                    "bedrock:ListAgentAliases",
+                    "bedrock:InvokeModel"
+                ],
+                resources=["*"]
+            )
+        )
+
     def _add_bedrock_permissions(self) -> None:
         """Add Bedrock-specific permissions to the agent role"""
         # Comprehensive Bedrock permissions are handled in _add_bedrock_agentcore_permissions
@@ -411,7 +480,8 @@ class IAMConstruct(Construct):
                     "lambda:ListFunctions",
                     "application-signals:*",
                     "cloudwatch:*",
-                    "xray:*"
+                    "xray:*",
+                    "apprunner:*"
                 ],
                 resources=["*"]
             )
@@ -457,6 +527,10 @@ class IAMConstruct(Construct):
             "Project", "ma3t-agents-toolkit")
         Tags.of(self.codebuild_service_role).add(
             "Project", "ma3t-agents-toolkit")
+        Tags.of(self.apprunner_access_role).add(
+            "Project", "ma3t-agents-toolkit")
+        Tags.of(self.apprunner_instance_role).add(
+            "Project", "ma3t-agents-toolkit")
 
     @property
     def agent_role_arn(self) -> str:
@@ -472,3 +546,13 @@ class IAMConstruct(Construct):
     def codebuild_role_arn(self) -> str:
         """Returns the CodeBuild service role ARN"""
         return self.codebuild_service_role.role_arn
+
+    @property
+    def apprunner_access_role_arn(self) -> str:
+        """Returns the App Runner ECR access role ARN"""
+        return self.apprunner_access_role.role_arn
+
+    @property
+    def apprunner_instance_role_arn(self) -> str:
+        """Returns the App Runner instance role ARN"""
+        return self.apprunner_instance_role.role_arn

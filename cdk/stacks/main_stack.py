@@ -82,6 +82,8 @@ class MainStack(cdk.Stack):
             self, "CodeBuild",
             agent_role=self.iam_construct.bedrock_agent_role,
             resource_bucket=self.storage_construct.resource_bucket,
+            apprunner_access_role=self.iam_construct.apprunner_access_role,
+            apprunner_instance_role=self.iam_construct.apprunner_instance_role,
             bedrock_model_id=self.bedrock_model_param.value_as_string
         )
 
@@ -211,6 +213,18 @@ class MainStack(cdk.Stack):
             self, "AgentCoreDeploymentProject",
             value=self.codebuild_construct.agentcore_deployment_project.project_name,
             description="CodeBuild project for deploying AgentCore agents"
+        )
+
+        CfnOutput(
+            self, "AppRunnerAccessRoleArn",
+            value=self.iam_construct.apprunner_access_role_arn,
+            description="App Runner ECR access role ARN"
+        )
+
+        CfnOutput(
+            self, "AppRunnerInstanceRoleArn", 
+            value=self.iam_construct.apprunner_instance_role_arn,
+            description="App Runner instance role ARN"
         )
 
         # Additional outputs for discovered agents
