@@ -156,7 +156,7 @@ def deploy_agentcore_agent(agent_path, agent_id, agent_name, entrypoint, region,
             
             # Launch the agent
             logger.info(f"Launching agent {agent_id}")
-            result = launch_bedrock_agentcore(config_path, local=False)
+            result = launch_bedrock_agentcore(config_path, local=False, auto_update_on_conflict=True)
             
             # Extract and return deployment information
             deployment_info = {

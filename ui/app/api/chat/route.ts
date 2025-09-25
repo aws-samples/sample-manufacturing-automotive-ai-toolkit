@@ -12,17 +12,17 @@ import {
 import dotenv from "dotenv";
 dotenv.config();
 
-const REGION: string = process.env.AWS_REGION
+const REGION: string = process.env.AWS_REGION || 'us-west-2';
 
 
 const runtimeClient = new BedrockAgentRuntimeClient({ region: REGION });
 const controlClient = new BedrockAgentClient({ region: REGION });
 
-export async function getAgentAliasArnByName(agentId: any) {
+async function getAgentAliasArnByName(agentId: any) {
   try {
     const listCommand = new ListAgentAliasesCommand({ agentId });
     const listResponse = await controlClient.send(listCommand);
-    const latestAlias = listResponse.agentAliasSummaries?.sort((a, b) => new Date(b.updatedAt) - new Date(a.updatedAt))[0];
+    const latestAlias = listResponse.agentAliasSummaries?.sort((a, b) => new Date(b.updatedAt || 0).getTime() - new Date(a.updatedAt || 0).getTime())[0];
     if (!latestAlias) {
       console.warn(`No aliases found for agentId: ${agentId}`);
       return null;
@@ -40,7 +40,7 @@ export async function getAgentAliasArnByName(agentId: any) {
   }
 }
 
-export async function invokeInlineAgentHelper(requestParams, traceLevel = "core") {
+async function invokeInlineAgentHelper(requestParams: any, traceLevel = "core") {
   try {
     const input = {
       ...requestParams
@@ -56,7 +56,7 @@ export async function invokeInlineAgentHelper(requestParams, traceLevel = "core"
   }
 }
 
-export async function POST(req) {
+export async function POST(req: Request) {
   try {
     const { message, agents, agent_instruction } = await req.json();
 
@@ -67,7 +67,7 @@ export async function POST(req) {
     const sessionId = `session-${Date.now()}`;
 
     const collaboratorConfigurations = await Promise.all(
-      agents.map(async (agent) => {
+      agents.map(async (agent: any) => {
         const agentAliasArn = await getAgentAliasArnByName(agent.id || agent.name);
         return {
           collaboratorName: agent.name,
@@ -91,11 +91,11 @@ export async function POST(req) {
 
     const result = await invokeInlineAgentHelper(requestParams);
 
-    const agentNames = agents.map((a) => a.name).join(', ');
+    const agentNames = agents.map((a: any) => a.name).join(', ');
     let reply = "";
     let trace = "";
 
-    for await (const event of result.completion) {
+    for await (const event of result.completion || []) {
       if (event.chunk?.bytes) {
         reply += Buffer.from(event.chunk.bytes).toString("utf-8");
       }

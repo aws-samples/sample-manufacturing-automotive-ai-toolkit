@@ -5,23 +5,12 @@ import path from 'path';
 import dotenv from "dotenv";
 dotenv.config();
 
-const REGION: string = process.env.AWS_REGION
+const REGION: string = process.env.AWS_REGION || 'us-west-2';
 const CONFIG_DIR = path.join(process.cwd(), 'app', 'api', 'agents', 'config');
 
 const client = new BedrockAgentClient({ 
   region: REGION
 });
-
-// Map of Bedrock agent names to manifest IDs
-const agentNameMap: { [key: string]: string } = {
-  'SAM-agent-bookdealerappt': 'sam-book-appointment',
-  'SAM-agent-finddealeravailability': 'sam-dealer-availability',
-  'SAM-agent-find-nearestdealership': 'sam-nearest-dealership',
-  'SAM-agent-orchestrater': 'sam-orchestrator',
-  'SAM-agent-parts-availability': 'sam-parts-availability',
-  'SAM-agent-analyze_vehiclesymptom': 'sam-vehicle-symptom',
-  'SAM-agent-warrantyandrecalls': 'vista-warranty-recall'
-};
 
 function sanitizeCollaboratorName(name: string): string {
     let sanitized = name.toLowerCase().replace(/\s+/g, '_');
@@ -68,30 +57,28 @@ async function listAgents() {
 }
 
 function findConfigFile(agentId: string, agentName: string): string | null {
-    if (agentName && agentNameMap[agentName]) {
-        // Sanitize the mapped name to prevent path traversal
-        const sanitizedMappedName = agentNameMap[agentName].replace(/[^a-zA-Z0-9_-]/g, '_');
-        const mappedConfigPath = path.join(CONFIG_DIR, `${sanitizedMappedName}.json`);
-        console.log(`Trying mapped config path for ${agentName}: ${mappedConfigPath}`);
-        if (fs.existsSync(mappedConfigPath)) {
-            console.log(`Found config file using agent name mapping: ${mappedConfigPath}`);
-            return mappedConfigPath;
+    if (!fs.existsSync(CONFIG_DIR)) {
+        return null;
+    }
+    
+    const files = fs.readdirSync(CONFIG_DIR);
+
+    // Look through all config files to find one with matching originalAgentId
+    for (const file of files) {
+        try {
+            const filePath = path.join(CONFIG_DIR, file);
+            const content = fs.readFileSync(filePath, 'utf8');
+            const config = JSON.parse(content);
+            
+            // Check if this config was created from our Bedrock agent
+            if (config.originalAgentId === agentId) {
+                return filePath;
+            }
+        } catch (error) {
+            continue;
         }
     }
 
-    const files = fs.readdirSync(CONFIG_DIR);
-    console.log('Available config files:', files);
-
-    // Sanitize agentId to prevent path traversal
-    const sanitizedAgentId = agentId.replace(/[^a-zA-Z0-9_-]/g, '_');
-    const exactMatch = files.find(file => file === `${sanitizedAgentId}.json`);
-    if (exactMatch) {
-        const configPath = path.join(CONFIG_DIR, exactMatch);
-        console.log(`Found exact match config file: ${configPath}`);
-        return configPath;
-    }
-
-    console.log(`No config file found for agent ${sanitizedAgentId} (${agentName})`);
     return null;
 }
 
@@ -134,7 +121,7 @@ function loadAgentCoreAgents(): any[] {
                         tags: agent.tags || [],
                         createdAt: agent.createdAt || new Date().toISOString(),
                         updatedAt: agent.updatedAt || new Date().toISOString(),
-                        category: "HCLS",
+                        category: "MA3T",
                         agentStatus: "READY",
                         bedrock_agentcore: agent.bedrock_agentcore
                     });
@@ -165,8 +152,8 @@ async function getAgentDetails(agentId: string) {
         const config = getAgentConfig(agentId, response.agent.agentName || '');
         console.log(`Config retrieved for ${agentId} (${response.agent.agentName}):`, config);
         
-        const collaborators = ['SUPERVISOR', 'SUPERVISOR_ROUTER'].includes(response.agent.agentCollaboration)
-            ? await getAgentCollaboratorDetails(response.agent.agentId)
+        const collaborators = ['SUPERVISOR', 'SUPERVISOR_ROUTER'].includes(response.agent.agentCollaboration || '')
+            ? await getAgentCollaboratorDetails(response.agent.agentId || '')
             : null;
 
         const displayName = config?.name || response.agent.agentName;
@@ -185,7 +172,7 @@ async function getAgentDetails(agentId: string) {
             updatedAt: config?.updatedAt || (response.agent.updatedAt ? response.agent.updatedAt.toISOString() : "N/A"),
             tags: tags,
             image: config?.image || "/images/default_agent_icon.png",
-            category: "HCLS",
+            category: "MA3T",
             agentCollaboration: response.agent.agentCollaboration || "N/A",
             agentResourceRoleArn: response.agent.agentResourceRoleArn || "N/A",
             agentStatus: response.agent.agentStatus,
@@ -240,6 +227,14 @@ export async function GET() {
           if (!agent.agentId) {
             return null;
           }
+          
+          // Only process agents that have a config file (manifest entry)
+          const configPath = findConfigFile(agent.agentId, agent.agentName || '');
+          if (!configPath) {
+            console.log(`Skipping agent ${agent.agentName} - no config file found`);
+            return null;
+          }
+          
           return getAgentDetails(agent.agentId)
         })
       );

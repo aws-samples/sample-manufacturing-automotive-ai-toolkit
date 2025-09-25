@@ -1,7 +1,6 @@
 "use client";
 
 import { useState, useEffect, useRef } from 'react';
-import Image from 'next/image';
 import Link from 'next/link';
 
 // SVG Icons as components
@@ -59,10 +58,10 @@ export default function ChatPage() {
   const chatRequestIdRef = useRef(`req-${Date.now()}-${Math.random().toString(36).substring(2, 8)}`);
   
   const isSupervisorChat = selectedAgents.some(agent => 
-    agent.agentCollaboration === 'SUPERVISOR' || agent.agentCollaboration === 'SUPERVISOR_ROUTER'
+    agent.agentCollaboration === 'SUPERVISOR' || (agent as any).agentCollaboration === 'SUPERVISOR_ROUTER'
   );
 
-  const formatTime = (timestamp) => new Date(timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+  const formatTime = (timestamp: any) => new Date(timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
 
   const sendMessage = async () => {
     if (!input.trim()) return;
@@ -97,7 +96,8 @@ export default function ChatPage() {
       })
     });
 
-    const reader = response.body.getReader();
+    const reader = response.body?.getReader();
+    if (!reader) return;
     const decoder = new TextDecoder('utf-8');
     let finalText = '';
     let stepCount = 0;
@@ -359,14 +359,11 @@ export default function ChatPage() {
                     {msg.images && msg.images.length > 0 && (
                       <div className="mt-3 space-y-2">
                         {msg.images.map((url, idx) => (
-                          <Image
+                          <img
                             key={idx}
                             src={url}
                             alt={`Generated Visual ${idx + 1}`}
-                            width={800}
-                            height={600}
-                            className="rounded shadow border"
-                            unoptimized
+                            className="rounded shadow border max-w-full h-auto"
                           />
                         ))}
                       </div>
