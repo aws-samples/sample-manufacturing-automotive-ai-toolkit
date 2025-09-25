@@ -99,7 +99,7 @@ if [ $? -eq 0 ]; then
   # Start the CodeBuild project to deploy the agents
   if [ ! -z "$CODEBUILD_PROJECT" ]; then
     echo "Starting CodeBuild project to deploy AgentCore agents: $CODEBUILD_PROJECT"
-    BUILD_ID=$(aws codebuild start-build --project-name "$CODEBUILD_PROJECT" --region "$REGION" --query 'build.id' --output text)
+    BUILD_ID=$(aws codebuild start-build --project-name "$CODEBUILD_PROJECT" --region "$REGION" --query "build.id" --output text)
     
     if [ ! -z "$BUILD_ID" ]; then
       echo "CodeBuild started with ID: $BUILD_ID"
