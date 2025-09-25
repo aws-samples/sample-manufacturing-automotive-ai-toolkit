@@ -31,7 +31,7 @@ export class BedrockChatHandler implements ChatHandler {
             const listCommand = new ListAgentAliasesCommand({ agentId });
             const listResponse = await this.controlClient.send(listCommand);
             const latestAlias = listResponse.agentAliasSummaries?.sort(
-                (a, b) => new Date(b.updatedAt) - new Date(a.updatedAt)
+                (a, b) => new Date(b.updatedAt || '').getTime() - new Date(a.updatedAt || '').getTime()
             )[0];
             if (!latestAlias) return null;
 
@@ -105,7 +105,7 @@ export class BedrockChatHandler implements ChatHandler {
             };
 
             log('Invoking agent collaboration', requestParams);
-            const command = new InvokeInlineAgentCommand(requestParams);
+            const command = new InvokeInlineAgentCommand(requestParams as any);
             const result = await this.runtimeClient.send(command);
             log('Agent invocation started');
 
@@ -121,8 +121,8 @@ export class BedrockChatHandler implements ChatHandler {
                     let outputTokens = 0;
 
                     try {
-                        for await (const event of result.completion) {
-                            const agentId = event.trace?.agentId || 'unknown-agent';
+                        for await (const event of result.completion || []) {
+                            const agentId = (event.trace as any)?.agentId || 'unknown-agent';
 
                             if (event.chunk?.bytes) {
                                 const text = new TextDecoder('utf-8').decode(event.chunk.bytes);
@@ -166,7 +166,7 @@ export class BedrockChatHandler implements ChatHandler {
                                         type: 'agent-collaborator',
                                         step,
                                         agent: agentColab.agentCollaboratorName,
-                                        text: agentColab.input.text
+                                        text: agentColab.input?.text || ''
                                     })}\n\n`));
                                     step++;
                                 }
@@ -174,12 +174,12 @@ export class BedrockChatHandler implements ChatHandler {
                                 // Handle tool observation
                                 const obsTool = trace.observation?.actionGroupInvocationOutput?.text;
                                 if (obsTool) {
-                                    const [extractedUrls, cleanedText] = this.extractAndRemoveImageUrls(obsTool);
+                                    const [extractedUrls, cleanedText] = (this as any).extractAndRemoveImageUrls(obsTool);
                                     if (extractedUrls.length > 0) {
                                         imageUrls.push(...extractedUrls);
                                     }
 
-                                    const obs_chunks = this.chunkTextSafely(cleanedText, 4000);
+                                    const obs_chunks = (this as any).chunkTextSafely(cleanedText, 4000);
                                     for (const obs_chunk of obs_chunks) {
                                         controller.enqueue(encoder.encode(`data: ${JSON.stringify({
                                             type: 'observation',
@@ -232,7 +232,7 @@ export class BedrockChatHandler implements ChatHandler {
                                 }
 
                                 // Handle attachments
-                                const attachment = finalResp?.attachments?.[0];
+                                const attachment = (finalResp as any)?.attachments?.[0];
                                 if (attachment?.url) {
                                     imageUrls.push(attachment.url);
                                 }
