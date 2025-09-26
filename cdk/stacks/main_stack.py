@@ -81,13 +81,16 @@ class MainStack(cdk.Stack):
         )
 
         # 4. Create CodeBuild construct (deployment projects)
+        import os
         self.codebuild_construct = CodeBuildConstruct(
             self, "CodeBuild",
             agent_role=self.iam_construct.bedrock_agent_role,
             resource_bucket=self.storage_construct.resource_bucket,
             apprunner_access_role=self.iam_construct.apprunner_access_role,
             apprunner_instance_role=self.iam_construct.apprunner_instance_role,
-            bedrock_model_id=self.bedrock_model_param.value_as_string
+            bedrock_model_id=self.bedrock_model_param.value_as_string,
+            auth_user=os.environ.get('AUTH_USER', 'admin'),
+            auth_password=os.environ.get('AUTH_PASSWORD', 'changeme')
         )
 
         # Store references for easy access
@@ -155,7 +158,7 @@ class MainStack(cdk.Stack):
         self.github_url_param = CfnParameter(
             self, "GitHubUrl",
             type="String",
-            default="https://github.com/aws-samples/manufacturing-automotive-ai-toolkit.git",
+            default="https://github.com/aws-samples/sample-manufacturing-automotive-ai-toolkit.git",
             description="URL of the GitHub repository to download (only used if UseLocalCode is false)"
         )
 

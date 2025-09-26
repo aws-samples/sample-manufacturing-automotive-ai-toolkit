@@ -25,6 +25,8 @@ class CodeBuildConstruct(Construct):
                  apprunner_access_role: iam.Role,
                  apprunner_instance_role: iam.Role,
                  bedrock_model_id: str = "anthropic.claude-3-haiku-20240307-v1:0",
+                 auth_user: str = "admin",
+                 auth_password: str = "changeme",
                  **kwargs) -> None:
         super().__init__(scope, construct_id)
 
@@ -33,6 +35,8 @@ class CodeBuildConstruct(Construct):
         self.apprunner_access_role = apprunner_access_role
         self.apprunner_instance_role = apprunner_instance_role
         self.bedrock_model_id = bedrock_model_id
+        self.auth_user = auth_user
+        self.auth_password = auth_password
 
         # Create AgentCore deployment project
         self._create_agentcore_deployment_project()
@@ -62,6 +66,12 @@ class CodeBuildConstruct(Construct):
             ),
             'APPRUNNER_INSTANCE_ROLE_ARN': codebuild.BuildEnvironmentVariable(
                 value=self.apprunner_instance_role.role_arn
+            ),
+            'AUTH_USER': codebuild.BuildEnvironmentVariable(
+                value=self.auth_user
+            ),
+            'AUTH_PASSWORD': codebuild.BuildEnvironmentVariable(
+                value=self.auth_password
             )
         }
 
@@ -160,7 +170,7 @@ class CodeBuildConstruct(Construct):
                         "",
                         "SERVICE_ARN=$(aws apprunner list-services --query \"ServiceSummaryList[?ServiceName=='$SERVICE_NAME'].ServiceArn\" --output text --region $AWS_REGION)",
                         "echo \"Found service ARN: $SERVICE_ARN\"",
-                        "if [ -n \"$SERVICE_ARN\" ] && [ \"$SERVICE_ARN\" != \"None\" ]; then echo 'Updating existing App Runner service...'; aws apprunner update-service --service-arn $SERVICE_ARN --source-configuration '{\"ImageRepository\":{\"ImageIdentifier\":\"'$ECR_URI':latest\",\"ImageConfiguration\":{\"Port\":\"3000\"},\"ImageRepositoryType\":\"ECR\"},\"AutoDeploymentsEnabled\":false,\"AuthenticationConfiguration\":{\"AccessRoleArn\":\"'$ACCESS_ROLE_ARN'\"}}' --instance-configuration '{\"InstanceRoleArn\":\"'$INSTANCE_ROLE_ARN'\"}' --region $AWS_REGION; else echo 'Creating new App Runner service...'; aws apprunner create-service --service-name $SERVICE_NAME --source-configuration '{\"ImageRepository\":{\"ImageIdentifier\":\"'$ECR_URI':latest\",\"ImageConfiguration\":{\"Port\":\"3000\"},\"ImageRepositoryType\":\"ECR\"},\"AutoDeploymentsEnabled\":false,\"AuthenticationConfiguration\":{\"AccessRoleArn\":\"'$ACCESS_ROLE_ARN'\"}}' --instance-configuration '{\"InstanceRoleArn\":\"'$INSTANCE_ROLE_ARN'\"}' --region $AWS_REGION; fi",
+                        "if [ -n \"$SERVICE_ARN\" ] && [ \"$SERVICE_ARN\" != \"None\" ]; then echo 'Updating existing App Runner service...'; aws apprunner update-service --service-arn $SERVICE_ARN --source-configuration '{\"ImageRepository\":{\"ImageIdentifier\":\"'$ECR_URI':latest\",\"ImageConfiguration\":{\"Port\":\"3000\",\"RuntimeEnvironmentVariables\":{\"AUTH_USER\":\"'$AUTH_USER'\",\"AUTH_PASSWORD\":\"'$AUTH_PASSWORD'\",\"AWS_REGION\":\"'$AWS_REGION'\"}},\"ImageRepositoryType\":\"ECR\"},\"AutoDeploymentsEnabled\":false,\"AuthenticationConfiguration\":{\"AccessRoleArn\":\"'$ACCESS_ROLE_ARN'\"}}' --instance-configuration '{\"InstanceRoleArn\":\"'$INSTANCE_ROLE_ARN'\"}' --region $AWS_REGION; else echo 'Creating new App Runner service...'; aws apprunner create-service --service-name $SERVICE_NAME --source-configuration '{\"ImageRepository\":{\"ImageIdentifier\":\"'$ECR_URI':latest\",\"ImageConfiguration\":{\"Port\":\"3000\",\"RuntimeEnvironmentVariables\":{\"AUTH_USER\":\"'$AUTH_USER'\",\"AUTH_PASSWORD\":\"'$AUTH_PASSWORD'\",\"AWS_REGION\":\"'$AWS_REGION'\"}},\"ImageRepositoryType\":\"ECR\"},\"AutoDeploymentsEnabled\":false,\"AuthenticationConfiguration\":{\"AccessRoleArn\":\"'$ACCESS_ROLE_ARN'\"}}' --instance-configuration '{\"InstanceRoleArn\":\"'$INSTANCE_ROLE_ARN'\"}' --region $AWS_REGION; fi",
                         "",
                         
                     ]

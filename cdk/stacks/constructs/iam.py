@@ -226,6 +226,22 @@ class IAMConstruct(Construct):
             )
         )
 
+        # Add S3 bucket lifecycle permissions for AgentCore
+        self.bedrock_agent_role.add_to_policy(
+            iam.PolicyStatement(
+                effect=iam.Effect.ALLOW,
+                actions=[
+                    "s3:PutLifecycleConfiguration",
+                    "s3:GetLifecycleConfiguration",
+                    "s3:CreateBucket",
+                    "s3:HeadBucket"
+                ],
+                resources=[
+                    f"arn:aws:s3:::bedrock-agentcore-codebuild-sources-{Stack.of(self).account}-{Stack.of(self).region}"
+                ]
+            )
+        )
+
         # Add Bedrock AgentCore permissions to CodeBuild role (same as main agent role)
         self.codebuild_service_role.add_to_policy(
             iam.PolicyStatement(
@@ -379,9 +395,36 @@ class IAMConstruct(Construct):
                     "bedrock:GetAgentAlias",
                     "bedrock:GetAgent",
                     "bedrock:ListAgentAliases",
-                    "bedrock:InvokeModel"
+                    "bedrock:InvokeModel",
+                    "bedrock:InvokeAgent",
+                    "bedrock:ListAgentVersions"
                 ],
                 resources=["*"]
+            )
+        )
+
+        # Add Lambda invoke permissions for agent action groups
+        self.apprunner_instance_role.add_to_policy(
+            iam.PolicyStatement(
+                effect=iam.Effect.ALLOW,
+                actions=["lambda:InvokeFunction"],
+                resources=[f"arn:aws:lambda:{Stack.of(self).region}:{Stack.of(self).account}:function:*"]
+            )
+        )
+
+        # Add DynamoDB permissions for agent data access
+        self.apprunner_instance_role.add_to_policy(
+            iam.PolicyStatement(
+                effect=iam.Effect.ALLOW,
+                actions=[
+                    "dynamodb:GetItem",
+                    "dynamodb:PutItem",
+                    "dynamodb:UpdateItem",
+                    "dynamodb:DeleteItem",
+                    "dynamodb:Query",
+                    "dynamodb:Scan"
+                ],
+                resources=[f"arn:aws:dynamodb:{Stack.of(self).region}:{Stack.of(self).account}:table/*"]
             )
         )
 

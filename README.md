@@ -2,23 +2,76 @@
 
 A collection of sample AI agents for Automotive and Manufacturing use cases.
 
-## Deployment (CDK)
+## Prerequisites
 
-**Prerequisites:**
 - AWS CLI configured with appropriate permissions
-- Node.js and npm installed 
+- Node.js >=22 and npm installed
+- Python >=3.12
 - CDK CLI: `npm install -g aws-cdk`
 
-**Automated Deploy:**
-```bash
-./deploy_cdk.sh
-```
-*Note: The CDK stack automatically triggers agent deployments via CodeBuild after successful deployment.*
+## Bootstrap (One-time Setup)
 
+### 1. CDK Bootstrap
+```bash
+# From project root directory (not inside cdk/)
+cdk bootstrap
+```
+*Note: Uses your default AWS profile and region. CDK will automatically detect your account ID.*
+
+### 2. Bedrock Model Access
+Enable access to required models in your AWS account:
+- Go to AWS Bedrock Console → Model access
+- Request access to:
+  - `anthropic.claude-3-haiku-20240307-v1:0` (Used by VISTA agents, default for AgentCore)
+  - `us.anthropic.claude-3-5-sonnet-20241022-v2:0` (Used by the frontend UI)
+
+### 3. Setup Environment
+```bash
+# Clone repository
+git clone git@github.com:aws-samples/sample-manufacturing-automotive-ai-toolkit.git
+cd sample-manufacturing-automotive-ai-toolkit
+
+# Create Python virtual environment
+python3 -m venv .venv
+source .venv/bin/activate
+pip install -r cdk/requirements.txt
+```
+
+## Deployment
+
+### Supported Regions
+Due to AgentCore regional restrictions, only these regions are supported:
+- `us-east-1` (US East - N. Virginia)
+- `us-west-2` (US West - Oregon) - **default**
+- `eu-central-1` (Europe - Frankfurt)
+- `ap-southeast-2` (Asia Pacific - Sydney)
+
+### Deploy Command
+```bash
+# Interactive deployment (prompts for credentials)
+./deploy_cdk.sh
+
+# Command line with parameters
+./deploy_cdk.sh --auth-user admin --auth-password yourpassword
+
+# With custom region and account
+./deploy_cdk.sh --region us-east-1 --account 123456789012 --auth-user admin --auth-password secretpass
+```
+
+### Deployment Options
+- `--auth-user`: Username for UI basic authentication
+- `--auth-password`: Password for UI basic authentication  
+- `--region`: AWS region (must be one of the supported regions)
+- `--account`: AWS account ID to deploy to (optional, uses current AWS CLI account if not specified)
+- `--stack-name`: Custom CDK stack name (default: MA3TMainStack)
+- `--skip-nag`: Skip CDK security checks
+
+*Note: The CDK stack automatically triggers agent deployments via CodeBuild after successful deployment. The deployment creates an internet-accessible UI secured with basic authentication using your provided credentials.*
 
 ![MA3T User Interface](docs/ui.png)
 
 ## Architecture
+
 The MA3T architecture consists of:
 
 1. **Agent Catalog**: A collection of agents implemented using various frameworks
@@ -33,6 +86,7 @@ The MA3T architecture consists of:
 3. **UI Framework**: A Next.js+React-based user interface for interacting with agents
    - Single pane of glass for all agents
    - Automatic agent discovery and registration
+   - Basic authentication for secure access
 
 4. **Deployment Framework**: CDK for deploying agents to AWS
 
