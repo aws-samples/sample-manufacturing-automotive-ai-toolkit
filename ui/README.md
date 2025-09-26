@@ -1,4 +1,4 @@
-# 🚀 Healthcare and Life Sciences Agent Catalog UI
+# 🚀 Manufacturing & Automotive AI Toolkit (MA3T) Agent Catalog UI
 
 This is a [Next.js](https://nextjs.org/) project built with **TypeScript** and **React**, bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
 

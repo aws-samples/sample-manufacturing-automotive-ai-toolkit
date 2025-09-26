@@ -52,7 +52,7 @@ We encourage you to use coding agents like Amazon Q Developer or Claude Code to 
 
 ### Installation
 
-Configure the MCP servesr in your MCP client configuration (e.g., for Amazon Q Developer CLI, edit .amazonq/mcp.json):
+Configure the MCP servers in your MCP client configuration (e.g., for Amazon Q Developer CLI, edit .amazonq/mcp.json):
 
 ```json
 {
@@ -102,7 +102,7 @@ Replace `YOUR_AWS_PROFILE_NAME`, `YOUR_AWS_REGION`, and `YOUR_GITHUB_TOKEN` with
 
 ### Prompt
 
-For best results, ensure that your prompt is clear and consise. As an example, here is the prompt used to create the UniProt-protein-research agent:
+For best results, ensure that your prompt is clear and concise. As an example, here is the prompt used to create the UniProt-protein-research agent:
 
 > I would like to create a new agent in this repository for retrieving information about proteins from UniProt. Scientists need information about specific proteins to answer questions like, "Which protein might be the cause of a disease"? This information could include human-readable descriptions of protein function, metadata about where a protein is commonly located in a cell, or amino acid sequence information. UniProt provides several APIs to retrieve information about proteins programmatically. An overview of these APIs can be found at https://www.uniprot.org/api-documentation/uniprotkb. You can also find detailed Swagger documentation for these APIs at https://www.uniprot.org/api-documentation/uniprotkb.  Please help me create a new agent that can take in the name or description of a protein, search for it using an ActionGroup linked to the UniProt search API, then retrieve details for one or more specific proteins of interest by their UniProtKB accession ID.
 
