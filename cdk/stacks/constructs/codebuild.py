@@ -71,7 +71,7 @@ class CodeBuildConstruct(Construct):
             project_name=f"{Stack.of(self).stack_name}-agent-deployment",
             role=self.agent_role,
             environment=codebuild.BuildEnvironment(
-                build_image=codebuild.LinuxBuildImage.AMAZON_LINUX_2_ARM_3,
+                build_image=codebuild.LinuxBuildImage.AMAZON_LINUX_2_5,  # x86_64 image
                 compute_type=codebuild.ComputeType.SMALL,
                 environment_variables=environment_variables,
                 privileged=True
@@ -136,7 +136,7 @@ class CodeBuildConstruct(Construct):
                         "echo 'Starting UI build...'",
                         "cd ui",
                         "echo 'Installing UI dependencies...'",
-                        "npm ci",
+                        "npm install",
                         "echo 'Running UI build...'",
                         "npm run build",
                         "echo 'UI build completed'",
