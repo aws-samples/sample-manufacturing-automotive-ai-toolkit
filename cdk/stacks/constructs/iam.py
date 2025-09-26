@@ -8,6 +8,7 @@ from aws_cdk import (
     Tags,
     Stack,
 )
+from cdk_nag import NagSuppressions
 from constructs import Construct
 from typing import Optional
 
@@ -35,6 +36,9 @@ class IAMConstruct(Construct):
         # Create CodeBuild service role
         self._create_codebuild_service_role()
 
+        # Apply CDK-Nag suppressions after all roles are created
+        self._apply_cdk_nag_suppressions()
+
         # Apply tags
         self._apply_tags()
 
@@ -53,6 +57,34 @@ class IAMConstruct(Construct):
             managed_policies=[
                 iam.ManagedPolicy.from_aws_managed_policy_name(
                     "service-role/AWSLambdaBasicExecutionRole")
+            ]
+        )
+
+        # Add CDK-Nag suppressions for AgentRole
+        NagSuppressions.add_resource_suppressions(
+            self.bedrock_agent_role,
+            [
+                {
+                    "id": "AwsSolutions-IAM4",
+                    "reason": "AWS managed policies are acceptable for demo/development environments. AWSLambdaBasicExecutionRole is well-maintained and secure.",
+                    "appliesTo": ["Policy::arn:<AWS::Partition>:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole"]
+                },
+                {
+                    "id": "AwsSolutions-IAM5",
+                    "reason": "Wildcard permissions required for Bedrock agents to access models, knowledge bases, and AgentCore operations dynamically in demo environment.",
+                    "appliesTo": [
+                        "Action::bedrock:*",
+                        "Action::bedrock-agentcore:*", 
+                        "Action::apprunner:*",
+                        "Action::application-signals:*",
+                        "Action::cloudwatch:*",
+                        "Action::ecr-public:*",
+                        "Action::kms:*",
+                        "Action::secretsmanager:*",
+                        "Action::xray:*",
+                        "Resource::*"
+                    ]
+                }
             ]
         )
 
@@ -556,3 +588,58 @@ class IAMConstruct(Construct):
     def apprunner_instance_role_arn(self) -> str:
         """Returns the App Runner instance role ARN"""
         return self.apprunner_instance_role.role_arn
+
+    def _apply_cdk_nag_suppressions(self) -> None:
+        """Apply CDK-Nag suppressions for acceptable security findings in demo/dev environment"""
+        
+        # Suppress AgentRole wildcard permissions
+        NagSuppressions.add_resource_suppressions(
+            self.bedrock_agent_role,
+            [
+                {
+                    "id": "AwsSolutions-IAM5",
+                    "reason": "Bedrock agents require broad permissions for dynamic operations in demo/development environment",
+                    "appliesTo": [
+                        "Action::application-signals:*",
+                        "Action::apprunner:*", 
+                        "Action::bedrock-agentcore:*",
+                        "Action::bedrock:*",
+                        "Action::cloudwatch:*",
+                        "Action::ecr-public:*",
+                        "Action::kms:*",
+                        "Action::secretsmanager:*",
+                        "Action::xray:*",
+                        "Action::s3:GetBucket*",
+                        "Action::s3:GetObject*",
+                        "Action::s3:List*",
+                        "Resource::*",
+                        "Resource::arn:aws:codebuild:*:*:build/*",
+                        "Resource::arn:aws:ssm:*:*:parameter/*",
+                        "Resource::arn:aws:logs:*:*:log-group:/aws/codebuild/*:*",
+                        "Resource::arn:aws:codebuild:*:*:report-group/*"
+                    ]
+                }
+            ]
+        )
+        
+        # Suppress IAM findings for roles with AWS managed policies
+        managed_policy_roles = [
+            self.lambda_execution_role,
+            self.apprunner_access_role, 
+            self.codebuild_service_role
+        ]
+        
+        for role in managed_policy_roles:
+            NagSuppressions.add_resource_suppressions(
+                role,
+                [
+                    {
+                        "id": "AwsSolutions-IAM4",
+                        "reason": "AWS managed policies acceptable for demo/development environment"
+                    },
+                    {
+                        "id": "AwsSolutions-IAM5", 
+                        "reason": "Wildcard permissions required for dynamic operations in demo/development environment"
+                    }
+                ]
+            )

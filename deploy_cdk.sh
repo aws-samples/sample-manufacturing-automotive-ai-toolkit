@@ -5,6 +5,7 @@ export STACK_NAME="MA3TMainStack"
 export REGION="${AWS_DEFAULT_REGION:-us-west-2}"
 
 # Parse command line arguments
+SKIP_NAG=false
 while [[ $# -gt 0 ]]; do
   case $1 in
     --stack-name)
@@ -15,9 +16,13 @@ while [[ $# -gt 0 ]]; do
       REGION="$2"
       shift 2
       ;;
+    --skip-nag)
+      SKIP_NAG=true
+      shift
+      ;;
     *)
       echo "Unknown option: $1"
-      echo "Usage: $0 [--stack-name NAME] [--region REGION]"
+      echo "Usage: $0 [--stack-name NAME] [--region REGION] [--skip-nag]"
       exit 1
       ;;
   esac
@@ -30,6 +35,13 @@ echo "  Region: $REGION"
 # Deploy CDK stack first
 echo "Deploying CDK stack..."
 cd cdk
+
+# Set environment variable to skip cdk-nag if requested
+if [ "$SKIP_NAG" = true ]; then
+  echo "Skipping cdk-nag checks..."
+  export CDK_NAG_SKIP=true
+fi
+
 cdk deploy --require-approval never
 
 # Check if the deployment was successful

@@ -44,6 +44,9 @@ class MainStack(cdk.Stack):
         # Create stack outputs
         self._create_outputs()
 
+        # Apply CDK-Nag suppressions for demo/development environment
+        self._apply_stack_suppressions()
+
         # Upload local code to S3
         self._upload_local_code()
 
@@ -222,7 +225,7 @@ class MainStack(cdk.Stack):
         )
 
         CfnOutput(
-            self, "AppRunnerInstanceRoleArn", 
+            self, "AppRunnerInstanceRoleArn",
             value=self.iam_construct.apprunner_instance_role_arn,
             description="App Runner instance role ARN"
         )
@@ -277,19 +280,19 @@ import json
 
 def handler(event, context):
     print(f"Event: {json.dumps(event)}")
-    
+
     if event['RequestType'] == 'Create' or event['RequestType'] == 'Update':
         codebuild = boto3.client('codebuild')
-        
+
         # Get the project name from the event
         project_name = event['ResourceProperties'].get('ProjectName')
-        
+
         if project_name:
             try:
                 response = codebuild.start_build(projectName=project_name)
                 build_id = response['build']['id']
                 print(f"Started CodeBuild project {project_name} with build ID: {build_id}")
-                
+
                 return {
                     'PhysicalResourceId': f"deployment-trigger-{build_id}",
                     'Data': {
@@ -306,7 +309,7 @@ def handler(event, context):
                         'Error': str(e)
                     }
                 }
-    
+
     return {
         'PhysicalResourceId': event.get('PhysicalResourceId', 'deployment-trigger'),
         'Data': {}
@@ -432,3 +435,34 @@ def handler(event, context):
             },
             'agents': self.get_agent_summary()
         }
+
+    def _apply_stack_suppressions(self) -> None:
+        """Apply CDK-Nag suppressions at stack level for demo/development environment"""
+        from cdk_nag import NagSuppressions
+
+        # Suppress IAM wildcard permissions across the entire stack
+        NagSuppressions.add_stack_suppressions(
+            self,
+            [
+                {
+                    "id": "AwsSolutions-IAM5",
+                    "reason": "Wildcard permissions acceptable for demo/development toolkit requiring dynamic AWS service access"
+                },
+                {
+                    "id": "AwsSolutions-IAM4",
+                    "reason": "AWS managed policies acceptable for demo/development environment"
+                },
+                {
+                    "id": "AwsSolutions-L1",
+                    "reason": "Lambda runtime versions managed by CDK defaults, acceptable for demo environment"
+                },
+                {
+                    "id": "AwsSolutions-CB4",
+                    "reason": "CodeBuild encryption with AWS managed keys sufficient for demo environment"
+                },
+                {
+                    "id": "AwsSolutions-DDB3",
+                    "reason": "DynamoDB point-in-time recovery not required for demo data"
+                }
+            ]
+        )

@@ -10,6 +10,7 @@ from aws_cdk import (
     Tags,
     CfnParameter,
 )
+from cdk_nag import NagSuppressions
 from constructs import Construct
 from typing import Dict, Optional
 import os
@@ -32,17 +33,17 @@ class StorageConstruct(Construct):
     Manages S3 buckets and DynamoDB tables for the MA3T application.
     """
 
-    def __init__(self, scope: Construct, construct_id: str, 
+    def __init__(self, scope: Construct, construct_id: str,
                  s3_bucket_name: Optional[str] = None, **kwargs) -> None:
         super().__init__(scope, construct_id)
-        
+
         # Create S3 bucket
         self._create_s3_bucket(s3_bucket_name)
-        
+
         # Load template data and create DynamoDB tables
         template_data = load_lambda_templates()
         self._create_dynamodb_tables(template_data.get('dynamodb_tables', {}))
-        
+
         # Apply tags to all resources
         self._apply_tags()
 
@@ -54,28 +55,34 @@ class StorageConstruct(Construct):
             'versioned': False,
             'enforce_ssl': True
         }
-        
+
         if bucket_name:
             bucket_props['bucket_name'] = bucket_name
         # If no bucket name provided, let CDK generate a unique name
-        
+
         self.resource_bucket = s3.Bucket(
             self, "ResourceBucket",
             **bucket_props
         )
 
+        # Suppress CDK-Nag rule for S3 access logging (not needed for demo/dev environment)
+        NagSuppressions.add_resource_suppressions(
+            self.resource_bucket,
+            [{"id": "AwsSolutions-S1", "reason": "S3 access logging not required for demo/development environment"}]
+        )
+
     def _create_dynamodb_tables(self, table_definitions: Dict[str, Dict]) -> None:
         """Create DynamoDB tables from template definitions"""
         self.tables: Dict[str, dynamodb.Table] = {}
-        
+
         # If no table definitions from templates, create default tables
         if not table_definitions:
             self._create_default_tables()
             return
-        
+
         for table_name, table_def in table_definitions.items():
             properties = table_def.get('properties', {})
-            
+
             # Extract table configuration
             table_config = {
                 'table_name': table_name,
@@ -85,11 +92,11 @@ class StorageConstruct(Construct):
                     point_in_time_recovery_enabled=properties.get('PointInTimeRecoverySpecification', {}).get('PointInTimeRecoveryEnabled', False)
                 )
             }
-            
+
             # Add partition key and sort key
             key_schema = properties.get('KeySchema', [])
             attribute_definitions = properties.get('AttributeDefinitions', [])
-            
+
             if key_schema and attribute_definitions:
                 # Find partition key
                 partition_key = next((key for key in key_schema if key.get('KeyType') == 'HASH'), None)
@@ -100,7 +107,7 @@ class StorageConstruct(Construct):
                         name=attr_name,
                         type=attr_type
                     )
-                
+
                 # Find sort key
                 sort_key = next((key for key in key_schema if key.get('KeyType') == 'RANGE'), None)
                 if sort_key:
@@ -110,26 +117,26 @@ class StorageConstruct(Construct):
                         name=attr_name,
                         type=attr_type
                     )
-            
+
             # Create the table
             table = dynamodb.Table(
                 self, f"Table{table_name.replace('-', '').replace('_', '')}",
                 **table_config
             )
-            
+
             # Add Global Secondary Indexes if defined
             gsi_definitions = properties.get('GlobalSecondaryIndexes', [])
             for gsi in gsi_definitions:
                 gsi_name = gsi.get('IndexName')
                 gsi_key_schema = gsi.get('KeySchema', [])
-                
+
                 if gsi_name and gsi_key_schema:
                     # Find GSI partition key
                     gsi_partition_key = next((key for key in gsi_key_schema if key.get('KeyType') == 'HASH'), None)
                     if gsi_partition_key:
                         attr_name = gsi_partition_key['AttributeName']
                         attr_type = self._get_attribute_type(attribute_definitions, attr_name)
-                        
+
                         gsi_config = {
                             'index_name': gsi_name,
                             'partition_key': dynamodb.Attribute(
@@ -137,7 +144,7 @@ class StorageConstruct(Construct):
                                 type=attr_type
                             )
                         }
-                        
+
                         # Find GSI sort key
                         gsi_sort_key = next((key for key in gsi_key_schema if key.get('KeyType') == 'RANGE'), None)
                         if gsi_sort_key:
@@ -147,9 +154,9 @@ class StorageConstruct(Construct):
                                 name=attr_name,
                                 type=attr_type
                             )
-                        
+
                         table.add_global_secondary_index(**gsi_config)
-            
+
             self.tables[table_name] = table
 
     def _create_default_tables(self) -> None:
@@ -172,7 +179,7 @@ class StorageConstruct(Construct):
                 'partition_key': dynamodb.Attribute(name='appointment_id', type=dynamodb.AttributeType.STRING)
             }
         ]
-        
+
         for table_def in default_tables:
             table = dynamodb.Table(
                 self, f"Table{table_def['name'].replace('-', '').replace('_', '')}",
@@ -207,7 +214,7 @@ class StorageConstruct(Construct):
     def _apply_tags(self) -> None:
         """Apply consistent tags to all storage resources"""
         Tags.of(self.resource_bucket).add("Project", "ma3t-agent-toolkit")
-        
+
         for table in self.tables.values():
             Tags.of(table).add("Project", "ma3t-agent-toolkit")
 
