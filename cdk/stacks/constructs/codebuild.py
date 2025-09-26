@@ -22,12 +22,16 @@ class CodeBuildConstruct(Construct):
     def __init__(self, scope: Construct, construct_id: str,
                  agent_role: iam.Role,
                  resource_bucket: s3.Bucket,
+                 apprunner_access_role: iam.Role,
+                 apprunner_instance_role: iam.Role,
                  bedrock_model_id: str = "anthropic.claude-3-haiku-20240307-v1:0",
                  **kwargs) -> None:
         super().__init__(scope, construct_id)
 
         self.agent_role = agent_role
         self.resource_bucket = resource_bucket
+        self.apprunner_access_role = apprunner_access_role
+        self.apprunner_instance_role = apprunner_instance_role
         self.bedrock_model_id = bedrock_model_id
 
         # Create AgentCore deployment project
@@ -52,6 +56,12 @@ class CodeBuildConstruct(Construct):
             ),
             'PYTHONUNBUFFERED': codebuild.BuildEnvironmentVariable(
                 value="1"
+            ),
+            'APPRUNNER_ACCESS_ROLE_ARN': codebuild.BuildEnvironmentVariable(
+                value=self.apprunner_access_role.role_arn
+            ),
+            'APPRUNNER_INSTANCE_ROLE_ARN': codebuild.BuildEnvironmentVariable(
+                value=self.apprunner_instance_role.role_arn
             )
         }
 
@@ -61,9 +71,10 @@ class CodeBuildConstruct(Construct):
             project_name=f"{Stack.of(self).stack_name}-agent-deployment",
             role=self.agent_role,
             environment=codebuild.BuildEnvironment(
-                build_image=codebuild.LinuxBuildImage.AMAZON_LINUX_2_ARM_3,
+                build_image=codebuild.LinuxBuildImage.AMAZON_LINUX_2_5,  # x86_64 image
                 compute_type=codebuild.ComputeType.SMALL,
-                environment_variables=environment_variables
+                environment_variables=environment_variables,
+                privileged=True
             ),
             source=codebuild.Source.s3(
                 bucket=self.resource_bucket,
@@ -125,10 +136,33 @@ class CodeBuildConstruct(Construct):
                         "echo 'Starting UI build...'",
                         "cd ui",
                         "echo 'Installing UI dependencies...'",
-                        "npm ci",
+                        "npm install",
                         "echo 'Running UI build...'",
                         "npm run build",
-                        "echo 'UI build completed'"
+                        "echo 'UI build completed'",
+                        "",
+                        "echo 'Building and deploying Docker container...'",
+                        "echo 'Logging into ECR or creating new repo'",
+                        "ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)",
+                        "aws ecr get-login-password --region $AWS_REGION | docker login --username AWS --password-stdin $ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com",
+                        "aws ecr describe-repositories --repository-names ma3t-ui --region $AWS_REGION || aws ecr create-repository --repository-name ma3t-ui --region $AWS_REGION",
+                        "",
+                        "echo 'Building docker image'",
+                        "ECR_URI=$ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com/ma3t-ui",
+                        "docker build -f Dockerfile -t ma3t-ui .",
+                        "docker tag ma3t-ui:latest $ECR_URI:latest",
+                        "docker push $ECR_URI:latest",
+                        "",
+                        "echo 'Deploy to App Runner'",
+                        "SERVICE_NAME=ma3t-ui-service",
+                        "ACCESS_ROLE_ARN=$APPRUNNER_ACCESS_ROLE_ARN",
+                        "INSTANCE_ROLE_ARN=$APPRUNNER_INSTANCE_ROLE_ARN",
+                        "",
+                        "SERVICE_ARN=$(aws apprunner list-services --query \"ServiceSummaryList[?ServiceName=='$SERVICE_NAME'].ServiceArn\" --output text --region $AWS_REGION)",
+                        "echo \"Found service ARN: $SERVICE_ARN\"",
+                        "if [ -n \"$SERVICE_ARN\" ] && [ \"$SERVICE_ARN\" != \"None\" ]; then echo 'Updating existing App Runner service...'; aws apprunner update-service --service-arn $SERVICE_ARN --source-configuration '{\"ImageRepository\":{\"ImageIdentifier\":\"'$ECR_URI':latest\",\"ImageConfiguration\":{\"Port\":\"3000\"},\"ImageRepositoryType\":\"ECR\"},\"AutoDeploymentsEnabled\":false,\"AuthenticationConfiguration\":{\"AccessRoleArn\":\"'$ACCESS_ROLE_ARN'\"}}' --instance-configuration '{\"InstanceRoleArn\":\"'$INSTANCE_ROLE_ARN'\"}' --region $AWS_REGION; else echo 'Creating new App Runner service...'; aws apprunner create-service --service-name $SERVICE_NAME --source-configuration '{\"ImageRepository\":{\"ImageIdentifier\":\"'$ECR_URI':latest\",\"ImageConfiguration\":{\"Port\":\"3000\"},\"ImageRepositoryType\":\"ECR\"},\"AutoDeploymentsEnabled\":false,\"AuthenticationConfiguration\":{\"AccessRoleArn\":\"'$ACCESS_ROLE_ARN'\"}}' --instance-configuration '{\"InstanceRoleArn\":\"'$INSTANCE_ROLE_ARN'\"}' --region $AWS_REGION; fi",
+                        "",
+                        
                     ]
                 },
                 "post_build": {

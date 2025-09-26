@@ -77,6 +77,7 @@ if [ $? -eq 0 ]; then
     -x "./cdk/*" \
     -x "*.pyc" \
     -x ".kiro/*" \
+    -x ".vscode/*" \
     -x ".DS_Store"
   
   # Upload the zip file to S3 with the key "repo"
@@ -98,7 +99,53 @@ if [ $? -eq 0 ]; then
   # Start the CodeBuild project to deploy the agents
   if [ ! -z "$CODEBUILD_PROJECT" ]; then
     echo "Starting CodeBuild project to deploy AgentCore agents: $CODEBUILD_PROJECT"
-    aws codebuild start-build --project-name "$CODEBUILD_PROJECT" --region "$REGION"
+    BUILD_ID=$(aws codebuild start-build --project-name "$CODEBUILD_PROJECT" --region "$REGION" --query "build.id" --output text)
+    
+    if [ ! -z "$BUILD_ID" ]; then
+      echo "CodeBuild started with ID: $BUILD_ID"
+      echo "Waiting for build to complete..."
+      
+      # Wait for build to complete and show progress
+      while true; do
+        BUILD_STATUS=$(aws codebuild batch-get-builds --ids "$BUILD_ID" --region "$REGION" --query 'builds[0].buildStatus' --output text)
+        
+        case $BUILD_STATUS in
+          "SUCCEEDED")
+            echo "✅ CodeBuild completed successfully!"
+            
+            # Get App Runner service URL
+            echo "Getting App Runner service URL..."
+            SERVICE_URL=$(aws apprunner list-services --region "$REGION" --query "ServiceSummaryList[?ServiceName=='ma3t-ui-service'].ServiceUrl" --output text)
+            
+            if [ ! -z "$SERVICE_URL" ] && [ "$SERVICE_URL" != "None" ]; then
+              echo ""
+              echo "🌐 MA3T UI is available at: https://$SERVICE_URL"
+              echo ""
+            else
+              echo "⚠️  App Runner service URL not found"
+            fi
+            
+            break
+            ;;
+          "FAILED"|"FAULT"|"STOPPED"|"TIMED_OUT")
+            echo "❌ CodeBuild failed with status: $BUILD_STATUS"
+            echo "Check the CodeBuild logs for details: https://console.aws.amazon.com/codesuite/codebuild/projects/$CODEBUILD_PROJECT/build/$BUILD_ID"
+            exit 1
+            ;;
+          "IN_PROGRESS")
+            echo "⏳ Build in progress...(this will take ~5 minutes)"
+            ;;
+          *)
+            echo "📋 Build status: $BUILD_STATUS"
+            ;;
+        esac
+        
+        sleep 10
+      done
+    else
+      echo "Failed to start CodeBuild project"
+      exit 1
+    fi
   else
     echo "CodeBuild project not found in stack outputs"
   fi
