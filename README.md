@@ -5,7 +5,7 @@ A collection of sample AI agents for Automotive and Manufacturing use cases.
 ## Deployment (CDK)
 
 **Prerequisites:**
-- AWS CLI configured with appropriate [permissions](#permissions)
+- AWS CLI configured with appropriate permissions
 - Node.js and npm installed 
 - CDK CLI: `npm install -g aws-cdk`
 

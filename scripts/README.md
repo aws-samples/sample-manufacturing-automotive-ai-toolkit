@@ -53,38 +53,6 @@ python scripts/build_launch_agentcore.py [options]
 - `get_account_id()`: Retrieves current AWS account ID
 - Deployment configuration and launch
 
-### 3. `run_cdk_nag.py`
-Security and compliance scanner for CDK stacks.
-
-**Purpose**: Runs CDK-Nag security and compliance checks on all MA3T CDK infrastructure.
-
-**Usage**:
-```bash
-python scripts/run_cdk_nag.py
-```
-
-**Features**:
-- Comprehensive security scanning using CDK-Nag
-- Compliance checks against AWS best practices
-- Detailed reporting of security findings
-- Integration with CI/CD pipelines
-
-### 4. `run_tools.sh`
-General development tools runner script.
-
-**Purpose**: Unified script for running various development and security tools.
-
-**Usage**:
-```bash
-./scripts/run_tools.sh --tool <tool_name> [options]
-```
-
-**Features**:
-- Centralized tool execution
-- Configurable tool selection
-- Environment setup and validation
-- Standardized output formatting
-
 ## Requirements
 
 Install the required dependencies:
