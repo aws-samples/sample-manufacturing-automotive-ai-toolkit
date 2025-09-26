@@ -50,8 +50,17 @@ if [ -z "$AUTH_USER" ]; then
   read -p "Enter UI username: " AUTH_USER
 fi
 if [ -z "$AUTH_PASSWORD" ]; then
-  read -s -p "Enter UI password: " AUTH_PASSWORD
-  echo
+  while true; do
+    read -s -p "Enter UI password: " AUTH_PASSWORD
+    echo
+    read -s -p "Confirm UI password: " AUTH_PASSWORD_CONFIRM
+    echo
+    if [ "$AUTH_PASSWORD" = "$AUTH_PASSWORD_CONFIRM" ]; then
+      break
+    else
+      echo "Passwords do not match. Please try again."
+    fi
+  done
 fi
 
 # Validate region for AgentCore compatibility
