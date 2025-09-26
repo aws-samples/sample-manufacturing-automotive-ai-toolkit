@@ -112,6 +112,19 @@ if [ $? -eq 0 ]; then
         case $BUILD_STATUS in
           "SUCCEEDED")
             echo "✅ CodeBuild completed successfully!"
+            
+            # Get App Runner service URL
+            echo "Getting App Runner service URL..."
+            SERVICE_URL=$(aws apprunner list-services --region "$REGION" --query "ServiceSummaryList[?ServiceName=='ma3t-ui-service'].ServiceUrl" --output text)
+            
+            if [ ! -z "$SERVICE_URL" ] && [ "$SERVICE_URL" != "None" ]; then
+              echo ""
+              echo "🌐 MA3T UI is available at: https://$SERVICE_URL"
+              echo ""
+            else
+              echo "⚠️  App Runner service URL not found"
+            fi
+            
             break
             ;;
           "FAILED"|"FAULT"|"STOPPED"|"TIMED_OUT")
