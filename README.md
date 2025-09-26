@@ -38,7 +38,7 @@ The MA3T architecture consists of:
 
 ## Contributing
 
-We welcome additional agent example to the framework. Please see [CONTRIBUTING.md](CONTRIBUTING.md) for details.
+We welcome additional agent examples to the framework. Please see [CONTRIBUTING.md](CONTRIBUTING.md) for details.
 
 To contribute an idea for an agent, please open an issue. If you'd like to contribute your own example, follow the instructions in [developing.md](/docs/developing.md).
 
