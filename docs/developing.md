@@ -69,6 +69,16 @@ MA3T supports two agent types with different deployment characteristics:
 
 ## Deployment Categories
 
+### Development Deployment
+
+For faster development cycles, you can skip CDK security checks:
+
+```bash
+./deploy_cdk.sh --skip-nag
+```
+
+This bypasses cdk-nag validation rules, which is useful during development but should not be used for production deployments.
+
 ### Standalone Agents
 - **Location**: `agents_catalog/standalone_agents/`
 - **Purpose**: Individual agents for specific tasks
