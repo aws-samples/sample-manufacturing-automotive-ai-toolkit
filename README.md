@@ -13,7 +13,7 @@ A collection of sample AI agents for Automotive and Manufacturing use cases.
 
 ### 1. CDK Bootstrap
 ```bash
-# From project root directory (not inside cdk/)
+cd cdk
 cdk bootstrap
 ```
 *Note: Uses your default AWS profile and region. CDK will automatically detect your account ID.*
