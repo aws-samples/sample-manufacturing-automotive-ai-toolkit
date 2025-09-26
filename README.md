@@ -23,7 +23,7 @@ Enable access to required models in your AWS account:
 - Go to AWS Bedrock Console → Model access
 - Request access to:
   - `anthropic.claude-3-haiku-20240307-v1:0` (Used by VISTA agents, default for AgentCore)
-  - `us.anthropic.claude-3-5-sonnet-20241022-v2:0` (Used by the frontend UI)
+  - `us.anthropic.claude-3-7-sonnet-20250219-v1:0` (Used by the frontend UI)
 
 ### 3. Setup Environment
 ```bash

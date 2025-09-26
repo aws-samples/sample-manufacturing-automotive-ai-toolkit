@@ -63,7 +63,7 @@ export async function POST(req: Request) {
     console.log("Agents:", agents);
     console.log("Instruction:", agent_instruction);
 
-    const foundationModel = "us.anthropic.claude-3-5-sonnet-20241022-v2:0";
+    const foundationModel = "us.anthropic.claude-3-7-sonnet-20250219-v1:0";
     const sessionId = `session-${Date.now()}`;
 
     const collaboratorConfigurations = await Promise.all(
