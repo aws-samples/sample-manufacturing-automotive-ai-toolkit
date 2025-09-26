@@ -4,19 +4,41 @@ A collection of sample AI agents for Automotive and Manufacturing use cases.
 
 ## Prerequisites
 
-- AWS CLI configured with appropriate permissions
+- AWS CLI. See the [official installation guide](https://docs.aws.amazon.com/cli/latest/userguide/getting-started-install.html) for your operating system.
+   ```bash
+   # Verify installation and configure
+   aws --version
+   aws configure list
+   # Verify AWS access
+   aws sts get-caller-identity
+   ```
 - Node.js >=22 and npm installed
+   ```bash
+   # Verify installation
+   node --version
+   ```
 - Python >=3.12
-- CDK CLI: `npm install -g aws-cdk`
-
+   ```bash
+   # Ensure Python v3.12+ is installed
+   python --version
+   ```
+- CDK CLI
+   ```bash
+   # Install AWS CDK CLI globally
+   npm install -g aws-cdk
+   # Verify installation
+   cdk --version
+   ```
 ## Bootstrap (One-time Setup)
 
-### 1. CDK Bootstrap
+### 1. CDK Bootstrap (if needed)
+If this is your first time using CDK in this AWS account/region:
 ```bash
 cd cdk
-cdk bootstrap
+cdk bootstrap aws://AWS-ACCOUNT-NUMBER/us-west-2
 ```
-*Note: Uses your default AWS profile and region. CDK will automatically detect your account ID.*
+
+>You can find your account number by running `aws sts get-caller-identity`.
 
 ### 2. Bedrock Model Access
 Enable access to required models in your AWS account:
