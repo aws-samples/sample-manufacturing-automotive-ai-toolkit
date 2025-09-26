@@ -72,7 +72,7 @@ export class BedrockChatHandler implements ChatHandler {
         };
 
         try {
-            const foundationModel = 'us.anthropic.claude-3-5-sonnet-20241022-v2:0';
+            const foundationModel = 'us.anthropic.claude-3-7-sonnet-20250219-v1:0';
 
             log('Resolving agent aliases...');
             const collaboratorConfigurations = await Promise.all(
