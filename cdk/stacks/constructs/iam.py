@@ -403,6 +403,31 @@ class IAMConstruct(Construct):
             )
         )
 
+        # Add Lambda invoke permissions for agent action groups
+        self.apprunner_instance_role.add_to_policy(
+            iam.PolicyStatement(
+                effect=iam.Effect.ALLOW,
+                actions=["lambda:InvokeFunction"],
+                resources=[f"arn:aws:lambda:{Stack.of(self).region}:{Stack.of(self).account}:function:*"]
+            )
+        )
+
+        # Add DynamoDB permissions for agent data access
+        self.apprunner_instance_role.add_to_policy(
+            iam.PolicyStatement(
+                effect=iam.Effect.ALLOW,
+                actions=[
+                    "dynamodb:GetItem",
+                    "dynamodb:PutItem",
+                    "dynamodb:UpdateItem",
+                    "dynamodb:DeleteItem",
+                    "dynamodb:Query",
+                    "dynamodb:Scan"
+                ],
+                resources=[f"arn:aws:dynamodb:{Stack.of(self).region}:{Stack.of(self).account}:table/*"]
+            )
+        )
+
     def _add_bedrock_permissions(self) -> None:
         """Add Bedrock-specific permissions to the agent role"""
         # Comprehensive Bedrock permissions are handled in _add_bedrock_agentcore_permissions
