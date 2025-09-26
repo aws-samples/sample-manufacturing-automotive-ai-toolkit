@@ -68,6 +68,14 @@ Due to AgentCore regional restrictions, only these regions are supported:
 
 *Note: The CDK stack automatically triggers agent deployments via CodeBuild after successful deployment. The deployment creates an internet-accessible UI secured with basic authentication using your provided credentials.*
 
+## Cleanup
+
+To destroy the deployed resources:
+```bash
+cdk destroy --context region=us-east-1
+```
+*Replace `us-east-1` with the region where you deployed the stack.*
+
 ![MA3T User Interface](docs/ui.png)
 
 ## Architecture
