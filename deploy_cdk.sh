@@ -2,10 +2,15 @@
 
 # Default configuration
 export STACK_NAME="MA3TMainStack"
-export REGION="${AWS_DEFAULT_REGION:-us-west-2}"
+# Get AWS CLI's configured region, fallback to us-west-2
+CLI_REGION=$(aws configure get region 2>/dev/null || echo '')
+export REGION="${AWS_DEFAULT_REGION:-${CLI_REGION:-us-west-2}}"
 
 # Parse command line arguments
 SKIP_NAG=false
+AUTH_USER=""
+AUTH_PASSWORD=""
+ACCOUNT=""
 while [[ $# -gt 0 ]]; do
   case $1 in
     --stack-name)
@@ -20,13 +25,47 @@ while [[ $# -gt 0 ]]; do
       SKIP_NAG=true
       shift
       ;;
+    --auth-user)
+      AUTH_USER="$2"
+      shift 2
+      ;;
+    --auth-password)
+      AUTH_PASSWORD="$2"
+      shift 2
+      ;;
+    --account)
+      ACCOUNT="$2"
+      shift 2
+      ;;
     *)
       echo "Unknown option: $1"
-      echo "Usage: $0 [--stack-name NAME] [--region REGION] [--skip-nag]"
+      echo "Usage: $0 [--stack-name NAME] [--region REGION] [--skip-nag] [--auth-user USER] [--auth-password PASSWORD] [--account ACCOUNT]"
       exit 1
       ;;
   esac
 done
+
+# Prompt for auth credentials if not provided
+if [ -z "$AUTH_USER" ]; then
+  read -p "Enter UI username: " AUTH_USER
+fi
+if [ -z "$AUTH_PASSWORD" ]; then
+  read -s -p "Enter UI password: " AUTH_PASSWORD
+  echo
+fi
+
+# Validate region for AgentCore compatibility
+VALID_REGIONS=("us-east-1" "us-west-2" "eu-central-1" "ap-southeast-2")
+if [[ ! " ${VALID_REGIONS[@]} " =~ " ${REGION} " ]]; then
+  echo "Warning: Region '$REGION' is not supported by AgentCore."
+  echo "Falling back to us-west-2 (default supported region)."
+  echo "Supported regions are:"
+  echo "  us-east-1 (US East - N. Virginia)"
+  echo "  us-west-2 (US West - Oregon)"
+  echo "  eu-central-1 (Europe - Frankfurt)"
+  echo "  ap-southeast-2 (Asia Pacific - Sydney)"
+  export REGION="us-west-2"
+fi
 
 echo "Deploying MA3T Toolkit with CDK"
 echo "  Stack Name: $STACK_NAME"
@@ -42,7 +81,17 @@ if [ "$SKIP_NAG" = true ]; then
   export CDK_NAG_SKIP=true
 fi
 
-cdk deploy --require-approval never
+# Pass auth credentials to CDK
+export AUTH_USER="$AUTH_USER"
+export AUTH_PASSWORD="$AUTH_PASSWORD"
+
+# Set account for all CDK apps if specified
+if [ -n "$ACCOUNT" ]; then
+  export CDK_DEFAULT_ACCOUNT="$ACCOUNT"
+  cdk deploy --require-approval never --context region="$REGION" --context account="$ACCOUNT"
+else
+  cdk deploy --require-approval never --context region="$REGION"
+fi
 
 # Check if the deployment was successful
 if [ $? -eq 0 ]; then

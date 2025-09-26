@@ -175,5 +175,3 @@ When adding new scripts to this directory:
 ## Related Documentation
 
 - [Main MA3T README](../README.md)
-- [Agent Creation Guide](../docs/agent-creation.md) (if available)
-- [Deployment Guide](../docs/deployment.md) (if available)

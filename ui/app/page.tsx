@@ -149,7 +149,7 @@ export default function Home() {
             <h1 className="text-xl font-semibold text-gray-900">MA3T Agent Playground</h1>
           </div>
           <a 
-            href="https://github.com/aws-samples/amazon-bedrock-agents-healthcare-lifesciences" 
+            href="https://github.com/aws-samples/sample-manufacturing-automotive-ai-toolkit"
             target="_blank" 
             rel="noopener noreferrer"
             className="text-gray-600 hover:text-gray-900 transition-colors"

@@ -106,15 +106,6 @@ To update the stack later, run the same command with updated `yml`.
 
 ---
 
-## ⚠️ Security Notice
-
-This deployment will create a **web-accessible application**.  
-Ensure you **restrict access to your network** by specifying a proper **CIDR block** in the **Security Group** configuration.
-
-> 📌 Consult your **IT or DevOps team** to configure the correct CIDR range and ensure compliance with your organization's network security policies.
-
----
-
 ## 📚 Learn More
 
 - [Next.js Documentation](https://nextjs.org/docs)

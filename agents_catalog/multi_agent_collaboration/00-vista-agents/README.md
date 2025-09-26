@@ -36,7 +36,6 @@ Once deployed, you can test the system with these example prompts:
 
 **Current Model**: `anthropic.claude-3-haiku-20240307-v1:0` (Claude 3 Haiku)
 
-This model is compatible with multiple AWS regions including `eu-west-1`. The model was specifically chosen for broad regional availability.
 
 ## Region Configuration
 
@@ -44,20 +43,20 @@ The application supports flexible region configuration through multiple methods 
 
 ### 1. Command Line Parameter (Highest Priority)
 ```bash
-cd cdk && cdk deploy --region eu-west-1
+cd cdk && cdk deploy --region $AWS_REGION
 ```
 
 ### 2. Environment Variables
 ```bash
 # Vista-specific region override
-export VISTA_DEPLOY_REGION=eu-west-1
+export VISTA_DEPLOY_REGION=$AWS_REGION
 
 # Standard CDK region
-export CDK_DEFAULT_REGION=eu-west-1
+export CDK_DEFAULT_REGION=$AWS_REGION
 
 # Standard AWS region variables
-export AWS_REGION=eu-west-1
-export AWS_DEFAULT_REGION=eu-west-1
+export $AWS_REGION=$AWS_REGION
+export AWS_DEFAULT_REGION=$AWS_REGION
 ```
 
 ### 3. AWS Profile/Session Region
@@ -94,8 +93,8 @@ cd cdk && cdk deploy --require-approval never
 ### Deploy to Specific Region (Recommended)
 ```bash
 # For EU West 1
-cd cdk && cdk bootstrap --region eu-west-1
-cd cdk && cdk deploy --region eu-west-1 --require-approval never
+cd cdk && cdk bootstrap --region $AWS_REGION
+cd cdk && cdk deploy --region $AWS_REGION --require-approval never
 
 # For US East 1
 cd cdk && cdk bootstrap --region us-east-1
@@ -109,7 +108,7 @@ cd cdk && cdk deploy --region us-west-2 --require-approval never
 ### Using Environment Variables
 ```bash
 # Set target region
-export CDK_DEFAULT_REGION=eu-west-1
+export CDK_DEFAULT_REGION=$AWS_REGION
 
 # Bootstrap and deploy
 cd cdk && cdk bootstrap
@@ -119,7 +118,7 @@ cd cdk && cdk deploy --require-approval never
 ### Custom Model Deployment
 ```bash
 # Deploy with different model
-cd cdk && cdk deploy --region eu-west-1 --foundation-model anthropic.claude-3-haiku-20240307-v1:0
+cd cdk && cdk deploy --region $AWS_REGION --foundation-model anthropic.claude-3-haiku-20240307-v1:0
 ```
 
 ## Verification
@@ -136,7 +135,7 @@ cd cdk && cdk synth | grep "FoundationModel"
 
 ### List Deployed Agents
 ```bash
-aws bedrock-agent list-agents --region eu-west-1
+aws bedrock-agent list-agents --region $AWS_REGION
 ```
 
 ## Supported Regions
@@ -150,7 +149,7 @@ The system is designed to work in any AWS region that supports:
 **Tested Regions:**
 - `us-east-1` (N. Virginia)
 - `us-west-2` (Oregon)  
-- `eu-west-1` (Ireland)
+- `$AWS_REGION` (Ireland)
 
 ## Troubleshooting
 
@@ -158,12 +157,12 @@ The system is designed to work in any AWS region that supports:
 
 1. **Model Not Available**: If you get model availability errors, verify the Claude 3 Haiku model is available in your target region:
    ```bash
-   aws bedrock list-foundation-models --region eu-west-1 --query 'modelSummaries[?contains(modelId, `claude-3-haiku`)]'
+   aws bedrock list-foundation-models --region $AWS_REGION --query 'modelSummaries[?contains(modelId, `claude-3-haiku`)]'
    ```
 
 2. **Bootstrap Issues**: If CDK bootstrap fails, try:
    ```bash
-   cd cdk && cdk bootstrap --region eu-west-1 --force
+   cd cdk && cdk bootstrap --region $AWS_REGION --force
    ```
 
 3. **Region Mismatch**: Ensure your AWS credentials and CDK are targeting the same region:
@@ -189,10 +188,10 @@ Look for these debug lines:
 ### Destroy Resources
 ```bash
 # Destroy in specific region
-cd cdk && cdk destroy --region eu-west-1
+cd cdk && cdk destroy --region $AWS_REGION
 
 # Or use environment variable
-export CDK_DEFAULT_REGION=eu-west-1
+export CDK_DEFAULT_REGION=$AWS_REGION
 cd cdk && cdk destroy
 ```
 
