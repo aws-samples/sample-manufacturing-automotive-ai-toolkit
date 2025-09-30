@@ -1,0 +1,713 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: 'CloudFormation template to create DynamoDB table dtc-parts-lookup and Lambda function to load data'
+
+Resources:
+  # DynamoDB Table
+  DtcPartsLookupTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: dtc-parts-lookup
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: dtc_code
+          AttributeType: S
+        - AttributeName: part_code
+          AttributeType: S
+      KeySchema:
+        - AttributeName: dtc_code
+          KeyType: HASH
+        - AttributeName: part_code
+          KeyType: RANGE
+      TableClass: STANDARD
+      DeletionProtectionEnabled: false
+      
+  # DynamoDB Table for Dealer Parts Stock
+  DealerPartsStockTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: dealer-parts-stock
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: dealer_code
+          AttributeType: S
+        - AttributeName: part_code
+          AttributeType: S
+      KeySchema:
+        - AttributeName: dealer_code
+          KeyType: HASH
+        - AttributeName: part_code
+          KeyType: RANGE
+      TableClass: STANDARD
+      DeletionProtectionEnabled: false
+      
+  # DynamoDB Table for Dealer Parts Order
+  DealerPartsOrderTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: dealer-parts-order
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: dealer_code
+          AttributeType: S
+        - AttributeName: part_code
+          AttributeType: S
+      KeySchema:
+        - AttributeName: dealer_code
+          KeyType: HASH
+        - AttributeName: part_code
+          KeyType: RANGE
+      TableClass: STANDARD
+      DeletionProtectionEnabled: false
+
+  # IAM Role for Lambda function
+  LambdaExecutionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+      Policies:
+        - PolicyName: DynamoDBAccess
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - dynamodb:PutItem
+                  - dynamodb:BatchWriteItem
+                Resource: !GetAtt DtcPartsLookupTable.Arn
+                
+  # IAM Role for GetPartsForDTC Lambda function
+  GetPartsForDTCRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+      Policies:
+        - PolicyName: DynamoDBQueryAccess
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - dynamodb:Query
+                  - dynamodb:GetItem
+                Resource: !GetAtt DtcPartsLookupTable.Arn
+
+  # Lambda Function to load data
+  DataLoaderFunction:
+    Type: AWS::Lambda::Function
+    DependsOn: DtcPartsLookupTable
+    Properties:
+      FunctionName: dtc-parts-data-loader
+      Runtime: python3.13
+      Handler: index.handler
+      Role: !GetAtt LambdaExecutionRole.Arn
+      Timeout: 30
+      Architectures:
+        - arm64
+      MemorySize: 512
+      Code:
+        ZipFile: |
+          import boto3
+          import json
+          import urllib.request
+          import logging
+          
+          logger = logging.getLogger()
+          logger.setLevel(logging.INFO)
+          
+          def handler(event, context):
+              logger.info('Received event: %s', json.dumps(event))
+              
+              # Extract request details
+              response_url = event.get('ResponseURL')
+              stack_id = event.get('StackId')
+              request_id = event.get('RequestId')
+              logical_resource_id = event.get('LogicalResourceId')
+              physical_resource_id = event.get('PhysicalResourceId', 'DtcPartsDataLoader')
+              
+              # Prepare the response payload
+              response_body = {
+                  'Status': 'SUCCESS',
+                  'PhysicalResourceId': physical_resource_id,
+                  'StackId': stack_id,
+                  'RequestId': request_id,
+                  'LogicalResourceId': logical_resource_id
+              }
+              
+              # For Delete requests, just send success response
+              if event.get('RequestType') == 'Delete':
+                  logger.info("Delete request - sending success response")
+                  send_response(response_url, response_body)
+                  return
+              
+              try:
+                  # Initialize DynamoDB client
+                  dynamodb = boto3.resource('dynamodb')
+                  table = dynamodb.Table('dtc-parts-lookup')
+                  
+                  # Define the items to be loaded
+                  items = [
+                      {
+                          "dtc_code": "P0442",
+                          "part_code": "EVAP-005",
+                          "part_description": "EVAP Canister Purge Valve"
+                      },
+                      {
+                          "dtc_code": "P0171",
+                          "part_code": "MAF-002",
+                          "part_description": "Mass Air Flow Sensor"
+                      },
+                      {
+                          "dtc_code": "P0507",
+                          "part_code": "IAC-004",
+                          "part_description": "Idle Air Control Valve"
+                      },
+                      {
+                          "dtc_code": "P0113",
+                          "part_code": "IAT-009",
+                          "part_description": "Intake Air Temperature Sensor"
+                      },
+                      {
+                          "dtc_code": "P0300",
+                          "part_code": "IGN-001",
+                          "part_description": "Ignition Coil"
+                      },
+                      {
+                          "dtc_code": "P0300",
+                          "part_code": "SPK-011",
+                          "part_description": "Spark Plug"
+                      },
+                      {
+                          "dtc_code": "P0032",
+                          "part_code": "O2-007",
+                          "part_description": "Oxygen Sensor"
+                      },
+                      {
+                          "dtc_code": "P0455",
+                          "part_code": "FUEL-006",
+                          "part_description": "Fuel Tank Cap"
+                      },
+                      {
+                          "dtc_code": "P0325",
+                          "part_code": "KNOCK-010",
+                          "part_description": "Knock Sensor"
+                      },
+                      {
+                          "dtc_code": "P0420",
+                          "part_code": "CAT-003",
+                          "part_description": "Catalytic Converter"
+                      },
+                      {
+                          "dtc_code": "P0420",
+                          "part_code": "O2-007",
+                          "part_description": "Oxygen Sensor"
+                      },
+                      {
+                          "dtc_code": "P0135",
+                          "part_code": "O2-007",
+                          "part_description": "Oxygen Sensor (Bank 1, Sensor 1)"
+                      },
+                      {
+                          "dtc_code": "P0700",
+                          "part_code": "TCM-008",
+                          "part_description": "Transmission Control Module"
+                      }
+                  ]
+                  
+                  # Use batch write to load items efficiently
+                  with table.batch_writer() as batch:
+                      for item in items:
+                          batch.put_item(Item=item)
+                  
+                  logger.info('Successfully loaded %s items into DynamoDB table', len(items))
+                  
+                  # Add data to response
+                  response_body['Data'] = {'Message': f"Added {len(items)} sample records"}
+                  
+                  # Send success response
+                  send_response(response_url, response_body)
+              except Exception as e:
+                  error_message = str(e)
+                  logger.error('Error loading data: %s', error_message)
+                  
+                  # Send failure response
+                  response_body['Status'] = 'FAILED'
+                  response_body['Reason'] = error_message
+                  send_response(response_url, response_body)
+          
+          def send_response(response_url, response_body):
+              """Send a response to CloudFormation to handle the custom resource."""
+              json_response_body = json.dumps(response_body)
+              
+              logger.info(f"Sending response to: {response_url}")
+              logger.info(f"Response body: {json_response_body}")
+              
+              headers = {
+                  'content-type': '',
+                  'content-length': str(len(json_response_body))
+              }
+              
+              try:
+                  req = urllib.request.Request(response_url, 
+                                              data=json_response_body.encode('utf-8'),
+                                              headers=headers,
+                                              method='PUT')
+                  
+                  response = urllib.request.urlopen(req)
+                  logger.info(f"Status code: {response.getcode()}")
+                  logger.info(f"Status message: {response.msg}")
+                  return True
+              except Exception as e:
+                  logger.error(f"Failed to send response: {str(e)}")
+                  return False
+
+  # Custom resource to trigger Lambda function
+  DataLoaderTrigger:
+    Type: Custom::DataLoader
+    DependsOn: DataLoaderFunction
+    Properties:
+      ServiceToken: !GetAtt DataLoaderFunction.Arn
+      Region: !Ref AWS::Region
+      
+  # Lambda Function to get parts for DTC
+  GetPartsForDTCFunction:
+    Type: AWS::Lambda::Function
+    DependsOn: DtcPartsLookupTable
+    Properties:
+      FunctionName: get-parts-for-dtc
+      Runtime: python3.13
+      Handler: index.lambda_handler
+      Role: !GetAtt GetPartsForDTCRole.Arn
+      Timeout: 30
+      Architectures:
+        - arm64
+      MemorySize: 512
+      Code:
+        ZipFile: |
+          import boto3
+          import json
+
+          dynamodb = boto3.resource("dynamodb")
+          table = dynamodb.Table("dtc-parts-lookup")
+
+          def lambda_handler(event, context):
+
+              if "parameters" in event:
+                  dtc_code = ""
+                  for param in event["parameters"]:
+                      if param.get("name") == "dtc_code":
+                          dtc_code = param.get("value", "")
+              else:
+                  dtc_code = event.get("dtc_code")
+
+              agent = event['agent']
+              function = event['function']
+              actionGroup = event['actionGroup']
+              
+              if not dtc_code:
+                  response_body = {
+                      'TEXT': {
+                          'body': 'Missing DTC Code in Input'
+                      }
+                  }
+                  
+                  function_response = {
+                      'actionGroup': event['actionGroup'],
+                      'function': event['function'],
+                      'functionResponse': {
+                          'responseBody': response_body
+                      }
+                  }
+
+                  session_attributes = event['sessionAttributes']
+                  prompt_session_attributes = event['promptSessionAttributes']
+
+                  action_response = {
+                      'messageVersion': '1.0', 
+                      'response': function_response,
+                      'sessionAttributes': session_attributes,
+                      'promptSessionAttributes': prompt_session_attributes
+                      }
+                          
+                  return action_response
+              
+              # Convert DTC code to uppercase for consistent matching
+              dtc_code = dtc_code.upper()
+              
+              try:
+                  response = table.query(
+                      KeyConditionExpression=boto3.dynamodb.conditions.Key("dtc_code").eq(dtc_code)
+                  )
+                  
+                  items = response.get("Items", [])
+
+                  if not items:
+                      response_body = {
+                          'TEXT': {
+                              'body': f"DTC code '{dtc_code}' was not found in DynamoDB"
+                          }
+                      }
+                  else:
+                      response_body = {
+                          'TEXT': {
+                              'body': json.dumps(items)
+                          }
+                      }
+              except Exception as e:
+                  # Handle any errors that occur during the DynamoDB query
+                  error_message = f"Error querying DynamoDB: {str(e)}"
+                  print(error_message)  # Log the error
+                  
+                  response_body = {
+                      'TEXT': {
+                          'body': error_message
+                      }
+                  }
+              
+              function_response = {
+                  'actionGroup': event['actionGroup'],
+                  'function': event['function'],
+                  'functionResponse': {
+                      'responseBody': response_body
+                  }
+              }
+
+              session_attributes = event['sessionAttributes']
+              prompt_session_attributes = event['promptSessionAttributes']
+
+              action_response = {
+                  'messageVersion': '1.0', 
+                  'response': function_response,
+                  'sessionAttributes': session_attributes,
+                  'promptSessionAttributes': prompt_session_attributes
+                  }
+                  
+              return action_response
+
+  # IAM Role for PlacePartsOrder Lambda function
+  PlacePartsOrderRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+      Policies:
+        - PolicyName: DynamoDBPartsOrderAccess
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - dynamodb:UpdateItem
+                Resource: !GetAtt DealerPartsOrderTable.Arn
+
+  # Lambda Function to place parts order
+  PlacePartsOrderFunction:
+    Type: AWS::Lambda::Function
+    DependsOn: DealerPartsOrderTable
+    Properties:
+      FunctionName: place-parts-order
+      Runtime: python3.13
+      Handler: index.lambda_handler
+      Role: !GetAtt PlacePartsOrderRole.Arn
+      Timeout: 30
+      Architectures:
+        - arm64
+      MemorySize: 512
+      Code:
+        ZipFile: |
+          import boto3
+          import json
+          from botocore.exceptions import ClientError
+
+          dynamodb = boto3.resource("dynamodb")
+          dealer_order_table = dynamodb.Table("dealer-parts-order")
+
+          def place_order(dealer_code, part_code, quantity, event):
+              
+              # Define the key to check for the item
+              key = {
+                  "dealer_code": dealer_code,
+                  "part_code": part_code
+              }
+
+              try:
+                  quantity_value = int(quantity) if isinstance(quantity, (int, float)) else 1
+                  response = dealer_order_table.update_item(
+                      Key=key,
+                      UpdateExpression="ADD quantity :quantity",  
+                      ExpressionAttributeValues={
+                          ":quantity": quantity_value 
+                      },
+                      ReturnValues="UPDATED_NEW"  
+                  )
+                  print (quantity_value, part_code, dealer_code)
+                  # If the update is successful, return the success message
+                  response_body = {
+                      'TEXT': {
+                          'body': json.dumps({"message": "parts order successfully placed"})
+                      }
+                  }
+              
+              except ClientError as e:
+                  # If an error occurs, handle it here (logging or rethrowing)
+                  response_body = {
+                      'TEXT': {
+                          'body': json.dumps({"message": f"Error: {str(e)}"})
+                      }
+                  }
+
+              function_response = {
+                  'actionGroup': event['actionGroup'],
+                  'function': event['function'],
+                  'functionResponse': {
+                      'responseBody': response_body
+                  }
+              }
+
+              session_attributes = event['sessionAttributes']
+              prompt_session_attributes = event['promptSessionAttributes']
+
+              action_response = {
+                  'messageVersion': '1.0', 
+                  'response': function_response,
+                  'sessionAttributes': session_attributes,
+                  'promptSessionAttributes': prompt_session_attributes
+              }
+              print (action_response)
+              return action_response
+
+          def lambda_handler(event, context):
+
+              if "parameters" in event:
+                  # Loop through the parameters list to find the dealer, part code and quantity
+                  dealer_code = ""
+                  part_code = ""
+                  quantity = ""
+                  for param in event["parameters"]:
+                      if param.get("name") == "dealer_code":
+                          dealer_code = param.get("value", "")
+                      elif param.get("name") == "part_code":
+                          part_code = param.get("value", "")
+                      elif param.get("name") == "quantity":
+                          quantity = param.get("value", "")
+              else:
+                  dealer_code = event.get("dealer_code")
+                  part_code = event.get("part_code")
+                  quantity = event.get("quantity")
+
+              agent = event['agent']
+              function = event['function']
+              actionGroup = event['actionGroup']
+
+              if not dealer_code or not part_code or not quantity:
+                  response_body = {
+                      'TEXT': {
+                          'body': json.dumps({"message": "Missing dealer_code, part_code, or quantity in request"})
+                      }
+                  }
+
+                  function_response = {
+                      'actionGroup': event['actionGroup'],
+                      'function': event['function'],
+                      'functionResponse': {
+                      'responseBody': response_body
+                      }
+                  }   
+
+                  session_attributes = event['sessionAttributes']
+                  prompt_session_attributes = event['promptSessionAttributes']
+
+                  action_response = {
+                      'messageVersion': '1.0', 
+                      'response': function_response,
+                      'sessionAttributes': session_attributes,
+                      'promptSessionAttributes': prompt_session_attributes
+                  }
+                  print (action_response)
+                  return action_response
+                  
+              return place_order(dealer_code, part_code, quantity, event)
+
+  # IAM Role for GetDealerStock Lambda function
+  GetDealerStockRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+      Policies:
+        - PolicyName: DynamoDBDealerStockAccess
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - dynamodb:GetItem
+                Resource: !GetAtt DealerPartsStockTable.Arn
+
+  # Lambda Function to get dealer stock
+  GetDealerStockFunction:
+    Type: AWS::Lambda::Function
+    DependsOn: DealerPartsStockTable
+    Properties:
+      FunctionName: get-dealer-stock
+      Runtime: python3.13
+      Handler: index.lambda_handler
+      Role: !GetAtt GetDealerStockRole.Arn
+      Timeout: 30
+      Architectures:
+        - arm64
+      MemorySize: 512
+      Code:
+        ZipFile: |
+          import boto3
+          import json
+          from decimal import Decimal
+
+          dynamodb = boto3.resource("dynamodb")
+          dealer_stock_table = dynamodb.Table("dealer-parts-stock")
+
+          class DecimalEncoder(json.JSONEncoder):
+              def default(self, o):
+                  if isinstance(o, Decimal):
+                      return float(o)
+                  return super(DecimalEncoder, self).default(o)
+
+          def get_dealer_stock(dealer_code, part_code):
+              response = dealer_stock_table.get_item(
+                  Key={"dealer_code": dealer_code, "part_code": part_code}
+              )
+              item = response.get("Item", {})
+              if not item:
+                  return {"dealer_code": dealer_code, "part_code": part_code, "stock": 0}
+
+              return item
+
+          def lambda_handler(event, context):
+
+              dealer_code = ""
+              part_code = ""
+
+              if "parameters" in event:
+                  for param in event["parameters"]:
+                      if param.get("name") == "dealer_code" or \
+                         param.get("name") == "dealer_name":
+                          dealer_code = param.get("value", "")
+                      elif param.get("name") == "part_code":
+                          part_code = param.get("value", "")
+              else:
+                  dealer_code = event["dealer_code"]
+                  part_code = event["part_code"]
+              
+              agent = event['agent']
+              function = event['function']
+              actionGroup = event['actionGroup']
+
+              if not dealer_code or not part_code:
+                  print ("Missing dealer_code or part_code in request")
+                  response_body = {
+                  'TEXT': {
+                      'body': 'Missing dealer_code or part_code in request'
+                      }
+                  }
+              else:
+                  # Convert part_code to uppercase for consistent matching
+                  part_code = part_code.upper()
+                  
+                  # Format dealer_code with proper capitalization (capitalize first letter of each word)
+                  dealer_code = " ".join(word.capitalize() for word in dealer_code.split())
+                  
+                  stock_data = get_dealer_stock(dealer_code, part_code)
+                  
+                  # Handle different capitalization of 'stock' field and set default to 0 if not found
+                  if 'stock' in stock_data:
+                      stock_data['stock'] = int(stock_data['stock'])
+                  elif 'Stock' in stock_data:
+                      stock_data['stock'] = int(stock_data['Stock'])
+                      # Remove the capitalized version to standardize the response
+                      del stock_data['Stock']
+                  else:
+                      stock_data['stock'] = 0
+                      
+                  response_body = {
+                  'TEXT': {
+                      'body': json.dumps(stock_data, cls=DecimalEncoder)
+                      }
+                  }
+
+              function_response = {
+                  'actionGroup': event['actionGroup'],
+                  'function': event['function'],
+                  'functionResponse': {
+                      'responseBody': response_body
+                  }
+              }
+
+              session_attributes = event['sessionAttributes']
+              prompt_session_attributes = event['promptSessionAttributes']
+
+              action_response = {
+                  'messageVersion': '1.0', 
+                  'response': function_response,
+                  'sessionAttributes': session_attributes,
+                  'promptSessionAttributes': prompt_session_attributes
+                  }
+                  
+              return action_response
+
+Outputs:
+  DynamoDBTableName:
+    Description: Name of the DynamoDB table
+    Value: !Ref DtcPartsLookupTable
+  DynamoDBTableArn:
+    Description: ARN of the DynamoDB table
+    Value: !GetAtt DtcPartsLookupTable.Arn
+  LambdaFunctionName:
+    Description: Name of the Lambda function that loads data
+    Value: !Ref DataLoaderFunction
+  GetPartsForDTCFunctionName:
+    Description: Name of the Lambda function that gets parts for DTC
+    Value: !Ref GetPartsForDTCFunction
+  GetPartsForDTCFunctionArn:
+    Description: ARN of the Lambda function that gets parts for DTC
+    Value: !GetAtt GetPartsForDTCFunction.Arn
+  GetDealerStockFunctionName:
+    Description: Name of the Lambda function that gets dealer stock
+    Value: !Ref GetDealerStockFunction
+  GetDealerStockFunctionArn:
+    Description: ARN of the Lambda function that gets dealer stock
+    Value: !GetAtt GetDealerStockFunction.Arn
+  PlacePartsOrderFunctionName:
+    Description: Name of the Lambda function that places parts orders
+    Value: !Ref PlacePartsOrderFunction
+  PlacePartsOrderFunctionArn:
+    Description: ARN of the Lambda function that places parts orders
+    Value: !GetAtt PlacePartsOrderFunction.Arn

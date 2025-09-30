@@ -1,0 +1,425 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: 'CloudFormation template for get-dealer-appointment-slots Lambda function'
+
+Parameters:
+  TargetRegion:
+    Type: String
+    Default: us-west-2
+    Description: The region where you want to deploy the resources
+  BedrockServicePrincipal:
+    Type: String
+    Default: bedrock.amazonaws.com
+    Description: The Bedrock service principal that will invoke the Lambda function
+
+Resources:
+  #############################################
+  # DynamoDB Table
+  #############################################
+  
+  DealerAppointmentTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: dealer-appointment-data
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: dealer_name
+          AttributeType: S
+        - AttributeName: appointment_date_time
+          AttributeType: S
+      KeySchema:
+        - AttributeName: dealer_name
+          KeyType: HASH
+        - AttributeName: appointment_date_time
+          KeyType: RANGE
+      Tags:
+        - Key: Purpose
+          Value: DealerAppointments
+
+  #############################################
+  # IAM Role for Lambda Function
+  #############################################
+  
+  DealerAppointmentLambdaRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: dealer-appointment-name-lambda-role
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/AmazonDynamoDBFullAccess
+      Policies:
+        - PolicyName: LambdaBasicExecutionPolicy
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action: logs:CreateLogGroup
+                Resource: !Sub 'arn:aws:logs:${TargetRegion}:${AWS::AccountId}:*'
+              - Effect: Allow
+                Action:
+                  - logs:CreateLogStream
+                  - logs:PutLogEvents
+                Resource:
+                  - !Sub 'arn:aws:logs:${TargetRegion}:${AWS::AccountId}:log-group:/aws/lambda/*'
+
+  #############################################
+  # Lambda Function
+  #############################################
+  
+  GetDealerAppointmentFunction:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: get-dealer-appointment-slots
+      Handler: index.lambda_handler
+      Role: !GetAtt DealerAppointmentLambdaRole.Arn
+      Runtime: python3.13
+      Architectures:
+        - arm64
+      MemorySize: 128
+      Timeout: 10
+      Code:
+        ZipFile: |
+          import boto3
+          import json
+          from boto3.dynamodb.conditions import Attr
+          from datetime import datetime, timedelta
+          from boto3.dynamodb.conditions import Key
+
+          # Define available time slots
+          AVAILABLE_SLOTS = ["08:00 AM", "10:00 AM", "12:00 PM", "02:00 PM", "04:00 PM"]
+
+          def get_next_business_day(start_date=None):
+              """Get the next business day from the given start_date (or today +1 if None), skipping weekends."""
+              if start_date:
+                  next_day = datetime.strptime(start_date, "%Y-%m-%d") + timedelta(days=1)
+              else:
+                  next_day = datetime.now() + timedelta(days=1)
+
+              while next_day.weekday() >= 5:  # 5 = Saturday, 6 = Sunday
+                  next_day += timedelta(days=1)
+              
+              return next_day.strftime("%Y-%m-%d")
+
+          def format_dealer_name(dealer_name):
+              """Format dealer name with first letter of each word capitalized."""
+              if not dealer_name:
+                  return dealer_name
+              # Split by spaces and capitalize first letter of each word
+              words = dealer_name.split()
+              formatted_name = ' '.join(word.capitalize() for word in words)
+              return formatted_name
+
+          def get_booked_appointments(dealer_name, appointment_date, appointment_table):
+              """Scan DynamoDB to get booked appointments for a given dealer name and date."""
+              # Format dealer name to match the format in DynamoDB
+              formatted_dealer_name = format_dealer_name(dealer_name)
+              
+              response = appointment_table.scan(
+                  FilterExpression=Attr("dealer_name").eq(formatted_dealer_name) & Attr("appointment_date_time").begins_with(appointment_date)
+              )
+
+              return {item["appointment_date_time"][11:] for item in response.get("Items", [])}
+
+          def find_available_slots_for_date(dealer_name, appointment_date, appointment_table):
+              """Find available appointment slots for a specific date."""
+              booked_slots = get_booked_appointments(dealer_name, appointment_date, appointment_table)
+              
+              # Find slots that are not booked for the specified date
+              available_slots = [
+                  (appointment_date, slot) for slot in AVAILABLE_SLOTS 
+                  if slot not in booked_slots
+              ]
+              
+              # Return available slots for the requested date (may be empty)
+              return available_slots
+
+          def find_available_slots(dealer_name, appointment_table):
+              """Find 5 available appointment slots, searching across multiple days if needed."""
+              slots_found = []
+              search_date = get_next_business_day()
+              
+              while len(slots_found) < 5:
+                  booked_slots = get_booked_appointments(dealer_name, search_date, appointment_table)
+                  
+                  # Find slots that are not booked
+                  available_slots = [
+                      (search_date, slot) for slot in AVAILABLE_SLOTS 
+                      if slot not in booked_slots
+                  ]
+                  
+                  if available_slots:
+                      slots_needed = 5 - len(slots_found)
+                      slots_found.extend(available_slots[:slots_needed])
+
+                  # Move to the next business day if we haven't found enough slots
+                  if len(slots_found) < 5:
+                      search_date = get_next_business_day(search_date)
+
+              return slots_found
+
+          def get_dealer_details(dealer_name):
+              """Get dealer details from the dealer-data table."""
+              dynamodb = boto3.resource("dynamodb")
+              dealer_table = dynamodb.Table("dealer-data")
+              
+              # Format dealer name to match the format in DynamoDB
+              formatted_dealer_name = format_dealer_name(dealer_name)
+              
+              response = dealer_table.scan(
+                  FilterExpression=Attr("dealer_name").eq(formatted_dealer_name)
+              )
+              
+              items = response.get("Items", [])
+              if not items:
+                  return None
+              
+              dealer = items[0]
+              return {
+                  "name": dealer.get("dealer_name"),
+                  "website": dealer.get("website"),
+                  "address": f"{dealer.get('street')} {dealer.get('city')} {dealer.get('state')} {dealer.get('zip')} {dealer.get('country')}",
+                  "street": dealer.get("street"),
+                  "city": dealer.get("city"),
+                  "state": dealer.get("state"),
+                  "country": dealer.get("country"),
+                  "zip": dealer.get("zip"),
+                  "contactDetails": dealer.get("phone"),
+                  "addressTitle": f"{dealer.get('city')} AutoMall"
+              }
+
+          def format_time_for_response(time_str):
+              """Return the time string in its original format."""
+              # Return the original time string instead of converting to 24-hour format
+              return time_str
+
+          def get_day_of_week(date_str):
+              """Get the day of week from a date string."""
+              date_obj = datetime.strptime(date_str, "%Y-%m-%d")
+              return date_obj.strftime("%A")
+
+          def lambda_handler(event, context):
+              dynamodb = boto3.resource("dynamodb")
+              appointment_table = dynamodb.Table("dealer-appointment-data") 
+              
+              print(event)
+
+              agent = event.get('agent', 'unknown')
+              function = event.get('function', 'unknown')
+              actionGroup = event.get('actionGroup', 'unknown')
+
+              # Extract the dealer name and appointment date from the 'parameters' list in the JSON
+              dealer_name = None
+              appointment_date = None
+              if "parameters" in event:
+                  for param in event.get('parameters', []):
+                      if param.get('name') == 'dealer_name' or \
+                         param.get('name') == 'dealername':
+                          dealer_name = param.get('value')
+                      elif param.get('name') == 'appointment_date':
+                          appointment_date = param.get('value')
+                          break
+              else:
+                  dealer_name = event.get("dealer_name") or event.get("dealername")
+
+              if not dealer_name:
+                  return {"statusCode": 400, "body": json.dumps({"error": "Missing dealer_name"})}
+
+              # Get dealer details
+              dealer_details = get_dealer_details(dealer_name)
+              if not dealer_details:
+                  response_body = {
+                      'TEXT': {
+                          'body': json.dumps({
+                              "message": f"We could not find a dealer with the name '{dealer_name}'. Please check the dealer name and try again."
+                          }, indent=2)
+                      }
+                  }
+                  
+                  function_response = {
+                      'actionGroup': actionGroup,
+                      'function': function,
+                      'functionResponse': {
+                          'responseBody': response_body
+                      }
+                  }
+                  
+                  session_attributes = event.get('sessionAttributes', {})
+                  prompt_session_attributes = event.get('promptSessionAttributes', {})
+                  
+                  action_response = {
+                      'messageVersion': '1.0', 
+                      'response': function_response,
+                      'sessionAttributes': session_attributes,
+                      'promptSessionAttributes': prompt_session_attributes
+                  }
+                  
+                  print(action_response)
+                  return action_response
+
+              # Validate appointment date if provided
+              if appointment_date:
+                  # Check if appointment date is today or in the past
+                  today = datetime.now().strftime("%Y-%m-%d")
+                  if appointment_date <= today:
+                      response_body = {
+                          'TEXT': {
+                              'body': json.dumps({
+                                  "message": "We cannot find appointment slots for today or past dates."
+                              }, indent=2)
+                          }
+                      }
+                      
+                      function_response = {
+                          'actionGroup': actionGroup,
+                          'function': function,
+                          'functionResponse': {
+                              'responseBody': response_body
+                          }
+                      }
+                      
+                      session_attributes = event.get('sessionAttributes', {})
+                      prompt_session_attributes = event.get('promptSessionAttributes', {})
+                      
+                      action_response = {
+                          'messageVersion': '1.0', 
+                          'response': function_response,
+                          'sessionAttributes': session_attributes,
+                          'promptSessionAttributes': prompt_session_attributes
+                      }
+                      
+                      print(action_response)
+                      return action_response
+                      
+                  available_slots = find_available_slots_for_date(dealer_name, appointment_date, appointment_table)
+                  if not available_slots:
+                      # Format the date for display (assuming appointment_date is in YYYY-MM-DD format)
+                      formatted_date = datetime.strptime(appointment_date, "%Y-%m-%d").strftime("%m-%d-%Y")
+                      response_body = {
+                          'TEXT': {
+                              'body': json.dumps({
+                                  "message": f"There are no available slots for the date {formatted_date}"
+                              }, indent=2)
+                          }
+                      }
+                      
+                      function_response = {
+                          'actionGroup': actionGroup,
+                          'function': function,
+                          'functionResponse': {
+                              'responseBody': response_body
+                          }
+                      }
+                      
+                      session_attributes = event.get('sessionAttributes', {})
+                      prompt_session_attributes = event.get('promptSessionAttributes', {})
+                      
+                      action_response = {
+                          'messageVersion': '1.0', 
+                          'response': function_response,
+                          'sessionAttributes': session_attributes,
+                          'promptSessionAttributes': prompt_session_attributes
+                      }
+                      
+                      print(action_response)
+                      return action_response
+              else:
+                  available_slots = find_available_slots(dealer_name, appointment_table)
+              
+              # Check if this is a direct invocation or from Bedrock
+              if all(key in event for key in ['agent', 'function', 'actionGroup']):
+                  # Group slots by date
+                  slots_by_date = {}
+                  for date, time in available_slots:
+                      if date not in slots_by_date:
+                          slots_by_date[date] = []
+                      slots_by_date[date].append(time)
+                  
+                  # Format the response according to the required structure
+                  days = []
+                  today = datetime.now().strftime("%Y-%m-%d")
+                  
+                  for date, times in slots_by_date.items():
+                      day_data = {
+                          "isOpen": True,
+                          "isToday": date == today,
+                          "calendarDate": date,
+                          "dayOfWeek": get_day_of_week(date),
+                          "timeslots": [
+                              {
+                                  "time": format_time_for_response(time),
+                                  "isOpen": True
+                              } for time in times
+                          ]
+                      }
+                      days.append(day_data)
+                  
+                  # Construct the final response
+                  response_data = {
+                      "dealerDetails": dealer_details,
+                      "availableTimeslots": {
+                          "days": days
+                      }
+                  }
+                  
+                  response_body = {
+                      'TEXT': {
+                          'body': json.dumps(response_data, indent=2)
+                      }
+                  }
+                  
+                  function_response = {
+                      'actionGroup': actionGroup,
+                      'function': function,
+                      'functionResponse': {
+                          'responseBody': response_body
+                      }
+                  }
+                  
+                  session_attributes = event.get('sessionAttributes', {})
+                  prompt_session_attributes = event.get('promptSessionAttributes', {})
+                  
+                  action_response = {
+                      'messageVersion': '1.0', 
+                      'response': function_response,
+                      'sessionAttributes': session_attributes,
+                      'promptSessionAttributes': prompt_session_attributes
+                  }
+                  
+                  print(action_response)
+                  return action_response
+              else:
+                  # Direct invocation format
+                  return {
+                      "statusCode": 200,
+                      "body": json.dumps([{"date": date, "time": time} for date, time in available_slots])
+                  }
+      LoggingConfig:
+        LogFormat: Text
+        LogGroup: !Sub '/aws/lambda/get-dealer-appointment-slots'
+
+  #############################################
+  # Lambda Permission for Bedrock
+  #############################################
+  
+  BedrockInvokeLambdaPermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !Ref GetDealerAppointmentFunction
+      Action: lambda:InvokeFunction
+      Principal: !Ref BedrockServicePrincipal
+
+Outputs:
+  GetDealerAppointmentFunctionArn:
+    Description: ARN of the get-dealer-appointment-slots Lambda function
+    Value: !GetAtt GetDealerAppointmentFunction.Arn
+  DealerAppointmentTableName:
+    Description: Name of the DynamoDB table for dealer appointments
+    Value: !Ref DealerAppointmentTable
+  DealerAppointmentTableArn:
+    Description: ARN of the DynamoDB table for dealer appointments
+    Value: !GetAtt DealerAppointmentTable.Arn

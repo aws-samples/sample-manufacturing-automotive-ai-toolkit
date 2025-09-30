@@ -1,0 +1,450 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: 'CloudFormation template for get-dealer-data Lambda function and DynamoDB table'
+
+Parameters:
+  TargetRegion:
+    Type: String
+    Default: us-west-2
+    Description: The region where you want to deploy the resources
+  BedrockServicePrincipal:
+    Type: String
+    Default: bedrock.amazonaws.com
+    Description: The Bedrock service principal that will invoke the Lambda function
+
+Resources:
+  # DynamoDB Table
+  DealerDataTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: dealer-data
+      AttributeDefinitions:
+        - AttributeName: dealer_code
+          AttributeType: S
+        - AttributeName: city_name
+          AttributeType: S
+      KeySchema:
+        - AttributeName: dealer_code
+          KeyType: HASH
+        - AttributeName: city_name
+          KeyType: RANGE
+      BillingMode: PAY_PER_REQUEST
+      TableClass: STANDARD
+
+  # Lambda Role
+  DealerDataLambdaRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub 'dealer-data-lambda-role-${AWS::Region}'
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/AmazonDynamoDBFullAccess
+      Policies:
+        - PolicyName: !Sub 'LambdaBasicExecutionPolicy-${AWS::Region}'
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action: logs:CreateLogGroup
+                Resource: !Sub 'arn:aws:logs:${TargetRegion}:${AWS::AccountId}:*'
+              - Effect: Allow
+                Action:
+                  - logs:CreateLogStream
+                  - logs:PutLogEvents
+                Resource:
+                  - !Sub 'arn:aws:logs:${TargetRegion}:${AWS::AccountId}:log-group:/aws/lambda/*'
+
+  # Lambda Function
+  DealerDataLambdaFunction:
+    Type: AWS::Lambda::Function
+    DependsOn: DealerDataTable
+    Properties:
+      FunctionName: get-dealer-data
+      Handler: index.lambda_handler
+      Role: !GetAtt DealerDataLambdaRole.Arn
+      Runtime: python3.13
+      Architectures:
+        - arm64
+      MemorySize: 512
+      Timeout: 600
+      Code:
+        ZipFile: |
+          import boto3
+          import json
+          from decimal import Decimal
+          from boto3.dynamodb.conditions import Attr
+
+          class DecimalEncoder(json.JSONEncoder):
+              def default(self, o):
+                  if isinstance(o, Decimal):
+                      return float(o)
+                  return super(DecimalEncoder, self).default(o)
+
+          def lambda_handler(event, context):
+              
+              if "parameters" in event:
+                  # Loop through the parameters list to find the city
+                  city = ""
+                  for param in event["parameters"]:
+                      if param.get("name") == "city":
+                          city = param.get("value", "")
+                          break
+              else:
+                  city = event.get("city", "")
+              
+              agent = event['agent']
+              function = event['function']
+              actionGroup = event['actionGroup']
+
+              # Normalize the city name to match stored format (e.g., "San Francisco")
+              city = city.title()
+
+              dynamodb = boto3.resource('dynamodb')
+              table = dynamodb.Table('dealer-data')
+              
+              try:
+                  response = table.scan(
+                      FilterExpression=Attr("city_name").eq(city)
+                  )
+                  items = response.get("Items", [])
+
+              except Exception as e:
+                  # Capture DynamoDB error and return it to the caller
+                  error_message = f"Error querying DynamoDB: {str(e)}"
+                  print(error_message)
+                  
+                  # Create error response
+                  response_body = {
+                      'TEXT': {
+                          'body': json.dumps({"error": error_message})
+                      }
+                  }
+                  
+                  function_response = {
+                      'actionGroup': event['actionGroup'],
+                      'function': event['function'],
+                      'functionResponse': {
+                          'responseBody': response_body
+                      }
+                  }
+                  
+                  return {
+                      'messageVersion': '1.0', 
+                      'response': function_response,
+                      'sessionAttributes': event['sessionAttributes'],
+                      'promptSessionAttributes': event['promptSessionAttributes']
+                  }
+              
+              # Check if any dealers were found
+              if not items:
+                  # No dealers found, return a message
+                  output = [{"message": f"No dealers found in {city}"}]
+                  print('No dealers found')
+              else:
+                  # Dealers found, process them
+                  output = []
+                  for item in items:
+                      output.append({
+                          "dealer_code": item.get("dealer_code"),
+                          "dealer_name": item.get("dealer_name"),
+                          "latitude": item.get("latitude"),
+                          "longitude": item.get("longitude"),
+                          "city_name": item.get("city_name"),
+                          "website": item.get("website"),
+                          "street": item.get("street"),
+                          "city": item.get("city"),
+                          "state": item.get("state"),
+                          "country": item.get("country"),
+                          "zip": item.get("zip"),
+                          "phone": item.get("phone"),
+                          "email": item.get("email")
+                      })
+              
+              response_body = {
+                  'TEXT': {
+                      'body': json.dumps(output, cls=DecimalEncoder)
+                  }
+              }
+
+              function_response = {
+                  'actionGroup': event['actionGroup'],
+                  'function': event['function'],
+                  'functionResponse': {
+                      'responseBody': response_body
+                  }
+              }
+              
+              session_attributes = event['sessionAttributes']
+              prompt_session_attributes = event['promptSessionAttributes']
+              
+              action_response = {
+                  'messageVersion': '1.0', 
+                  'response': function_response,
+                  'sessionAttributes': session_attributes,
+                  'promptSessionAttributes': prompt_session_attributes
+              }
+              
+              print (action_response)
+              return action_response
+
+      LoggingConfig:
+        LogFormat: Text
+        LogGroup: !Sub '/aws/lambda/get-dealer-data'
+
+  # Lambda Permission for Bedrock
+  BedrockInvokeLambdaPermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !Ref DealerDataLambdaFunction
+      Action: lambda:InvokeFunction
+      Principal: !Ref BedrockServicePrincipal
+
+  # Sample Data Function
+  SampleDataFunction:
+    Type: AWS::Lambda::Function
+    Properties:
+      Handler: index.handler
+      Role: !GetAtt SampleDataRole.Arn
+      Runtime: python3.9
+      Timeout: 30
+      Code:
+        ZipFile: |
+          import boto3
+          import json
+          import urllib.request
+          from decimal import Decimal
+          
+          def handler(event, context):
+              print(f"Received event: {json.dumps(event)}")
+              
+              # Extract request details
+              response_url = event.get('ResponseURL')
+              stack_id = event.get('StackId')
+              request_id = event.get('RequestId')
+              logical_resource_id = event.get('LogicalResourceId')
+              physical_resource_id = event.get('PhysicalResourceId', 'SampleDataPopulation')
+              
+              # Prepare the response payload
+              response_body = {
+                  'Status': 'SUCCESS',
+                  'PhysicalResourceId': physical_resource_id,
+                  'StackId': stack_id,
+                  'RequestId': request_id,
+                  'LogicalResourceId': logical_resource_id
+              }
+              
+              # For Delete requests, just send success response
+              if event.get('RequestType') == 'Delete':
+                  print("Delete request - sending success response")
+                  send_response(response_url, response_body)
+                  return
+              
+              try:
+                  dynamodb = boto3.resource('dynamodb')
+                  table = dynamodb.Table('dealer-data')
+                  
+                  # Sample data with additional fields
+                  sample_data = [
+                      {
+                          'dealer_code': 'D037',
+                          'city_name': 'Berkeley',
+                          'dealer_name': 'Legend Motors',
+                          'latitude': Decimal('37.8775'),
+                          'longitude': Decimal('-122.279'),
+                          'website': 'https://www.legendmotors.com',
+                          'street': '2107 Shattuck Ave',
+                          'city': 'Berkeley',
+                          'state': 'CA',
+                          'country': 'USA',
+                          'zip': '94704',
+                          'phone': '(510) 555-1234',
+                          'email': 'sales@legendmotors.com'
+                      },
+                      {
+                          'dealer_code': 'D042',
+                          'city_name': 'Palo Alto',
+                          'dealer_name': 'Quest Autos',
+                          'latitude': Decimal('37.442899999999995'),
+                          'longitude': Decimal('-122.144'),
+                          'website': 'https://www.questautos.com',
+                          'street': '1730 Embarcadero Rd',
+                          'city': 'Palo Alto',
+                          'state': 'CA',
+                          'country': 'USA',
+                          'zip': '94303',
+                          'phone': '(650) 555-8765',
+                          'email': 'info@questautos.com'
+                      },
+                      {
+                          'dealer_code': 'D072',
+                          'city_name': 'Mountain View',
+                          'dealer_name': 'Unity Cars',
+                          'latitude': Decimal('37.3871'),
+                          'longitude': Decimal('-122.0849'),
+                          'website': 'https://www.unitycars.com',
+                          'street': '2500 El Camino Real',
+                          'city': 'Mountain View',
+                          'state': 'CA',
+                          'country': 'USA',
+                          'zip': '94040',
+                          'phone': '(650) 555-9876',
+                          'email': 'sales@unitycars.com'
+                      },
+                      {
+                          'dealer_code': 'D011',
+                          'city_name': 'Oakland',
+                          'dealer_name': 'Keen Cars',
+                          'latitude': Decimal('37.8044'),
+                          'longitude': Decimal('-122.2711'),
+                          'website': 'https://www.keencars.com',
+                          'street': '3400 Broadway',
+                          'city': 'Oakland',
+                          'state': 'CA',
+                          'country': 'USA',
+                          'zip': '94611',
+                          'phone': '(510) 555-4321',
+                          'email': 'contact@keencars.com'
+                      },
+                      {
+                          'dealer_code': 'D028',
+                          'city_name': 'San Jose',
+                          'dealer_name': 'Crown Cars',
+                          'latitude': Decimal('37.3452'),
+                          'longitude': Decimal('-121.89330000000001'),
+                          'website': 'https://www.crowncars.com',
+                          'street': '1302 N First St',
+                          'city': 'San Jose',
+                          'state': 'CA',
+                          'country': 'USA',
+                          'zip': '95112',
+                          'phone': '(408) 555-7890',
+                          'email': 'info@crowncars.com'
+                      },
+                      {
+                          'dealer_code': 'D055',
+                          'city_name': 'Fremont',
+                          'dealer_name': 'Apex Autos',
+                          'latitude': Decimal('37.7749'),
+                          'longitude': Decimal('-122.4194'),
+                          'website': 'https://www.apexautos.com',
+                          'street': '43191 Mission Blvd',
+                          'city': 'Fremont',
+                          'state': 'CA',
+                          'country': 'USA',
+                          'zip': '94539',
+                          'phone': '(510) 555-6543',
+                          'email': 'sales@apexautos.com'
+                      },
+                      {
+                          'dealer_code': 'D099',
+                          'city_name': 'San Francisco',
+                          'dealer_name': 'Bay Area Autos',
+                          'latitude': Decimal('37.7833'),
+                          'longitude': Decimal('-122.4167'),
+                          'website': 'https://www.bayareaautos.com',
+                          'street': '1000 Van Ness Ave',
+                          'city': 'San Francisco',
+                          'state': 'CA',
+                          'country': 'USA',
+                          'zip': '94109',
+                          'phone': '(415) 555-2345',
+                          'email': 'info@bayareaautos.com'
+                      }
+                  ]
+                  
+                  # Put the items
+                  for item in sample_data:
+                      table.put_item(Item=item)
+                      print(f"Added item: {item['dealer_code']} - {item['city_name']}")
+                  
+                  print(f"Successfully added {len(sample_data)} sample records")
+                  
+                  # Add data to response
+                  response_body['Data'] = {'Message': f"Added {len(sample_data)} sample records"}
+                  
+                  # Send success response
+                  send_response(response_url, response_body)
+              except Exception as e:
+                  error_message = str(e)
+                  print(f"Error adding sample data: {error_message}")
+                  
+                  # Send failure response
+                  response_body['Status'] = 'FAILED'
+                  response_body['Reason'] = error_message
+                  send_response(response_url, response_body)
+          
+          def send_response(response_url, response_body):
+              """Send a response to CloudFormation to handle the custom resource."""
+              json_response_body = json.dumps(response_body)
+              
+              print(f"Sending response to: {response_url}")
+              print(f"Response body: {json_response_body}")
+              
+              headers = {
+                  'content-type': '',
+                  'content-length': str(len(json_response_body))
+              }
+              
+              try:
+                  req = urllib.request.Request(response_url, 
+                                              data=json_response_body.encode('utf-8'),
+                                              headers=headers,
+                                              method='PUT')
+                  
+                  response = urllib.request.urlopen(req)
+                  print(f"Status code: {response.getcode()}")
+                  print(f"Status message: {response.msg}")
+                  return True
+              except Exception as e:
+                  print(f"Failed to send response: {str(e)}")
+                  return False
+
+  # Role for Sample Data Function
+  SampleDataRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: sts:AssumeRole
+      RoleName: !Sub 'sample-data-lambda-role-${AWS::Region}'
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+      Policies:
+        - PolicyName: !Sub 'DynamoDBAccess-${AWS::Region}'
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - dynamodb:PutItem
+                Resource: !GetAtt DealerDataTable.Arn
+
+  # Custom Resource to Populate Data
+  PopulateData:
+    Type: Custom::PopulateData
+    DependsOn: DealerDataTable
+    Properties:
+      ServiceToken: !GetAtt SampleDataFunction.Arn
+
+Outputs:
+  TableName:
+    Description: Name of the DynamoDB table
+    Value: !Ref DealerDataTable
+  TableArn:
+    Description: ARN of the DynamoDB table
+    Value: !GetAtt DealerDataTable.Arn
+  LambdaFunctionArn:
+    Description: ARN of the Lambda function
+    Value: !GetAtt DealerDataLambdaFunction.Arn
+  LambdaRoleArn:
+    Description: ARN of the Lambda execution role
+    Value: !GetAtt DealerDataLambdaRole.Arn

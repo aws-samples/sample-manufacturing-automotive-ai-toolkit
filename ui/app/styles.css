@@ -1,0 +1,39 @@
+/* Basic styles to verify CSS loading */
+body {
+  background-color: #f0f0f0;
+  font-family: Arial, sans-serif;
+}
+
+.header {
+  background-color: #3b82f6;
+  color: white;
+  padding: 1rem;
+  margin-bottom: 1rem;
+}
+
+.container {
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 0 1rem;
+}
+
+.card {
+  background-color: white;
+  border-radius: 0.5rem;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+  padding: 1rem;
+  margin-bottom: 1rem;
+}
+
+.button {
+  background-color: #3b82f6;
+  color: white;
+  padding: 0.5rem 1rem;
+  border-radius: 0.25rem;
+  border: none;
+  cursor: pointer;
+}
+
+.button:hover {
+  background-color: #2563eb;
+}
