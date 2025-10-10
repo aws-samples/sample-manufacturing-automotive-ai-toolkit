@@ -1,0 +1,28 @@
+{
+  "agents": [
+    {
+      "id": "agent_01_in_vehicle_agentic_ai_assistant",
+      "name": "01-in-vehicle-agentic-ai-assistant",
+      "version": "1.0.0",
+      "description": "A multi agent colloboration framework to improve the in-vehicle experience especially focused on diagnostic trouble codes and service center experience.",
+      "type": "agentcore",
+      "entrypoint": "agent.py",
+      "metadata": {
+        "authors": [
+          {
+            "name": "vedev",
+            "organization": "AWS"
+          }
+        ],
+        "created_date": "2025-10-10",
+        "last_updated": "2025-10-10",
+        "maturity": "development"
+      }
+    }
+  ],
+  "infrastructure": {
+    "cdk": true,
+    "stack_class": "AgentStack",
+    "stack_path": "cdk/stack.py"
+  }
+}
