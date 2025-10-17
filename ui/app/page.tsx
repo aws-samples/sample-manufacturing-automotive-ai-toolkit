@@ -314,13 +314,35 @@ export default function Home() {
 
       {/* Agents Grid */}
       <div className="p-6">
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
-          {isLoading ? (
-            <div className="col-span-full flex justify-center items-center py-12">
-              <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-blue-600"></div>
-            </div>
-          ) : filteredAgents.length > 0 ? (
-            filteredAgents.map(agent => {
+        {isLoading ? (
+          <div className="flex justify-center items-center py-12">
+            <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-blue-600"></div>
+          </div>
+        ) : filteredAgents.length > 0 ? (
+          <div className="space-y-6">
+            {/* Group agents by project */}
+            {Object.entries(
+              filteredAgents.reduce((groups: Record<string, any[]>, agent) => {
+                const project = agent.project || 'Standalone Agents';
+                if (!groups[project]) groups[project] = [];
+                groups[project].push(agent);
+                return groups;
+              }, {})
+            ).map(([projectName, projectAgents]) => (
+              <div key={projectName} className="border border-gray-200 rounded-lg overflow-hidden">
+                <details className="group" open>
+                  <summary className="flex items-center justify-between p-4 bg-gray-50 hover:bg-gray-100 cursor-pointer border-b border-gray-200">
+                    <h3 className="text-lg font-semibold text-gray-900">{projectName}</h3>
+                    <div className="flex items-center space-x-2">
+                      <span className="text-sm text-gray-500">{projectAgents.length} agent{projectAgents.length !== 1 ? 's' : ''}</span>
+                      <svg className="w-5 h-5 text-gray-400 group-open:rotate-90 transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                      </svg>
+                    </div>
+                  </summary>
+                  <div className="p-4">
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+                      {projectAgents.map(agent => {
               const isSelected = selectedAgents.some(a => a.id === agent.id);
               const isSupervisor = isSupervisorType(agent);
               
@@ -400,13 +422,18 @@ export default function Home() {
                   )}
                 </div>
               );
-            })
-          ) : (
-            <div className="col-span-full text-center py-12">
-              <p className="text-gray-500">No agents found matching your search criteria.</p>
-            </div>
-          )}
-        </div>
+            })}
+                    </div>
+                  </div>
+                </details>
+              </div>
+            ))}
+          </div>
+        ) : (
+          <div className="text-center py-12">
+            <p className="text-gray-500">No agents found matching your search criteria.</p>
+          </div>
+        )}
       </div>
 
       {/* Agent Detail Modal */}

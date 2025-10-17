@@ -118,6 +118,7 @@ function loadAgentCoreAgents(): any[] {
                         agentType: agent.agentType,
                         role: agent.role || 'standalone',
                         image: agent.image || "/images/default_agent_icon.png",
+                        project: agent.project || 'Standalone Agents',
                         tags: agent.tags || [],
                         createdAt: agent.createdAt || new Date().toISOString(),
                         updatedAt: agent.updatedAt || new Date().toISOString(),

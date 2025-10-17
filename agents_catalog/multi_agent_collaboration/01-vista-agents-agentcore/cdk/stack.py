@@ -5,6 +5,7 @@ Creates and seeds tables for the in-vehicle agentic AI assistant
 """
 
 from aws_cdk import (
+    NestedStack,
     Stack,
     aws_dynamodb as dynamodb,
     aws_iam as iam,
@@ -18,8 +19,8 @@ from aws_cdk.custom_resources import (
 )
 from constructs import Construct
 
-class VistaAgentStack(Stack):
-    def __init__(self, scope: Construct, construct_id: str, **kwargs):
+class VistaAgentStack(NestedStack):
+    def __init__(self, scope: Construct, construct_id: str, shared_resources=None, **kwargs):
         super().__init__(scope, construct_id, **kwargs)
         
         # Dealer_Data Table
@@ -35,7 +36,7 @@ class VistaAgentStack(Stack):
                 type=dynamodb.AttributeType.STRING
             ),
             billing_mode=dynamodb.BillingMode.PAY_PER_REQUEST,
-            removal_policy=RemovalPolicy.RETAIN,
+            removal_policy=RemovalPolicy.DESTROY,
             point_in_time_recovery=True
         )
         
@@ -52,7 +53,7 @@ class VistaAgentStack(Stack):
                 type=dynamodb.AttributeType.STRING
             ),
             billing_mode=dynamodb.BillingMode.PAY_PER_REQUEST,
-            removal_policy=RemovalPolicy.RETAIN,
+            removal_policy=RemovalPolicy.DESTROY,
             point_in_time_recovery=True
         )
         
@@ -69,7 +70,7 @@ class VistaAgentStack(Stack):
                 type=dynamodb.AttributeType.STRING
             ),
             billing_mode=dynamodb.BillingMode.PAY_PER_REQUEST,
-            removal_policy=RemovalPolicy.RETAIN,
+            removal_policy=RemovalPolicy.DESTROY,
             point_in_time_recovery=True
         )
         
@@ -86,8 +87,41 @@ class VistaAgentStack(Stack):
                 type=dynamodb.AttributeType.STRING
             ),
             billing_mode=dynamodb.BillingMode.PAY_PER_REQUEST,
-            removal_policy=RemovalPolicy.RETAIN,
+            removal_policy=RemovalPolicy.DESTROY,
             point_in_time_recovery=True
+        )
+        
+        # Create custom Lambda execution role for seeding operations
+        custom_resource_role = iam.Role(
+            self, "CustomResourceExecutionRole",
+            assumed_by=iam.ServicePrincipal("lambda.amazonaws.com"),
+            description="Custom execution role for DynamoDB seeding Lambda functions"
+        )
+        
+        # Add custom policy for Lambda basic execution (instead of AWS managed policy)
+        custom_resource_role.add_to_policy(
+            iam.PolicyStatement(
+                effect=iam.Effect.ALLOW,
+                actions=[
+                    "logs:CreateLogGroup",
+                    "logs:CreateLogStream", 
+                    "logs:PutLogEvents"
+                ],
+                resources=[f"arn:aws:logs:{Stack.of(self).region}:{Stack.of(self).account}:log-group:/aws/lambda/custom-resource-seeder"]
+            )
+        )
+        
+        # Add DynamoDB permissions for seeding
+        custom_resource_role.add_to_policy(
+            iam.PolicyStatement(
+                effect=iam.Effect.ALLOW,
+                actions=["dynamodb:PutItem"],
+                resources=[
+                    self.dealer_data_table.table_arn,
+                    self.customer_data_table.table_arn,
+                    self.dealer_appointment_table.table_arn
+                ]
+            )
         )
         
         # Seed Dealer_Data
@@ -118,7 +152,8 @@ class VistaAgentStack(Stack):
                         actions=["dynamodb:PutItem"],
                         resources=[self.dealer_data_table.table_arn]
                     )
-                ])
+                ]),
+                role=custom_resource_role
             )
         
         # Seed Customer_Data
@@ -144,7 +179,8 @@ class VistaAgentStack(Stack):
                         actions=["dynamodb:PutItem"],
                         resources=[self.customer_data_table.table_arn]
                     )
-                ])
+                ]),
+                role=custom_resource_role
             )
         
         # Seed Dealer_Appointment_Data
@@ -170,7 +206,8 @@ class VistaAgentStack(Stack):
                         actions=["dynamodb:PutItem"],
                         resources=[self.dealer_appointment_table.table_arn]
                     )
-                ])
+                ]),
+                role=custom_resource_role
             )
         
         # IAM Role for Agent Execution
@@ -202,31 +239,34 @@ class VistaAgentStack(Stack):
             ]
         )
         
-        # Bedrock permissions
+        # Bedrock permissions - specific to Claude models used
         bedrock_policy = iam.PolicyStatement(
             effect=iam.Effect.ALLOW,
             actions=[
                 "bedrock:InvokeModel",
                 "bedrock:InvokeModelWithResponseStream"
             ],
-            resources=["*"]
+            resources=[
+                f"arn:aws:bedrock:{Stack.of(self).region}::foundation-model/anthropic.claude-3-haiku-20240307-v1:0",
+                f"arn:aws:bedrock:{Stack.of(self).region}::foundation-model/us.anthropic.claude-3-5-sonnet-20241022-v2:0"
+            ]
         )
         
-        # Secrets Manager permissions (for Google Calendar integration)
+        # Secrets Manager permissions (for Google Calendar integration) - specific secret name
         secrets_policy = iam.PolicyStatement(
             effect=iam.Effect.ALLOW,
             actions=["secretsmanager:GetSecretValue"],
-            resources=["arn:aws:secretsmanager:*:*:secret:prod/google*"]
+            resources=[f"arn:aws:secretsmanager:{Stack.of(self).region}:{Stack.of(self).account}:secret:prod/google-calendar-credentials"]
         )
         
-        # SES permissions (for email notifications)
+        # SES permissions (for email notifications) - specific identity
         ses_policy = iam.PolicyStatement(
             effect=iam.Effect.ALLOW,
             actions=["ses:SendEmail", "ses:SendRawEmail"],
-            resources=["*"]
+            resources=[f"arn:aws:ses:{Stack.of(self).region}:{Stack.of(self).account}:identity/noreply@example.com"]
         )
         
-        # CloudWatch Logs permissions
+        # CloudWatch Logs permissions - specific log group for this agent
         logs_policy = iam.PolicyStatement(
             effect=iam.Effect.ALLOW,
             actions=[
@@ -234,7 +274,7 @@ class VistaAgentStack(Stack):
                 "logs:CreateLogStream",
                 "logs:PutLogEvents"
             ],
-            resources=["*"]
+            resources=[f"arn:aws:logs:{Stack.of(self).region}:{Stack.of(self).account}:log-group:/aws/bedrock-agentcore/vista-agent"]
         )
         
         # Attach policies
@@ -243,6 +283,27 @@ class VistaAgentStack(Stack):
         self.agent_execution_role.add_to_policy(secrets_policy)
         self.agent_execution_role.add_to_policy(ses_policy)
         self.agent_execution_role.add_to_policy(logs_policy)
+        
+        # Grant the shared agent role access to our tables
+        if shared_resources and 'agent_role' in shared_resources:
+            shared_resources['agent_role'].add_to_policy(
+                iam.PolicyStatement(
+                    actions=[
+                        "dynamodb:PutItem",
+                        "dynamodb:GetItem", 
+                        "dynamodb:UpdateItem",
+                        "dynamodb:DeleteItem",
+                        "dynamodb:Query",
+                        "dynamodb:Scan"
+                    ],
+                    resources=[
+                        self.dealer_data_table.table_arn,
+                        self.customer_data_table.table_arn,
+                        self.dealer_appointment_table.table_arn,
+                        self.conversation_history_table.table_arn
+                    ]
+                )
+            )
         
         # Outputs
         CfnOutput(self, "DealerDataTableName", value=self.dealer_data_table.table_name)

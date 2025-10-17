@@ -5,6 +5,6 @@ pydantic
 boto3
 botocore
 dynamodb-json
-strands
+strands-agents
 google-auth
 google-api-python-client

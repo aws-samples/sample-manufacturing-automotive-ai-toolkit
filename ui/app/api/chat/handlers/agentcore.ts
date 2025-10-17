@@ -30,16 +30,41 @@ export class AgentCoreChatHandler implements ChatHandler {
         return agentType?.toLowerCase() === 'agentcore';
     }
 
-    private parseAgentCoreChunk(chunk: string): string | null {
+    private parseAgentCoreChunk(chunk: string): { text: string | null, thinking: string | null } {
         try {
-            const response: AgentCoreResponse = JSON.parse(chunk);
+            const response: any = JSON.parse(chunk);
+            let fullText = null;
+
+            // Format 1: {"result": {"content": [{"text": "..."}]}}
             if (response.result?.content?.[0]?.text) {
-                return response.result.content[0].text;
+                fullText = response.result.content[0].text;
             }
-            return null;
+
+            // Format 2: {"output": {"message": {"content": [{"text": "..."}]}}}
+            else if (response.output?.message?.content?.[0]?.text) {
+                fullText = response.output.message.content[0].text;
+            }
+
+            // Format 3: {"message": "..."}
+            else if (response.message && typeof response.message === 'string') {
+                fullText = response.message;
+            }
+
+            if (!fullText) {
+                return { text: null, thinking: null };
+            }
+
+            // Extract thinking tags
+            const thinkingMatch = fullText.match(/<thinking>([\s\S]*?)<\/thinking>/);
+            const thinking = thinkingMatch ? thinkingMatch[1].trim() : null;
+
+            // Remove thinking tags from main text
+            const cleanText = fullText.replace(/<thinking>[\s\S]*?<\/thinking>/g, '').trim();
+
+            return { text: cleanText, thinking };
         } catch (error) {
             console.error('Error parsing AgentCore chunk:', error);
-            return null;
+            return { text: null, thinking: null };
         }
     }
 
@@ -98,17 +123,28 @@ export class AgentCoreChatHandler implements ChatHandler {
                                     const chunk = decoder.decode(value, { stream: true });
                                     log('Chunk received:', chunk);
 
-                                    const text = parseChunk(chunk);
-                                    if (text) {
-                                        // Send the chunk to the client
+                                    const parsed = parseChunk(chunk);
+                                    if (parsed.thinking) {
+                                        // Send thinking as trace step
+                                        controller.enqueue(encoder.encode(`data: ${JSON.stringify({
+                                            type: 'trace',
+                                            step,
+                                            agent: agent.name,
+                                            text: parsed.thinking
+                                        })}\n\n`));
+                                        step++;
+                                    }
+
+                                    if (parsed.text) {
+                                        // Send the main content
                                         controller.enqueue(encoder.encode(`data: ${JSON.stringify({
                                             type: 'chunk',
                                             step,
                                             agent: agent.name,
-                                            data: text
+                                            data: parsed.text
                                         })}\n\n`));
 
-                                        finalMessage += text;
+                                        finalMessage += parsed.text;
                                         step++;
                                     }
                                 }
@@ -120,8 +156,8 @@ export class AgentCoreChatHandler implements ChatHandler {
                             const bytes = await (response.response as any)?.transformToByteArray();
                             if (bytes) {
                                 const text = new TextDecoder().decode(bytes);
-                                const parsedText = parseChunk(text);
-                                finalMessage = parsedText || text;
+                                const parsed = parseChunk(text);
+                                finalMessage = parsed.text || text;
                             }
 
                             controller.enqueue(encoder.encode(`data: ${JSON.stringify({

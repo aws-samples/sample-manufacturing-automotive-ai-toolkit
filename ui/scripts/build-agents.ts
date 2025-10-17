@@ -43,6 +43,7 @@ interface ManifestAgent {
 
 interface ManifestFile {
   agents: ManifestAgent[];
+  group?: string[];
 }
 
 interface BedrockAgent {
@@ -58,6 +59,7 @@ interface AgentConfig {
   agentType: string;
   role: AgentRole;
   image: string;
+  project?: string;
   tags?: string[];
   createdAt?: string;
   updatedAt?: string;
@@ -144,13 +146,24 @@ function loadAllManifests(): Map<string, ManifestAgent> {
 
       // Add each agent to the map
       for (const agent of manifest.agents) {
+        // Use the group field from manifest, fallback based on catalog type
+        let groupName = manifest.group?.[0];
+        if (!groupName) {
+          // Determine group based on catalog type directory
+          const catalogType = path.basename(path.dirname(path.dirname(manifestPath)));
+          groupName = catalogType === 'multi_agent_collaboration' ? 'Multi-Agent Collaboration' : 'Standalone Agents';
+        }
+
+        // Store group name with agent
+        (agent as any).project = groupName;
+
         if (agent.bedrock) {
           // For Bedrock agents, key by Bedrock agent name
-          console.log(`Adding manifest override for Bedrock agent ${agent.bedrock.agentName}:`, agent);
+          console.log(`Adding manifest override for Bedrock agent ${agent.bedrock.agentName} to group ${groupName}:`, agent);
           agentMap.set(agent.bedrock.agentName, agent);
         } else if (agent.type === 'agentcore') {
           // For AgentCore agents, key by agent ID
-          console.log(`Adding manifest override for AgentCore agent ${agent.id}:`, agent);
+          console.log(`Adding manifest override for AgentCore agent ${agent.id} to group ${groupName}:`, agent);
           agentMap.set(agent.id, agent);
         }
       }
@@ -305,6 +318,7 @@ function createAgentCoreConfigs(manifestAgents: Map<string, ManifestAgent>): Age
         agentType: 'agentcore',
         role: agent.agentcore?.override?.role || agent.role || 'standalone',
         image: '',
+        project: (agent as any).project || 'Standalone Agents',
         tags: agent.tags || [],
         createdAt: new Date().toISOString(),
         updatedAt: new Date().toISOString(),
@@ -396,6 +410,7 @@ function createAgentCoreConfigs(manifestAgents: Map<string, ManifestAgent>): Age
         agentType: 'agentcore',
         role: 'standalone',
         image: '',
+        project: 'YAML Agents',
         tags: [],
         createdAt: new Date().toISOString(),
         updatedAt: new Date().toISOString(),
@@ -467,6 +482,7 @@ async function main() {
         agentType: 'bedrock',
         role: manifestAgent.bedrock.override.role || manifestAgent.role || 'individual',
         image: '',
+        project: (manifestAgent as any).project || 'Standalone Agents',
         tags: manifestAgent.bedrock.override.tags || manifestAgent.tags || [],
         createdAt: agent.updatedAt?.toISOString(),
         updatedAt: agent.updatedAt?.toISOString(),

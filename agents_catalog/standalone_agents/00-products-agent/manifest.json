@@ -1,16 +1,16 @@
 {
-    "agents": [
-      {
-        "id": "templateagent",
-        "name": "Product Knowledge Agent",
-        "description": "",
-        "type": "agentcore",
-        "entrypoint": "knowledge_base_agent.py",
-        "tags": [
-            "tag1",
-            "tag2"
-        ]
-      }
-    ]
-  }
-  
+  "group": ["Example Agents"],
+  "agents": [
+    {
+      "id": "templateagent",
+      "name": "Product Knowledge Agent",
+      "description": "",
+      "type": "agentcore",
+      "entrypoint": "knowledge_base_agent.py",
+      "tags": [
+          "tag1",
+          "tag2"
+      ]
+    }
+  ]
+}
