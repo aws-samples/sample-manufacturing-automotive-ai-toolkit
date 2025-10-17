@@ -1,4 +1,4 @@
-# In Vehicle Agentic AI Agents
+# In Vehicle Agentic AI Agents - Bedrock Agents
 
 A Multi-Agent Collaboration system with Supervisor Routing for vehicle service management.
 
@@ -37,7 +37,7 @@ Once deployed, you can test the system with these example prompts:
 ## Prerequisites
 
 - AWS CLI configured with appropriate credentials
-- Python 3.9 or later
+- Python 3.11 or later
 - Node.js (for CDK)
 - AWS CDK v2 installed
 

@@ -149,9 +149,7 @@ function loadAllManifests(): Map<string, ManifestAgent> {
         // Use the group field from manifest, fallback based on catalog type
         let groupName = manifest.group?.[0];
         if (!groupName) {
-          // Determine group based on catalog type directory
-          const catalogType = path.basename(path.dirname(path.dirname(manifestPath)));
-          groupName = catalogType === 'multi_agent_collaboration' ? 'Multi-Agent Collaboration' : 'Standalone Agents';
+          groupName = 'Other';
         }
 
         // Store group name with agent
@@ -318,7 +316,7 @@ function createAgentCoreConfigs(manifestAgents: Map<string, ManifestAgent>): Age
         agentType: 'agentcore',
         role: agent.agentcore?.override?.role || agent.role || 'standalone',
         image: '',
-        project: (agent as any).project || 'Standalone Agents',
+        project: (agent as any).project || 'Other',
         tags: agent.tags || [],
         createdAt: new Date().toISOString(),
         updatedAt: new Date().toISOString(),

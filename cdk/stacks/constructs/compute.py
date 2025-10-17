@@ -85,7 +85,7 @@ class ComputeConstruct(Construct):
             lambda_function = lambda_.Function(
                 self, f"Function{self._sanitize_name(function_name)}",
                 function_name=function_name,
-                runtime=self._get_runtime(function_def.get('runtime', 'python3.9')),
+                runtime=self._get_runtime(function_def.get('runtime', 'python3.11')),
                 handler=properties.get('Handler', 'index.handler'),
                 code=lambda_.Code.from_inline(function_def.get('code', self._get_default_code(function_name))),
                 timeout=Duration.seconds(function_def.get('timeout', 300)),

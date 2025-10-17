@@ -1,4 +1,5 @@
 {
+  "group": ["In Vehicle Agentic AI Agents - Bedrock Agent"],
   "infrastructure": {
     "cdk": true,
     "stack_class": "VistaServiceStack",
