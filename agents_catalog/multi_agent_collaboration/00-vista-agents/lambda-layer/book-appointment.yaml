@@ -55,7 +55,7 @@ Resources:
       FunctionName: BookAppointment
       Handler: index.lambda_handler
       Role: !GetAtt BookAppointmentRole.Arn
-      Runtime: python3.9
+      Runtime: python3.11
       Timeout: 30
       MemorySize: 256
       Code:
@@ -239,7 +239,7 @@ Resources:
       FunctionName: InsertCustomerProfiles
       Handler: index.handler
       Role: !GetAtt LambdaExecutionRole.Arn
-      Runtime: python3.9
+      Runtime: python3.11
       Timeout: 60
       MemorySize: 256
       Code:
@@ -440,7 +440,7 @@ Resources:
       FunctionName: BookAppointmentStar
       Handler: index.lambda_handler
       Role: !GetAtt BookAppointmentStarRole.Arn
-      Runtime: python3.9
+      Runtime: python3.11
       Timeout: 30
       MemorySize: 256
       Code:
@@ -707,7 +707,7 @@ Outputs:
       FunctionName: GenerateAppointmentSlots
       Handler: index.handler
       Role: !GetAtt GenerateAppointmentSlotsRole.Arn
-      Runtime: python3.9
+      Runtime: python3.11
       Timeout: 60
       MemorySize: 256
       Code:

@@ -1,6 +1,15 @@
-# Vista Service Management System
+# In Vehicle Agentic AI Agents - Bedrock Agents
 
-A Multi-Agent Collaboration system with Supervisor Routing using AWS Bedrock agents for vehicle service management.
+A Multi-Agent Collaboration system with Supervisor Routing for vehicle service management.
+
+## 🚨 Important: Agent Configuration Options
+
+> MA3T contains **two different agent implementations** of In Vehicle Agentic AI Agents:
+> 
+> - **Current folder**: Agents configured for **native Amazon Bedrock**
+> - [**01-vista-agents-agentcore**](../01-vista-agents-agentcore/README.md): Agents configured for **Bedrock Agent Core**
+> 
+> Choose the implementation that matches your requirements. Both provide the same functionality but use different underlying architectures.
 
 ## Overview
 
@@ -28,7 +37,7 @@ Once deployed, you can test the system with these example prompts:
 ## Prerequisites
 
 - AWS CLI configured with appropriate credentials
-- Python 3.9 or later
+- Python 3.11 or later
 - Node.js (for CDK)
 - AWS CDK v2 installed
 

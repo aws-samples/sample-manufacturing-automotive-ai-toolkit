@@ -1,0 +1,10 @@
+# Add your dependencies here
+fastapi
+uvicorn
+pydantic
+boto3
+botocore
+dynamodb-json
+strands-agents
+google-auth
+google-api-python-client

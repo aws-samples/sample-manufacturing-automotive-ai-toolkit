@@ -325,6 +325,10 @@ class AgentRegistry:
                 description=f"Nested stack for {config.name} agent"
             )
 
+            # Auto-grant permissions to shared agent role
+            if 'agent_role' in shared_resources:
+                self._auto_grant_permissions(nested_stack, shared_resources['agent_role'])
+
             print(f"Successfully registered CDK nested stack: {config.name}")
             return nested_stack
 
@@ -370,6 +374,41 @@ class AgentRegistry:
     def _sanitize_name(self, name: str) -> str:
         """Sanitize name for use in CDK construct IDs"""
         return ''.join(c for c in name if c.isalnum()).replace('-', '').replace('_', '')
+
+    def _auto_grant_permissions(self, stack, agent_role):
+        """Automatically grant agent_role access to all grantable resources in stack"""
+        try:
+            from aws_cdk import aws_dynamodb as dynamodb
+            from aws_cdk import aws_s3 as s3
+
+            granted_count = 0
+
+            # Walk the stack's construct tree and auto-grant permissions
+            for child in stack.node.find_all():
+                try:
+                    # Auto-grant DynamoDB tables
+                    if isinstance(child, dynamodb.Table):
+                        child.grant_read_write_data(agent_role)
+                        granted_count += 1
+                        print(f"  Auto-granted DynamoDB access: {child.node.id}")
+
+                    # Auto-grant S3 buckets
+                    elif isinstance(child, s3.Bucket):
+                        child.grant_read_write(agent_role)
+                        granted_count += 1
+                        print(f"  Auto-granted S3 access: {child.node.id}")
+
+                    # Add more resource types as needed
+
+                except Exception as e:
+                    # Skip resources that can't be granted (e.g., imported resources)
+                    pass
+
+            if granted_count > 0:
+                print(f"  Auto-granted permissions to {granted_count} resources")
+
+        except Exception as e:
+            print(f"  Warning: Could not auto-grant permissions: {e}")
 
     def register_agentcore_agent(self, config: AgentCoreConfig, codebuild_construct) -> Optional[Any]:
         """

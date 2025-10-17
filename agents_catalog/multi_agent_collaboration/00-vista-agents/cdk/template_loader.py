@@ -65,7 +65,7 @@ class LambdaTemplateLoader:
                             'role_policies': self._extract_role_policies(template, resource_def),
                             'timeout': resource_def.get('Properties', {}).get('Timeout', 300),
                             'memory_size': resource_def.get('Properties', {}).get('MemorySize', 256),
-                            'runtime': resource_def.get('Properties', {}).get('Runtime', 'python3.9'),
+                            'runtime': resource_def.get('Properties', {}).get('Runtime', 'python3.12'),
                             'architecture': resource_def.get('Properties', {}).get('Architectures', ['x86_64'])[0]
                         }
         
