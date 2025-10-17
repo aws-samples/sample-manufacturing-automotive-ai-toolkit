@@ -50,7 +50,20 @@ export class AgentCoreChatHandler implements ChatHandler {
                 fullText = response.message;
             }
 
+            // Format 4: Direct text response (fallback)
+            else if (typeof response === 'string') {
+                fullText = response;
+            }
+
+            // Format 5: If we still don't have text, try to stringify and use as-is
+            else {
+                console.warn('Unable to extract text from response, using raw JSON:', JSON.stringify(response));
+                // Return the raw chunk as text if we can't parse it properly
+                fullText = chunk;
+            }
+
             if (!fullText) {
+                console.warn('No text extracted, returning null');
                 return { text: null, thinking: null };
             }
 
@@ -63,8 +76,13 @@ export class AgentCoreChatHandler implements ChatHandler {
 
             return { text: cleanText, thinking };
         } catch (error) {
-            console.error('Error parsing AgentCore chunk:', error);
-            return { text: null, thinking: null };
+            console.error('Error parsing AgentCore chunk:', error, 'Raw chunk:', chunk);
+            // If JSON parsing fails, try to use the chunk as-is if it looks like plain text
+            if (typeof chunk === 'string' && !chunk.startsWith('{')) {
+                return { text: chunk, thinking: null };
+            }
+            // Last resort: return the raw chunk
+            return { text: chunk, thinking: null };
         }
     }
 

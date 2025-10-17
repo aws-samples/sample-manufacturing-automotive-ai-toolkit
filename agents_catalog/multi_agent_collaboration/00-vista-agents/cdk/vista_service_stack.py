@@ -498,14 +498,9 @@ Please provide:
         self.supervisor_alias = self.supervisor_agent.create_alias(
             "orchestrater-alias")
 
-        # Add collaborators to supervisor - ensure all agents are created first
-        # Add explicit dependencies to ensure proper deployment order
+        # Add collaborators to supervisor using the correct agent keys
+        # Only add collaborators that exist
         if hasattr(self, 'specialist_agents'):
-            for agent_key, agent in self.specialist_agents.items():
-                if hasattr(agent, 'alias'):
-                    self.supervisor_agent.node.add_dependency(agent.alias)
-
-            # Now add collaborators after dependencies are set
             if 'vehiclesymptom' in self.specialist_agents:
                 self.supervisor_agent.add_collaborator(
                     self.specialist_agents['vehiclesymptom'].alias,
@@ -516,7 +511,7 @@ Please provide:
             if 'nearestdealership' in self.specialist_agents:
                 self.supervisor_agent.add_collaborator(
                     self.specialist_agents['nearestdealership'].alias,
-                    "dealer-lookup", 
+                    "dealer-lookup",
                     "Use this agent when customers need to find nearby dealerships or dealer information. Route here for dealer searches and location queries."
                 )
 
@@ -549,6 +544,9 @@ Please provide:
                 )
 
         print("Created supervisor agent with multi-agent collaboration")
+
+        # Configure the collaboration after all collaborators are added
+        self.supervisor_agent.finalize_collaboration()
 
     def create_outputs(self):
         """Create stack outputs for Vista agents"""

@@ -210,104 +210,12 @@ class VistaAgentStack(NestedStack):
                 role=custom_resource_role
             )
         
-        # IAM Role for Agent Execution
-        self.agent_execution_role = iam.Role(
-            self, "VistaAgentCoreExecutionRole",
-            # Remove hardcoded role_name to let CDK generate unique name
-            assumed_by=iam.CompositePrincipal(
-                iam.ServicePrincipal("bedrock-agentcore.amazonaws.com"),
-                iam.ServicePrincipal("ecs-tasks.amazonaws.com")
-            ),
-            description="Execution role for VISTA Agent"
-        )
-        
-        # DynamoDB permissions
-        dynamodb_policy = iam.PolicyStatement(
-            effect=iam.Effect.ALLOW,
-            actions=[
-                "dynamodb:GetItem",
-                "dynamodb:PutItem",
-                "dynamodb:DeleteItem",
-                "dynamodb:Scan",
-                "dynamodb:Query"
-            ],
-            resources=[
-                self.dealer_data_table.table_arn,
-                self.customer_data_table.table_arn,
-                self.dealer_appointment_table.table_arn,
-                self.conversation_history_table.table_arn
-            ]
-        )
-        
-        # Bedrock permissions - specific to Claude models used
-        bedrock_policy = iam.PolicyStatement(
-            effect=iam.Effect.ALLOW,
-            actions=[
-                "bedrock:InvokeModel",
-                "bedrock:InvokeModelWithResponseStream"
-            ],
-            resources=[
-                f"arn:aws:bedrock:{Stack.of(self).region}::foundation-model/anthropic.claude-3-haiku-20240307-v1:0",
-                f"arn:aws:bedrock:{Stack.of(self).region}::foundation-model/us.anthropic.claude-3-5-sonnet-20241022-v2:0"
-            ]
-        )
-        
-        # Secrets Manager permissions (for Google Calendar integration) - specific secret name
-        secrets_policy = iam.PolicyStatement(
-            effect=iam.Effect.ALLOW,
-            actions=["secretsmanager:GetSecretValue"],
-            resources=[f"arn:aws:secretsmanager:{Stack.of(self).region}:{Stack.of(self).account}:secret:prod/google-calendar-credentials"]
-        )
-        
-        # SES permissions (for email notifications) - specific identity
-        ses_policy = iam.PolicyStatement(
-            effect=iam.Effect.ALLOW,
-            actions=["ses:SendEmail", "ses:SendRawEmail"],
-            resources=[f"arn:aws:ses:{Stack.of(self).region}:{Stack.of(self).account}:identity/noreply@example.com"]
-        )
-        
-        # CloudWatch Logs permissions - specific log group for this agent
-        logs_policy = iam.PolicyStatement(
-            effect=iam.Effect.ALLOW,
-            actions=[
-                "logs:CreateLogGroup",
-                "logs:CreateLogStream",
-                "logs:PutLogEvents"
-            ],
-            resources=[f"arn:aws:logs:{Stack.of(self).region}:{Stack.of(self).account}:log-group:/aws/bedrock-agentcore/vista-agent"]
-        )
-        
-        # Attach policies
-        self.agent_execution_role.add_to_policy(dynamodb_policy)
-        self.agent_execution_role.add_to_policy(bedrock_policy)
-        self.agent_execution_role.add_to_policy(secrets_policy)
-        self.agent_execution_role.add_to_policy(ses_policy)
-        self.agent_execution_role.add_to_policy(logs_policy)
-        
-        # Grant the shared agent role access to our tables
-        if shared_resources and 'agent_role' in shared_resources:
-            shared_resources['agent_role'].add_to_policy(
-                iam.PolicyStatement(
-                    actions=[
-                        "dynamodb:PutItem",
-                        "dynamodb:GetItem", 
-                        "dynamodb:UpdateItem",
-                        "dynamodb:DeleteItem",
-                        "dynamodb:Query",
-                        "dynamodb:Scan"
-                    ],
-                    resources=[
-                        self.dealer_data_table.table_arn,
-                        self.customer_data_table.table_arn,
-                        self.dealer_appointment_table.table_arn,
-                        self.conversation_history_table.table_arn
-                    ]
-                )
-            )
+        # Note: This agent uses the shared agent_role from the main stack.
+        # Permissions to DynamoDB tables are auto-granted by the framework
+        # via nested_stack_registry._auto_grant_permissions()
         
         # Outputs
         CfnOutput(self, "DealerDataTableName", value=self.dealer_data_table.table_name)
         CfnOutput(self, "CustomerDataTableName", value=self.customer_data_table.table_name)
         CfnOutput(self, "DealerAppointmentTableName", value=self.dealer_appointment_table.table_name)
         CfnOutput(self, "ConversationHistoryTableName", value=self.conversation_history_table.table_name)
-        CfnOutput(self, "AgentExecutionRoleArn", value=self.agent_execution_role.role_arn)
