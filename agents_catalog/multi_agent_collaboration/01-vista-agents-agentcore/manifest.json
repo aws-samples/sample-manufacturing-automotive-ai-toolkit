@@ -2,7 +2,7 @@
   "group": ["In Vehicle Agentic AI Agents - AgentCore"],
   "agents": [
     {
-      "id": "InVehicleAssistantAgentCore",
+      "id": "invehicleassistantagentcore",
       "name": "In Vehicle Agentic AI Agent - Supervisor",
       "version": "1.0.0",
       "description": "A multi agent colloboration framework to improve the in-vehicle experience especially focused on diagnostic trouble codes and service center experience.",

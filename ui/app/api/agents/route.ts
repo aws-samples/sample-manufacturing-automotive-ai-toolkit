@@ -98,7 +98,16 @@ function getAgentConfig(agentId: string, agentName: string) {
 
 function loadAgentCoreAgents(): any[] {
     try {
+        console.log(`Loading AgentCore agents from: ${CONFIG_DIR}`);
+        console.log(`CONFIG_DIR exists: ${fs.existsSync(CONFIG_DIR)}`);
+        
+        if (!fs.existsSync(CONFIG_DIR)) {
+            console.log('CONFIG_DIR does not exist, returning empty array');
+            return [];
+        }
+        
         const files = fs.readdirSync(CONFIG_DIR);
+        console.log(`Found ${files.length} config files:`, files);
         const agents = [];
 
         for (const file of files) {

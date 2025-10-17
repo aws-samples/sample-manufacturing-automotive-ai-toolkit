@@ -455,13 +455,18 @@ async function main() {
     // Process Bedrock agents
     const processedIds = new Set(); // Track processed agent IDs
 
+    console.log(`Starting to process ${bedrockAgents.length} Bedrock agents...`);
+    
     for (const agent of bedrockAgents) {
+      console.log(`\n--- Processing Bedrock agent: ${agent.agentName} (${agent.agentId}) ---`);
+      
       if (processedIds.has(agent.agentId)) {
         console.log(`Skipping duplicate agent: ${agent.agentName}`);
         continue;
       }
 
       const manifestAgent = manifestAgents.get(agent.agentName || '');
+      console.log(`Manifest lookup for ${agent.agentName}:`, manifestAgent ? 'FOUND' : 'NOT FOUND');
 
       // Only process if there's a manifest entry for this Bedrock agent
       if (!manifestAgent || !manifestAgent.bedrock) {
@@ -482,7 +487,7 @@ async function main() {
         agentType: 'bedrock',
         role: manifestAgent.bedrock.override.role || manifestAgent.role || 'individual',
         image: '',
-        project: (manifestAgent as any).project || 'Standalone Agents',
+        project: (manifestAgent as any).project,
         tags: manifestAgent.bedrock.override.tags || manifestAgent.tags || [],
         createdAt: agent.updatedAt?.toISOString(),
         updatedAt: agent.updatedAt?.toISOString(),
