@@ -4,24 +4,23 @@
     "stack_class": "VistaServiceStack",
     "stack_path": "cdk/vista_service_stack.py"
   },
-  "group": ["In Vehicle Agentic AI Agents - Bedrock Native"],
   "agents": [
     {
       "id": "vista-supervisor",
-      "name": "Agent Orchestrator",
+      "name": "Vista Agent Orchestrator",
       "description": "Orchestrates interactions between specialized automotive service agents to provide comprehensive vehicle support.",
       "type": "bedrock",
       "role": "supervisor"
     },
     {
       "id": "sam-orchestrator",
-      "name": "Orchestrator",
+      "name": "SAM Orchestrator",
       "description": "Main supervisor agent that coordinates between specialized automotive service agents to provide comprehensive vehicle support.",
       "type": "bedrock",
       "bedrock": {
         "agentName": "SAM-agent-orchestrater",
         "override": {
-          "name": "Orchestrator",
+          "name": "SAM Orchestrator",
           "role": "supervisor",
           "icon": "/images/orchestrator.png",
           "description": "Main supervisor agent that coordinates between specialized automotive service agents to provide comprehensive vehicle support.",
@@ -31,13 +30,13 @@
     },
     {
       "id": "vista-warranty-recall",
-      "name": "Warranty and Recalls Agent",
+      "name": "Vista Warranty and Recalls Agent",
       "description": "Provides information about vehicle warranties and recalls.",
       "type": "bedrock",
       "bedrock": {
         "agentName": "SAM-agent-warrantyandrecalls",
         "override": {
-          "name": "Warranty and Recalls Agent",
+          "name": "Vista Warranty and Recalls Agent",
           "role": "individual",
           "icon": "",
           "description": "Provides information about vehicle warranties and recalls."

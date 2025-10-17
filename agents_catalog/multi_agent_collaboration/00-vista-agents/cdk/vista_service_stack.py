@@ -498,57 +498,55 @@ Please provide:
         self.supervisor_alias = self.supervisor_agent.create_alias(
             "orchestrater-alias")
 
-        # Add collaborators to supervisor - ensure all agents are created first
-        # Add explicit dependencies to ensure proper deployment order
+        # Add collaborators to supervisor using the correct agent keys
+        # Only add collaborators that exist
         if hasattr(self, 'specialist_agents'):
-            for agent_key, agent in self.specialist_agents.items():
-                if hasattr(agent, 'alias'):
-                    self.supervisor_agent.node.add_dependency(agent.alias)
-
-            # Now add collaborators after dependencies are set
             if 'vehiclesymptom' in self.specialist_agents:
                 self.supervisor_agent.add_collaborator(
                     self.specialist_agents['vehiclesymptom'].alias,
                     "vehicle-symptom-analysis",
-                    "Use this agent when customers describe vehicle symptoms or need diagnostic analysis."
+                    "Use this agent when customers describe vehicle symptoms or need diagnostic analysis. Route here for symptom analysis and severity assessment."
                 )
 
             if 'nearestdealership' in self.specialist_agents:
                 self.supervisor_agent.add_collaborator(
                     self.specialist_agents['nearestdealership'].alias,
-                    "dealer-lookup", 
-                    "Use this agent when customers need to find nearby dealerships."
+                    "dealer-lookup",
+                    "Use this agent when customers need to find nearby dealerships or dealer information. Route here for dealer searches and location queries."
                 )
 
             if 'bookdealerappt' in self.specialist_agents:
                 self.supervisor_agent.add_collaborator(
                     self.specialist_agents['bookdealerappt'].alias,
                     "appointment-booking",
-                    "Use this agent when customers want to book appointments."
+                    "Use this agent when customers want to book appointments with dealerships. Route here for appointment scheduling."
                 )
 
             if 'finddealeravailability' in self.specialist_agents:
                 self.supervisor_agent.add_collaborator(
                     self.specialist_agents['finddealeravailability'].alias,
                     "dealer-availability",
-                    "Use this agent when customers need to check dealer availability."
+                    "Use this agent when customers need to check dealer availability or appointment slots. Route here for availability checking."
                 )
 
             if 'parts-availability' in self.specialist_agents:
                 self.supervisor_agent.add_collaborator(
                     self.specialist_agents['parts-availability'].alias,
                     "parts-availability",
-                    "Use this agent when customers need parts information."
+                    "Use this agent when customers need parts information or availability checking. Route here for DTC code lookups and parts ordering."
                 )
 
             if 'warrantyandrecalls' in self.specialist_agents:
                 self.supervisor_agent.add_collaborator(
                     self.specialist_agents['warrantyandrecalls'].alias,
                     "warranty-recalls",
-                    "Use this agent when customers need warranty information."
+                    "Use this agent when customers need warranty information or recall checks. Route here for VIN-based warranty queries."
                 )
 
         print("Created supervisor agent with multi-agent collaboration")
+
+        # Configure the collaboration after all collaborators are added
+        self.supervisor_agent.finalize_collaboration()
 
     def create_outputs(self):
         """Create stack outputs for Vista agents"""
