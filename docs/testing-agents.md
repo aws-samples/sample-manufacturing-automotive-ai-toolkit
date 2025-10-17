@@ -1,17 +1,17 @@
 # Testing Agents
 
-This guide covers how to test your agents locally and in AWS.
+How to test your agents before deploying to AWS.
 
 ## Local Testing
 
-### Test Agent Directly
+### Test Agent Code Directly
 
 ```bash
 cd agents_catalog/standalone_agents/XX-agent-name
 python agent.py
 ```
 
-### Interactive Testing
+Add a test block to your agent:
 
 ```python
 # agent.py
@@ -24,68 +24,27 @@ def my_tool(param: str) -> str:
     return f"Result: {param}"
 
 if __name__ == "__main__":
-    # Test your agent
-    response = agent.run("Test message")
-    print(response)
+    # Test your agent locally
+    print("Testing agent...")
+    response = agent.run("Test my_tool with param='hello'")
+    print(f"Response: {response}")
 ```
 
-## Unit Tests
+### Test with Mock AWS Resources
 
-### Create Test File
-
-```
-tests/
-└── test_agent.py
-```
-
-### Write Tests
-
-```python
-import pytest
-from agent import agent
-
-def test_agent_initialization():
-    """Test agent can be initialized"""
-    assert agent is not None
-    assert agent.name == "my-agent"
-
-def test_tool_execution():
-    """Test agent tools work"""
-    response = agent.run("Use my_tool with param='test'")
-    assert "Result: test" in response
-
-@pytest.mark.asyncio
-async def test_async_tool():
-    """Test async tools"""
-    response = await agent.run_async("Test async")
-    assert response is not None
-```
-
-### Run Tests
+Use `moto` to mock AWS services:
 
 ```bash
-# Install pytest
-pip install pytest pytest-asyncio
-
-# Run tests
-pytest tests/
-
-# Run with coverage
-pytest --cov=agent tests/
+pip install moto[dynamodb,s3]
 ```
 
-## Testing with AWS Resources
-
-### Mock AWS Services
-
 ```python
-import boto3
+# test_agent.py
 from moto import mock_dynamodb
-import pytest
+import boto3
 
 @mock_dynamodb
-def test_with_dynamodb():
-    """Test agent with mocked DynamoDB"""
+def test_agent_with_dynamodb():
     # Create mock table
     dynamodb = boto3.resource('dynamodb', region_name='us-west-2')
     table = dynamodb.create_table(
@@ -95,172 +54,114 @@ def test_with_dynamodb():
         BillingMode='PAY_PER_REQUEST'
     )
     
-    # Test your agent
-    from agent import store_data
-    result = store_data('key1', 'value1')
-    assert 'Stored' in result
+    # Test your agent's DynamoDB operations
+    table.put_item(Item={'id': 'test', 'value': 'data'})
+    response = table.get_item(Key={'id': 'test'})
+    assert response['Item']['value'] == 'data'
 ```
 
-### Install Mocking Libraries
+## Testing in AWS
+
+### Deploy and Test in UI
 
 ```bash
-pip install moto[dynamodb,s3] boto3
+./deploy_cdk.sh
 ```
 
-## Integration Testing
+Then:
+1. Open the UI URL from deployment output
+2. Select your agent
+3. Send test messages
+4. Verify responses and trace steps
 
-### Test Against Real AWS Resources
+### Check CloudWatch Logs
+
+```bash
+# View agent logs
+aws logs tail /aws/bedrock-agentcore/your-agent --follow
+
+# View specific log stream
+aws logs get-log-events \
+  --log-group-name /aws/bedrock-agentcore/your-agent \
+  --log-stream-name <stream-name>
+```
+
+### Test DynamoDB Access
+
+Verify your agent can access tables:
+
+```bash
+# Check if table exists
+aws dynamodb describe-table --table-name MyAgent_Data
+
+# Scan table contents
+aws dynamodb scan --table-name MyAgent_Data
+
+# Check IAM permissions
+aws iam get-role-policy \
+  --role-name MA3TMainStack-IAMAgentRole* \
+  --policy-name <policy-name>
+```
+
+## Common Test Cases
+
+### Test Tool Execution
 
 ```python
+if __name__ == "__main__":
+    # Test each tool individually
+    print("Testing store_data...")
+    result = store_data("key1", "value1")
+    print(f"Store result: {result}")
+    
+    print("Testing get_data...")
+    result = get_data("key1")
+    print(f"Get result: {result}")
+```
+
+### Test Error Handling
+
+```python
+@agent.tool()
+def my_tool(param: str) -> str:
+    try:
+        # Your logic
+        return result
+    except Exception as e:
+        return f"Error: {str(e)}"
+
+if __name__ == "__main__":
+    # Test error case
+    result = my_tool("invalid")
+    assert "Error" in result
+```
+
+### Test with Real AWS (Integration Test)
+
+```python
+# test_integration.py
 import boto3
 import os
 
-def test_integration():
-    """Test with real AWS resources"""
-    # Use test environment
-    table_name = os.environ.get('TEST_TABLE_NAME', 'Test_MyAgent_Data')
-    
+def test_real_dynamodb():
+    """Test against real AWS resources"""
+    table_name = os.environ.get('TABLE_NAME', 'MyAgent_Data')
     dynamodb = boto3.resource('dynamodb')
     table = dynamodb.Table(table_name)
     
-    # Test operations
-    table.put_item(Item={'id': 'test', 'value': 'data'})
-    response = table.get_item(Key={'id': 'test'})
+    # Test write
+    table.put_item(Item={'id': 'test-123', 'value': 'test-data'})
     
-    assert response['Item']['value'] == 'data'
+    # Test read
+    response = table.get_item(Key={'id': 'test-123'})
+    assert response['Item']['value'] == 'test-data'
     
     # Cleanup
-    table.delete_item(Key={'id': 'test'})
-```
+    table.delete_item(Key={'id': 'test-123'})
+    print("Integration test passed!")
 
-### Setup Test Resources
-
-Create a separate test stack:
-
-```python
-# tests/test_stack.py
-from aws_cdk import Stack, aws_dynamodb as dynamodb
-
-class TestStack(Stack):
-    def __init__(self, scope, construct_id, **kwargs):
-        super().__init__(scope, construct_id, **kwargs)
-        
-        self.test_table = dynamodb.Table(
-            self, "TestTable",
-            table_name="Test_MyAgent_Data",
-            partition_key=dynamodb.Attribute(
-                name="id",
-                type=dynamodb.AttributeType.STRING
-            ),
-            billing_mode=dynamodb.BillingMode.PAY_PER_REQUEST
-        )
-```
-
-## Testing in the UI
-
-### Deploy and Test
-
-```bash
-# Deploy your agent
-./deploy_cdk.sh
-
-# Access UI
-# Navigate to the CloudFormation output URL
-# Test your agent through the chat interface
-```
-
-### Manual Testing Checklist
-
-- [ ] Agent appears in UI
-- [ ] Agent responds to messages
-- [ ] Tools execute correctly
-- [ ] Error handling works
-- [ ] AWS resources are accessible
-- [ ] Permissions are correct
-
-## Continuous Integration
-
-### GitHub Actions Example
-
-```yaml
-# .github/workflows/test.yml
-name: Test Agents
-
-on: [push, pull_request]
-
-jobs:
-  test:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v3
-      
-      - name: Set up Python
-        uses: actions/setup-python@v4
-        with:
-          python-version: '3.11'
-      
-      - name: Install dependencies
-        run: |
-          pip install -r requirements.txt
-          pip install pytest pytest-cov moto
-      
-      - name: Run tests
-        run: pytest tests/ --cov=agent
-      
-      - name: Upload coverage
-        uses: codecov/codecov-action@v3
-```
-
-## Best Practices
-
-### Test Coverage
-Aim for >80% code coverage:
-
-```bash
-pytest --cov=agent --cov-report=html tests/
-```
-
-### Test Organization
-
-```
-tests/
-├── test_agent.py          # Agent logic tests
-├── test_tools.py          # Tool-specific tests
-├── test_integration.py    # AWS integration tests
-└── conftest.py           # Shared fixtures
-```
-
-### Fixtures
-
-```python
-# tests/conftest.py
-import pytest
-from agent import agent
-
-@pytest.fixture
-def test_agent():
-    """Provide agent instance for tests"""
-    return agent
-
-@pytest.fixture
-def mock_table():
-    """Provide mocked DynamoDB table"""
-    from moto import mock_dynamodb
-    with mock_dynamodb():
-        # Setup mock table
-        yield table
-```
-
-### Environment Variables
-
-```python
-# tests/test_agent.py
-import os
-
-def test_with_env():
-    """Test with environment variables"""
-    os.environ['TABLE_NAME'] = 'Test_Table'
-    # Run tests
+if __name__ == "__main__":
+    test_real_dynamodb()
 ```
 
 ## Debugging
@@ -269,27 +170,42 @@ def test_with_env():
 
 ```python
 import logging
-
 logging.basicConfig(level=logging.DEBUG)
-logger = logging.getLogger(__name__)
 
 @agent.tool()
-def my_tool(param: str):
-    logger.debug(f"Tool called with: {param}")
-    return f"Result: {param}"
+def my_tool(param: str) -> str:
+    logging.debug(f"Tool called with: {param}")
+    result = process(param)
+    logging.debug(f"Tool returning: {result}")
+    return result
 ```
 
-### Print Agent State
+### Check Agent Response Format
+
+The UI expects responses in specific formats. Test your agent returns valid JSON:
 
 ```python
 if __name__ == "__main__":
-    print(f"Agent: {agent.name}")
-    print(f"Tools: {agent.tools}")
-    print(f"Instructions: {agent.instructions}")
+    response = agent.run("test")
+    print(f"Response type: {type(response)}")
+    print(f"Response: {response}")
+    
+    # Should be a string, not a dict
+    assert isinstance(response, str)
+```
+
+### Verify AWS Credentials
+
+```bash
+# Check credentials work
+aws sts get-caller-identity
+
+# Test DynamoDB access
+aws dynamodb list-tables
 ```
 
 ## Next Steps
 
-- [Adding Agents](adding-agents.md) - Create your first agent
+- [Deployment Guide](deployment.md) - Deploy your tested agent
+- [Troubleshooting](troubleshooting.md) - Debug issues
 - [Infrastructure Setup](infrastructure-setup.md) - Add AWS resources
-- [Troubleshooting](troubleshooting.md) - Debug common issues
