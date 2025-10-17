@@ -213,7 +213,7 @@ class VistaAgentStack(NestedStack):
         # IAM Role for Agent Execution
         self.agent_execution_role = iam.Role(
             self, "VistaAgentExecutionRole",
-            role_name="VistaAgentExecutionRole",
+            # Remove hardcoded role_name to let CDK generate unique name
             assumed_by=iam.CompositePrincipal(
                 iam.ServicePrincipal("bedrock-agentcore.amazonaws.com"),
                 iam.ServicePrincipal("ecs-tasks.amazonaws.com")
