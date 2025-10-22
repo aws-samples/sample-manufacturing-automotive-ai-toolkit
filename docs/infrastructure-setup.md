@@ -128,30 +128,27 @@ self.table.grant_read_write_data(self.function)
 
 ## Custom Permissions
 
-If you need permissions beyond DynamoDB/S3:
+**Important:** Nested stacks should NOT add custom permissions directly. The auto-grant framework handles all permissions.
+
+If you need permissions beyond DynamoDB/S3, add them to the **main stack's IAM construct** instead:
 
 ```python
-from aws_cdk import aws_iam as iam
+# DON'T DO THIS in nested stacks:
+# shared_resources['agent_role'].add_to_policy(...)
 
-class MyAgentStack(NestedStack):
-    def __init__(self, scope, construct_id, shared_resources=None, **kwargs):
-        super().__init__(scope, construct_id, shared_resources, **kwargs)
-        
-        # Create resources (auto-granted)
-        self.table = dynamodb.Table(...)
-        
-        # Add custom permissions
-        if shared_resources and 'agent_role' in shared_resources:
-            shared_resources['agent_role'].add_to_policy(
-                iam.PolicyStatement(
-                    actions=["secretsmanager:GetSecretValue"],
-                    resources=[
-                        f"arn:aws:secretsmanager:{Stack.of(self).region}:"
-                        f"{Stack.of(self).account}:secret:my-secret-*"
-                    ]
-                )
+# DO THIS in main stack's IAM construct:
+class IAMConstruct(Construct):
+    def _create_bedrock_agent_role(self):
+        # Add custom permissions here
+        self.bedrock_agent_role.add_to_policy(
+            iam.PolicyStatement(
+                actions=["secretsmanager:GetSecretValue"],
+                resources=[f"arn:aws:secretsmanager:*:*:secret:my-secret-*"]
             )
+        )
 ```
+
+**Why:** The auto-grant framework in `nested_stack_registry.py` automatically grants DynamoDB/S3 permissions after stack creation. Manual permissions in nested stacks bypass this system.
 
 ## Accessing Resources in Your Agent
 
@@ -240,7 +237,7 @@ table_name = os.environ.get('TABLE_NAME', 'MyAgent_Data')
 ### Permission denied errors
 - Verify resource is created in your stack
 - Check if resource type is auto-granted (DynamoDB, S3)
-- Add custom permissions if needed
+- For other permissions, add to main stack's IAM construct (not nested stack)
 
 ### Stack deployment fails
 - Verify CDK syntax
