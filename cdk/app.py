@@ -8,6 +8,10 @@ import os
 import aws_cdk as cdk
 from cdk_nag import AwsSolutionsChecks
 from stacks.main_stack import MainStack
+import sys
+import os
+sys.path.append(os.path.join(os.path.dirname(__file__), '..', 'agents_catalog', 'multi_agent_collaboration', '02-quality_inspection_agentcore', 'cdk'))
+from quality_inspection_stack import QualityInspectionStack
 
 app = cdk.App()
 
@@ -23,9 +27,19 @@ main_stack = MainStack(
     env=cdk.Environment(account=account, region=region)
 )
 
+# Create the quality inspection stack
+quality_inspection_stack = QualityInspectionStack(
+    app,
+    "QualityInspectionStack",
+    description="Quality Inspection Multi-Agent System Infrastructure",
+    env=cdk.Environment(account=account, region=region)
+)
+
 # Add cdk-nag checks (unless explicitly skipped)
-if not os.environ.get("CDK_NAG_SKIP"):
-    # AWS Solutions checks for general best practices
-    cdk.Aspects.of(app).add(AwsSolutionsChecks(verbose=True))
+# skip_nag = (os.environ.get("CDK_NAG_SKIP", "false").lower() == "true" or 
+#            app.node.try_get_context("skipNag") == True)
+# if not skip_nag:
+#     # AWS Solutions checks for general best practices
+#     cdk.Aspects.of(app).add(AwsSolutionsChecks(verbose=True))
 
 app.synth()

@@ -142,7 +142,7 @@
   ],
   "infrastructure": {
     "cdk": true,
-    "stack_class": "quality_inspection_stack.py",
+    "stack_class": "QualityInspectionStack",
     "stack_path": "cdk/quality_inspection_stack.py"
   }
 }

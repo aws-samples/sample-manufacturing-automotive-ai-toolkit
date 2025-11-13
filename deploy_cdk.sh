@@ -80,15 +80,15 @@ echo "Deploying MA3T Toolkit with CDK"
 echo "  Stack Name: $STACK_NAME"
 echo "  Region: $REGION"
 
-# Deploy CDK stack first
-echo "Deploying CDK stack..."
-cd cdk
-
 # Set environment variable to skip cdk-nag if requested
 if [ "$SKIP_NAG" = true ]; then
   echo "Skipping cdk-nag checks..."
   export CDK_NAG_SKIP=true
 fi
+
+# Deploy CDK stack first
+echo "Deploying CDK stack..."
+cd cdk
 
 # Pass auth credentials to CDK
 export AUTH_USER="$AUTH_USER"
@@ -97,9 +97,17 @@ export AUTH_PASSWORD="$AUTH_PASSWORD"
 # Set account for all CDK apps if specified
 if [ -n "$ACCOUNT" ]; then
   export CDK_DEFAULT_ACCOUNT="$ACCOUNT"
-  cdk deploy --require-approval never --context region="$REGION" --context account="$ACCOUNT"
+  if [ "$SKIP_NAG" = true ]; then
+    cdk deploy "$STACK_NAME" --require-approval never --context region="$REGION" --context account="$ACCOUNT" --context skipNag=true
+  else
+    cdk deploy "$STACK_NAME" --require-approval never --context region="$REGION" --context account="$ACCOUNT"
+  fi
 else
-  cdk deploy --require-approval never --context region="$REGION"
+  if [ "$SKIP_NAG" = true ]; then
+    cdk deploy "$STACK_NAME" --require-approval never --context region="$REGION" --context skipNag=true
+  else
+    cdk deploy "$STACK_NAME" --require-approval never --context region="$REGION"
+  fi
 fi
 
 # Check if the deployment was successful
