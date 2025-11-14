@@ -167,12 +167,32 @@ if [ $? -eq 0 ]; then
   # Clean up the temporary directory
   rm -rf "$TEMP_DIR"
   
+  # Debug: List all stack outputs
+  echo "Available stack outputs:"
+  aws cloudformation describe-stacks \
+    --stack-name "$STACK_NAME" \
+    --query "Stacks[0].Outputs[].{Key:OutputKey,Value:OutputValue}" \
+    --output table \
+    --region "$REGION"
+  
   # Get the CodeBuild project name for AgentCore deployment
+  # Try main stack first, then look for any nested stack deployment projects
   CODEBUILD_PROJECT=$(aws cloudformation describe-stacks \
     --stack-name "$STACK_NAME" \
     --query "Stacks[0].Outputs[?OutputKey=='AgentCoreDeploymentProject'].OutputValue" \
     --output text \
     --region "$REGION")
+  
+  # If not found in main stack, look for any output ending with 'DeploymentProject'
+  if [ -z "$CODEBUILD_PROJECT" ] || [ "$CODEBUILD_PROJECT" = "None" ]; then
+    CODEBUILD_PROJECT=$(aws cloudformation describe-stacks \
+      --stack-name "$STACK_NAME" \
+      --query "Stacks[0].Outputs[?ends_with(OutputKey, 'DeploymentProject')].OutputValue | [0]" \
+      --output text \
+      --region "$REGION")
+  fi
+  
+  echo "Found CodeBuild project: '$CODEBUILD_PROJECT'"
   
   # Start the CodeBuild project to deploy the agents
   if [ ! -z "$CODEBUILD_PROJECT" ]; then

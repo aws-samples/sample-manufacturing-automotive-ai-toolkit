@@ -18,4 +18,4 @@ packaged_infra_cfn.yaml
 **/cdk.out/
 agents_catalog/**/Dockerfile
 agents_catalog/**/.dockerignore
-.vscode/
+.vscode/agents_catalog/multi_agent_collaboration/02-quality_inspection_agentcore/agentcore-layer/

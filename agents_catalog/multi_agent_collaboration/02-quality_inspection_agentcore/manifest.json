@@ -1,148 +1,58 @@
 {
-  "group": ["Quality Inspection"],
-  "agents": [
-    {
-      "id": "quality_inspection_orchestrator",
-      "name": "Quality Inspection Orchestrator",
-      "version": "1.0.0",
-      "description": "Orchestration agent for the quality inspection system",
-      "type": "agentcore",
-      "entrypoint": "quality_inspection_orchestrator.py",
-      "metadata": {
-        "authors": [
-          {
-            "name": "grantaws",
-            "organization": "AWS"
-          },
-          {
-            "name": "kmariwal",
-            "organization": "AWS"
-          }
-        ],
-        "created_date": "2025-11-12",
-        "last_updated": "2025-11-12",
-        "maturity": "development"
-      }
-    },
-    {
-      "id": "quality_inspection_vision",
-      "name": "Quality Inspection Vision Agent",
-      "version": "1.0.0",
-      "description": "Vision inspection agent for the quality inspection system. Performs initial image analysis of parts.",
-      "type": "agentcore",
-      "entrypoint": "vision_agent.py",
-      "metadata": {
-        "authors": [
-          {
-            "name": "grantaws",
-            "organization": "AWS"
-          },
-          {
-            "name": "kmariwal",
-            "organization": "AWS"
-          }
-        ],
-        "created_date": "2025-11-12",
-        "last_updated": "2025-11-12",
-        "maturity": "development"
-      }
-    },
-    {
-      "id": "quality_inspection_analysis",
-      "name": "Quality Inspection Analysis Agent",
-      "version": "1.0.0",
-      "description": "Analysis agent for the quality inspection system. Additional analysis based on historical data, knowledge base, etc.",
-      "type": "agentcore",
-      "entrypoint": "analysis_agent.py",
-      "metadata": {
-        "authors": [
-          {
-            "name": "grantaws",
-            "organization": "AWS"
-          },
-          {
-            "name": "kmariwal",
-            "organization": "AWS"
-          }
-        ],
-        "created_date": "2025-11-12",
-        "last_updated": "2025-11-12",
-        "maturity": "development"
-      }
-    },
-    {
-      "id": "quality_inspection_sop",
-      "name": "Quality Inspection SOP Agent",
-      "version": "1.0.0",
-      "description": "SOP agent for the quality inspection system. Based off the analysis of the part and type of defect, makes recommended actions based on the SOP.",
-      "type": "agentcore",
-      "entrypoint": "sop_agent.py",
-      "metadata": {
-        "authors": [
-          {
-            "name": "grantaws",
-            "organization": "AWS"
-          },
-          {
-            "name": "kmariwal",
-            "organization": "AWS"
-          }
-        ],
-        "created_date": "2025-11-12",
-        "last_updated": "2025-11-12",
-        "maturity": "development"
-      }
-    },
-    {
-      "id": "quality_inspection_action",
-      "name": "Quality Inspection Action Agent",
-      "version": "1.0.0",
-      "description": "Action agent for the quality inspection system. Takes actions based on analysis and SOP recommendations.",
-      "type": "agentcore",
-      "entrypoint": "action_agent.py",
-      "metadata": {
-        "authors": [
-          {
-            "name": "grantaws",
-            "organization": "AWS"
-          },
-          {
-            "name": "kmariwal",
-            "organization": "AWS"
-          }
-        ],
-        "created_date": "2025-11-12",
-        "last_updated": "2025-11-12",
-        "maturity": "development"
-      }
-    },
-    {
-      "id": "quality_inspection_communication",
-      "name": "Quality Inspection Communication Agent",
-      "version": "1.0.0",
-      "description": "Communication agent for the quality inspection system. Pushes findings to SNS topic and updates any reports or dashboards.",
-      "type": "agentcore",
-      "entrypoint": "communication_agent.py",
-      "metadata": {
-        "authors": [
-          {
-            "name": "grantaws",
-            "organization": "AWS"
-          },
-          {
-            "name": "kmariwal",
-            "organization": "AWS"
-          }
-        ],
-        "created_date": "2025-11-12",
-        "last_updated": "2025-11-12",
-        "maturity": "development"
-      }
-    }
-  ],
+  "name": "quality_inspection_agentcore",
+  "type": "agentcore",
+  "deployment_method": "agentcore",
+  "description": "Multi-agent quality inspection system using AgentCore with Strands framework",
+  "category": "multi_agent_collaboration",
   "infrastructure": {
     "cdk": true,
     "stack_class": "QualityInspectionStack",
     "stack_path": "cdk/quality_inspection_stack.py"
+  },
+  "agentcore": {
+    "agents": [
+      "quality_inspection_orchestrator",
+      "vision_agent", 
+      "analysis_agent",
+      "sop_agent",
+      "action_agent",
+      "communication_agent"
+    ],
+    "framework": "strands",
+    "protocol": "HTTP",
+    "runtime_permissions": [
+      "ecr:GetAuthorizationToken",
+      "ecr:BatchGetImage", 
+      "ecr:GetDownloadUrlForLayer",
+      "ecr:BatchCheckLayerAvailability",
+      "ecr:DescribeRepositories",
+      "ecr:DescribeImages",
+      "dynamodb:GetItem",
+      "dynamodb:PutItem",
+      "dynamodb:UpdateItem",
+      "dynamodb:DeleteItem",
+      "dynamodb:Query",
+      "dynamodb:Scan",
+      "s3:GetObject",
+      "s3:PutObject",
+      "s3:DeleteObject",
+      "s3:ListBucket",
+
+      "sns:Publish",
+      "ssm:GetParameter",
+      "ssm:GetParameters",
+      "ssm:PutParameter",
+      "bedrock:InvokeModel",
+      "bedrock:InvokeModelWithResponseStream",
+      "bedrock-agentcore:InvokeAgentRuntime",
+      "sts:GetCallerIdentity",
+      "logs:CreateLogGroup",
+      "logs:CreateLogStream",
+      "logs:PutLogEvents"
+    ]
+  },
+  "environment": {
+    "PYTHON_VERSION": "3.12",
+    "FRAMEWORK": "strands"
   }
 }

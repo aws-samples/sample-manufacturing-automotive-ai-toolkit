@@ -14,7 +14,8 @@ from aws_cdk import (
     aws_ec2 as ec2,
     aws_logs as logs,
     aws_ssm as ssm,
-
+    aws_events as events,
+    aws_events_targets as targets,
     aws_s3_assets as s3_assets,
     aws_bedrockagentcore as bedrockagentcore,
     CfnOutput,
@@ -46,7 +47,10 @@ class QualityInspectionStack(Stack):
         # Create model configuration parameters
         self.create_model_parameters()
         
-        # Note: AgentCore agents are deployed separately using quality_inspection_agentcore_deploy.sh
+        # Create CodeBuild project for AgentCore deployment
+        self.create_agentcore_codebuild_project()
+        
+        # Note: AgentCore agents are deployed via CodeBuild after stack completion
     
     def create_dynamodb_tables(self):
         """Create all DynamoDB tables for the multi-agent system"""
@@ -105,8 +109,15 @@ class QualityInspectionStack(Stack):
         # Create Lambda function to trigger AgentCore orchestrator
         trigger_function = self.create_agentcore_trigger(bucket)
         
-        # Output bucket name
+        # Output bucket name (multiple formats for compatibility)
         CfnOutput(self, "S3BucketName", value=bucket.bucket_name)
+        CfnOutput(self, "BucketName", value=bucket.bucket_name)
+        CfnOutput(self, "MachinepartimagesBucketName", value=bucket.bucket_name)
+        # Main output expected by deploy_cdk.sh
+        CfnOutput(self, "ResourceBucketName", value=bucket.bucket_name)
+        
+        # Store bucket for use in model parameters
+        self.bucket = bucket
         
         return bucket
     
@@ -276,11 +287,11 @@ class QualityInspectionStack(Stack):
             description="Secondary/fallback model ID for quality inspection agents"
         )
         
-        # Reference image S3 URI parameter
+        # Reference image S3 URI parameter (using actual bucket name)
         ssm.StringParameter(
             self, "ReferenceImageS3UriParameter",
             parameter_name="/quality-inspection/reference-image-s3-uri",
-            string_value=f"s3://machinepartimages-{self.account}/cleanimages/Cleanimage.jpg",
+            string_value=f"s3://{self.bucket.bucket_name}/cleanimages/Cleanimage.jpg",
             description="S3 URI for the reference clean image used in quality inspection"
         )
         
@@ -332,5 +343,268 @@ class QualityInspectionStack(Stack):
         CfnOutput(self, "SecondaryModelParameterName", value="/quality-inspection/secondary-model/model-id")
         CfnOutput(self, "ReferenceImageS3UriParameterName", value="/quality-inspection/reference-image-s3-uri")
     
+    def create_agentcore_codebuild_project(self):
+        """Create a CodeBuild project for AgentCore deployment"""
+        
+        import os
+        from aws_cdk import aws_codebuild as codebuild
+        
+        # Create IAM role for CodeBuild
+        codebuild_role = iam.Role(
+            self, "QualityInspectionCodeBuildRole",
+            assumed_by=iam.ServicePrincipal("codebuild.amazonaws.com"),
+            inline_policies={
+                "AgentCoreDeploymentPolicy": iam.PolicyDocument(
+                    statements=[
+                        iam.PolicyStatement(
+                            effect=iam.Effect.ALLOW,
+                            actions=[
+                                "logs:CreateLogGroup",
+                                "logs:CreateLogStream",
+                                "logs:PutLogEvents"
+                            ],
+                            resources=[f"arn:aws:logs:{self.region}:{self.account}:*"]
+                        ),
+                        iam.PolicyStatement(
+                            effect=iam.Effect.ALLOW,
+                            actions=[
+                                "bedrock-agentcore:*",
+                                "ecr:*",
+                                "iam:PassRole",
+                                "iam:GetRole",
+                                "iam:CreateRole",
+                                "iam:DeleteRole",
+                                "iam:AttachRolePolicy",
+                                "iam:DetachRolePolicy",
+                                "iam:ListAttachedRolePolicies",
+                                "iam:TagRole",
+                                "iam:UntagRole",
+                                "iam:ListRoleTags",
+                                "iam:PutRolePolicy",
+                                "iam:DeleteRolePolicy",
+                                "iam:GetRolePolicy",
+                                "iam:ListRolePolicies",
+                                "iam:CreateServiceLinkedRole",
+                                "s3:GetObject",
+                                "s3:PutObject",
+                                "s3:DeleteObject",
+                                "s3:ListBucket",
+                                "s3:CreateBucket",
+                                "s3:GetBucketLocation",
+                                "codebuild:*",
+                                "lambda:*",
+                                "application-autoscaling:*",
+                                "cloudformation:*"
+                            ],
+                            resources=["*"]
+                        ),
+                        iam.PolicyStatement(
+                            effect=iam.Effect.ALLOW,
+                            actions=[
+                                "ssm:PutParameter",
+                                "ssm:GetParameter",
+                                "ssm:GetParameters"
+                            ],
+                            resources=[
+                                f"arn:aws:ssm:{self.region}:{self.account}:parameter/quality-inspection/agentcore-runtime/*"
+                            ]
+                        )
+                    ]
+                )
+            }
+        )
+        
+        # Create a dedicated CodeBuild role for AgentCore with all necessary permissions
+        agentcore_codebuild_role = iam.Role(
+            self, "AgentCoreCodeBuildRole",
+            role_name=f"AgentCoreCodeBuildRole-{self.region}",
+            assumed_by=iam.ServicePrincipal("codebuild.amazonaws.com"),
+            inline_policies={
+                "AgentCoreCodeBuildPolicy": iam.PolicyDocument(
+                    statements=[
+                        iam.PolicyStatement(
+                            effect=iam.Effect.ALLOW,
+                            actions=[
+                                "logs:CreateLogGroup",
+                                "logs:CreateLogStream",
+                                "logs:PutLogEvents"
+                            ],
+                            resources=["*"]
+                        ),
+                        iam.PolicyStatement(
+                            effect=iam.Effect.ALLOW,
+                            actions=[
+                                "ecr:BatchCheckLayerAvailability",
+                                "ecr:GetDownloadUrlForLayer",
+                                "ecr:BatchGetImage",
+                                "ecr:GetAuthorizationToken",
+                                "ecr:PutImage",
+                                "ecr:InitiateLayerUpload",
+                                "ecr:UploadLayerPart",
+                                "ecr:CompleteLayerUpload",
+                                "ecr:CreateRepository",
+                                "ecr:DescribeRepositories"
+                            ],
+                            resources=["*"]
+                        ),
+                        iam.PolicyStatement(
+                            effect=iam.Effect.ALLOW,
+                            actions=[
+                                "bedrock-agentcore:*"
+                            ],
+                            resources=["*"]
+                        ),
+                        iam.PolicyStatement(
+                            effect=iam.Effect.ALLOW,
+                            actions=[
+                                "s3:GetObject",
+                                "s3:PutObject",
+                                "s3:DeleteObject",
+                                "s3:ListBucket",
+                                "s3:CreateBucket",
+                                "s3:GetBucketLocation"
+                            ],
+                            resources=["*"]
+                        ),
+                        iam.PolicyStatement(
+                            effect=iam.Effect.ALLOW,
+                            actions=[
+                                "iam:PassRole",
+                                "iam:GetRole",
+                                "iam:CreateRole",
+                                "iam:DeleteRole",
+                                "iam:AttachRolePolicy",
+                                "iam:DetachRolePolicy",
+                                "iam:ListAttachedRolePolicies",
+                                "iam:TagRole",
+                                "iam:UntagRole",
+                                "iam:ListRoleTags",
+                                "iam:PutRolePolicy",
+                                "iam:DeleteRolePolicy",
+                                "iam:GetRolePolicy",
+                                "iam:ListRolePolicies"
+                            ],
+                            resources=["*"]
+                        )
+                    ]
+                )
+            }
+        )
+        
+
+        
+        # Create CodeBuild project for AgentCore deployment
+        project = codebuild.Project(
+            self, "QualityInspectionAgentCoreProject",
+            project_name="quality-inspection-agentcore-deployment",
+            role=codebuild_role,
+            environment=codebuild.BuildEnvironment(
+                build_image=codebuild.LinuxBuildImage.STANDARD_7_0,
+                compute_type=codebuild.ComputeType.SMALL
+            ),
+            build_spec=codebuild.BuildSpec.from_object({
+                "version": "0.2",
+                "phases": {
+                    "install": {
+                        "runtime-versions": {
+                            "python": "3.12"
+                        },
+                        "commands": [
+                            "echo 'Installing AgentCore CLI'",
+                            "pip install bedrock-agentcore-starter-toolkit"
+                        ]
+                    },
+                    "build": {
+                        "commands": [
+                            "echo 'Deploying AgentCore agents'",
+                            "echo 'Current directory:'",
+                            "pwd",
+                            "echo 'Listing contents:'",
+                            "ls -la",
+                            "echo 'Looking for quality inspection agents:'",
+                            "find . -name '*quality*' -type d",
+                            "cd agents_catalog/multi_agent_collaboration/02-quality_inspection_agentcore/src",
+                            "echo 'In agent directory:'",
+                            "pwd",
+                            "ls -la",
+                            "echo 'Checking for agent files:'",
+                            "ls -la *.py",
+                            "echo 'Installing agent requirements if they exist:'",
+                            "if [ -f requirements.txt ]; then pip install -r requirements.txt; fi",
+                            "echo 'Configuring agents with HTTP protocol for Strands and custom CodeBuild role'",
+                            f"agentcore configure --entrypoint quality_inspection_orchestrator.py --name quality_inspection_orchestrator --protocol HTTP --non-interactive --disable-memory --code-build-execution-role {agentcore_codebuild_role.role_arn}",
+                            f"agentcore configure --entrypoint vision_agent.py --name vision_agent --protocol HTTP --non-interactive --disable-memory --code-build-execution-role {agentcore_codebuild_role.role_arn}",
+                            f"agentcore configure --entrypoint analysis_agent.py --name analysis_agent --protocol HTTP --non-interactive --disable-memory --code-build-execution-role {agentcore_codebuild_role.role_arn}",
+                            f"agentcore configure --entrypoint sop_agent.py --name sop_agent --protocol HTTP --non-interactive --disable-memory --code-build-execution-role {agentcore_codebuild_role.role_arn}",
+                            f"agentcore configure --entrypoint action_agent.py --name action_agent --protocol HTTP --non-interactive --disable-memory --code-build-execution-role {agentcore_codebuild_role.role_arn}",
+                            f"agentcore configure --entrypoint communication_agent.py --name communication_agent --protocol HTTP --non-interactive --disable-memory --code-build-execution-role {agentcore_codebuild_role.role_arn}",
+                            "echo 'Deploying orchestrator agent'",
+                            "agentcore launch --agent quality_inspection_orchestrator --auto-update-on-conflict 2>&1 | tee orchestrator_output.txt",
+                            "if [ $? -ne 0 ]; then echo 'Orchestrator launch failed - see output above'; exit 1; fi",
+                            "cat orchestrator_output.txt",
+                            "ORCHESTRATOR_ARN=$(grep -o 'arn:aws:bedrock-agentcore:[^:]*:[^:]*:runtime/[^[:space:]]*' orchestrator_output.txt | head -1)",
+                            "echo \"Orchestrator ARN: $ORCHESTRATOR_ARN\"",
+                            "if [ ! -z \"$ORCHESTRATOR_ARN\" ]; then aws ssm put-parameter --name '/quality-inspection/agentcore-runtime/orchestrator' --value \"$ORCHESTRATOR_ARN\" --type String --overwrite; fi",
+                            "echo 'Deploying vision agent'",
+                            "agentcore launch --agent vision_agent --auto-update-on-conflict 2>&1 | tee vision_output.txt",
+                            "if [ $? -ne 0 ]; then echo 'Vision agent launch failed - see output above'; exit 1; fi",
+                            "cat vision_output.txt",
+                            "VISION_ARN=$(grep -o 'arn:aws:bedrock-agentcore:[^:]*:[^:]*:runtime/[^[:space:]]*' vision_output.txt | head -1)",
+                            "echo \"Vision ARN: $VISION_ARN\"",
+                            "if [ ! -z \"$VISION_ARN\" ]; then aws ssm put-parameter --name '/quality-inspection/agentcore-runtime/vision' --value \"$VISION_ARN\" --type String --overwrite; else echo 'No Vision ARN found, skipping SSM parameter'; fi",
+                            "echo 'Deploying analysis agent'",
+                            "agentcore launch --agent analysis_agent --auto-update-on-conflict 2>&1 | tee analysis_output.txt",
+                            "if [ $? -ne 0 ]; then echo 'Analysis agent launch failed - see output above'; exit 1; fi",
+                            "cat analysis_output.txt",
+                            "ANALYSIS_ARN=$(grep -o 'arn:aws:bedrock-agentcore:[^:]*:[^:]*:runtime/[^[:space:]]*' analysis_output.txt | head -1)",
+                            "echo \"Analysis ARN: $ANALYSIS_ARN\"",
+                            "if [ ! -z \"$ANALYSIS_ARN\" ]; then aws ssm put-parameter --name '/quality-inspection/agentcore-runtime/analysis' --value \"$ANALYSIS_ARN\" --type String --overwrite; else echo 'No Analysis ARN found, skipping SSM parameter'; fi",
+                            "echo 'Deploying sop agent'",
+                            "agentcore launch --agent sop_agent --auto-update-on-conflict 2>&1 | tee sop_output.txt",
+                            "if [ $? -ne 0 ]; then echo 'SOP agent launch failed - see output above'; exit 1; fi",
+                            "cat sop_output.txt",
+                            "SOP_ARN=$(grep -o 'arn:aws:bedrock-agentcore:[^:]*:[^:]*:runtime/[^[:space:]]*' sop_output.txt | head -1)",
+                            "echo \"SOP ARN: $SOP_ARN\"",
+                            "if [ ! -z \"$SOP_ARN\" ]; then aws ssm put-parameter --name '/quality-inspection/agentcore-runtime/sop' --value \"$SOP_ARN\" --type String --overwrite; else echo 'No SOP ARN found, skipping SSM parameter'; fi",
+                            "echo 'Deploying action agent'",
+                            "agentcore launch --agent action_agent --auto-update-on-conflict 2>&1 | tee action_output.txt",
+                            "if [ $? -ne 0 ]; then echo 'Action agent launch failed - see output above'; exit 1; fi",
+                            "cat action_output.txt",
+                            "ACTION_ARN=$(grep -o 'arn:aws:bedrock-agentcore:[^:]*:[^:]*:runtime/[^[:space:]]*' action_output.txt | head -1)",
+                            "echo \"Action ARN: $ACTION_ARN\"",
+                            "if [ ! -z \"$ACTION_ARN\" ]; then aws ssm put-parameter --name '/quality-inspection/agentcore-runtime/action' --value \"$ACTION_ARN\" --type String --overwrite; else echo 'No Action ARN found, skipping SSM parameter'; fi",
+                            "echo 'Deploying communication agent'",
+                            "agentcore launch --agent communication_agent --auto-update-on-conflict 2>&1 | tee communication_output.txt",
+                            "if [ $? -ne 0 ]; then echo 'Communication agent launch failed - see output above'; exit 1; fi",
+                            "cat communication_output.txt",
+                            "COMMUNICATION_ARN=$(grep -o 'arn:aws:bedrock-agentcore:[^:]*:[^:]*:runtime/[^[:space:]]*' communication_output.txt | head -1)",
+                            "echo \"Communication ARN: $COMMUNICATION_ARN\"",
+                            "if [ ! -z \"$COMMUNICATION_ARN\" ]; then aws ssm put-parameter --name '/quality-inspection/agentcore-runtime/communication' --value \"$COMMUNICATION_ARN\" --type String --overwrite; else echo 'No Communication ARN found, skipping SSM parameter'; fi",
+                            "echo 'AgentCore deployment completed'",
+                            "echo 'Runtime ARNs saved to SSM parameters'"
+                        ]
+                    },
+                    "post_build": {
+                        "commands": [
+                            "echo 'Build completed - checking for any errors:'",
+                            "if [ -f orchestrator_output.txt ]; then echo 'Orchestrator output:' && cat orchestrator_output.txt; fi",
+                            "if [ -f vision_output.txt ]; then echo 'Vision output:' && cat vision_output.txt; fi"
+                        ]
+                    }
+                }
+            }),
+            source=codebuild.Source.s3(
+                bucket=self.bucket,
+                path="repo"
+            )
+        )
+        
+        # Output the CodeBuild project name with dynamic naming pattern
+        CfnOutput(self, "QualityInspectionAgentCoreDeploymentProject", value=project.project_name)
+        CfnOutput(self, "AgentCoreCodeBuildRoleArn", value=agentcore_codebuild_role.role_arn)
+        
+        return project
+    
+
 
     

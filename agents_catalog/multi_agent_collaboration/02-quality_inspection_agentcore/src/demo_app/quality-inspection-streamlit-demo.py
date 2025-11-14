@@ -75,15 +75,19 @@ def main():
     with col1:
         st.header("📸 Image Processing")
         
-        # S3 Configuration - Get dynamic bucket name
-        try:
-            sts = get_boto3_client('sts')
-            account_id = sts.get_caller_identity()['Account']
-            bucket_name = f"machinepartimages-{account_id}"
-        except:
-            bucket_name = "machinepartimages"
-        st.info(f"📦 S3 Bucket: {bucket_name}")
+        # Region selection first
         region = st.selectbox("AWS Region", ["us-east-1", "us-west-2"], index=0)
+        
+        # S3 Configuration - Auto-discover bucket name
+        bucket_name = discover_quality_inspection_bucket(region)
+        # Validate bucket exists
+        try:
+            s3 = get_boto3_client('s3', region_name=region)
+            s3.head_bucket(Bucket=bucket_name)
+            st.success(f"📦 S3 Bucket: {bucket_name} ✅")
+        except Exception as e:
+            st.error(f"📦 S3 Bucket: {bucket_name} ❌ (Not found: {str(e)})")
+            st.warning("Please check your CDK deployment or AWS credentials")
         
         # File upload section
         uploaded_file = st.file_uploader("Upload Image", type=['jpg', 'jpeg', 'png'])
@@ -98,14 +102,17 @@ def main():
                 st.error(f"❌ Upload failed: {upload_result['error']}")
         
         # Show recent uploads for reference
-        available_images = get_s3_objects(bucket_name, "inputimages/", region)
-        if available_images:
-            st.info(f"📁 Recent uploads: {len(available_images)} files in inputimages/")
-            with st.expander("View recent uploads"):
-                for img in available_images[-5:]:  # Show last 5
-                    st.text(f"• {img.split('/')[-1]}")
-        else:
-            st.info("📁 No files in inputimages/ folder yet")
+        try:
+            available_images = get_s3_objects(bucket_name, "inputimages/", region)
+            if available_images:
+                st.info(f"📁 Recent uploads: {len(available_images)} files in inputimages/")
+                with st.expander("View recent uploads"):
+                    for img in available_images[-5:]:  # Show last 5
+                        st.text(f"• {img.split('/')[-1]}")
+            else:
+                st.info("📁 No files in inputimages/ folder yet")
+        except Exception as e:
+            st.warning(f"Could not access S3 bucket: {str(e)}")
         
         # AgentCore agents run remotely
         
@@ -120,8 +127,9 @@ def main():
                 ref_image_bytes = download_s3_image(ref_bucket, ref_key, region)
                 ref_image = Image.open(io.BytesIO(ref_image_bytes))
                 st.image(ref_image, caption="Reference (Clean)", width='stretch')
-            except:
-                st.warning("Could not load reference image")
+            except Exception as e:
+                st.warning(f"Could not load reference image: {str(e)}")
+                st.info("Reference image should be at: s3://{bucket_name}/cleanimages/Cleanimage.jpg")
         
         with img_col2:
             if uploaded_file:
@@ -197,12 +205,7 @@ def main():
             # Display image with defect annotations
             if image_key:
                 try:
-                    try:
-                        sts = get_boto3_client('sts')
-                        account_id = sts.get_caller_identity()['Account']
-                        bucket_name = f"machinepartimages-{account_id}"
-                    except:
-                        bucket_name = "machinepartimages"
+                    bucket_name = discover_quality_inspection_bucket('us-east-1')
                     
                     # Check if image is in defects or processedimages folder
                     possible_keys = [f"defects/{filename}", f"processedimages/{filename}", image_key]
@@ -481,15 +484,7 @@ def display_processing_history():
                     image_key = agentcore_data.get('image_key', '')
                     if image_key:
                         try:
-                            # Try to load and display the image
-                            try:
-                                sts = get_boto3_client('sts')
-                                account_id = sts.get_caller_identity()['Account']
-                                bucket_name = f"machinepartimages-{account_id}"
-                            except:
-                                bucket_name = "machinepartimages"
-                            
-                            # Check if image is in defects or processedimages folder
+                            bucket_name = discover_quality_inspection_bucket('us-east-1')
                             filename = image_key.split('/')[-1]
                             possible_keys = [f"defects/{filename}", f"processedimages/{filename}", image_key]
                             
@@ -501,11 +496,15 @@ def display_processing_history():
                                     # Annotate image with defects if any
                                     if defects:
                                         annotated_image = annotate_image_with_defects(image, defects)
-                                        st.image(annotated_image, caption=f"Processed: {filename} (with defect annotations)", width=400)
-                                        st.success(f"🔴 Red boxes show detected defects at grid coordinates")
-                                        # Grid coordinates already shown above with defect details
+                                        st.image(annotated_image, caption=f"🔴 {len(defects)} defect(s) detected with red bounding boxes", width=400)
+                                        
+                                        # Debug info
+                                        st.info(f"**Debug:** Image: {key}, Size: {image.width}x{image.height}")
+                                        for i, defect in enumerate(defects):
+                                            coords = f"({defect.get('grid_x1')},{defect.get('grid_y1')}) to ({defect.get('grid_x2')},{defect.get('grid_y2')})"
+                                            st.info(f"**Defect {i+1}:** {defect.get('type')} at grid {coords}")
                                     else:
-                                        st.image(image, caption=f"Processed: {filename}", width=400)
+                                        st.image(image, caption=f"✅ No defects detected", width=400)
                                     break
                                 except:
                                     continue
@@ -757,6 +756,87 @@ def display_agent_communications():
     except Exception as e:
         st.error(f"Could not load agent communications: {str(e)}")
 
+def discover_quality_inspection_bucket(region):
+    """Auto-discover the quality inspection S3 bucket name"""
+    try:
+        # Method 1: Check CloudFormation stacks for bucket outputs
+        cf = get_boto3_client('cloudformation', region_name=region)
+        stacks = ['QualityInspectionStack', 'AgenticQualityInspectionStack', 'MA3TMainStack']
+        
+        for stack_name in stacks:
+            try:
+                response = cf.describe_stacks(StackName=stack_name)
+                outputs = response['Stacks'][0].get('Outputs', [])
+                for output in outputs:
+                    key = output['OutputKey'].lower()
+                    if any(word in key for word in ['bucket', 'machinepartimages', 'resourcebucket']):
+                        bucket_name = output['OutputValue']
+                        # Verify bucket exists and has expected structure
+                        if verify_quality_inspection_bucket(bucket_name, region):
+                            return bucket_name
+            except:
+                continue
+        
+        # Method 2: Search all S3 buckets for quality inspection structure
+        s3 = get_boto3_client('s3', region_name=region)
+        response = s3.list_buckets()
+        
+        for bucket in response['Buckets']:
+            bucket_name = bucket['Name']
+            # Check for quality inspection bucket patterns
+            if any(pattern in bucket_name.lower() for pattern in ['machinepartimages', 'quality', 'inspection']):
+                if verify_quality_inspection_bucket(bucket_name, region):
+                    return bucket_name
+        
+        # Method 3: Fallback to account-based naming
+        sts = get_boto3_client('sts')
+        account_id = sts.get_caller_identity()['Account']
+        fallback_name = f"machinepartimages-{account_id}"
+        
+        # Check if fallback exists
+        try:
+            s3.head_bucket(Bucket=fallback_name)
+            return fallback_name
+        except:
+            pass
+        
+        # If nothing found, return the fallback anyway (will show error in UI)
+        return fallback_name
+        
+    except Exception as e:
+        # Ultimate fallback
+        return "machinepartimages"
+
+def verify_quality_inspection_bucket(bucket_name, region):
+    """Verify bucket exists and has quality inspection structure"""
+    try:
+        s3 = get_boto3_client('s3', region_name=region)
+        
+        # Check if bucket exists
+        s3.head_bucket(Bucket=bucket_name)
+        
+        # Check for expected folder structure or reference image
+        try:
+            # Look for cleanimages folder or reference image
+            response = s3.list_objects_v2(Bucket=bucket_name, Prefix='cleanimages/', MaxKeys=1)
+            if response.get('Contents'):
+                return True
+            
+            # Look for inputimages folder
+            response = s3.list_objects_v2(Bucket=bucket_name, Prefix='inputimages/', MaxKeys=1)
+            if response.get('Contents'):
+                return True
+            
+            # If no specific folders, but bucket exists, it might be new
+            return True
+            
+        except:
+            # Bucket exists but might be empty - still valid
+            return True
+            
+    except:
+        return False
+
 # Helper functions
 def cleanup_temp_images():
     """Clean up temporary image files"""
@@ -800,14 +880,15 @@ def annotate_image_with_defects(image, defects):
             grid_y2 = int(float(defect['grid_y2']))
             
             # Convert grid coordinates (1-10 scale) to pixel coordinates
+            # Vision agent uses 1-based coordinates: (1,1) to (10,10)
             grid_width = float(image.width) / 10.0
             grid_height = float(image.height) / 10.0
             
-            # Map grid coordinates to pixel coordinates (1-based to 0-based)
+            # Map 1-based grid coordinates to 0-based pixel coordinates
             x1 = int((grid_x1 - 1) * grid_width)
             y1 = int((grid_y1 - 1) * grid_height)
-            x2 = int(grid_x2 * grid_width)
-            y2 = int(grid_y2 * grid_height)
+            x2 = int((grid_x2) * grid_width)  # grid_x2 is inclusive, so don't subtract 1
+            y2 = int((grid_y2) * grid_height)  # grid_y2 is inclusive, so don't subtract 1
             
             # Ensure coordinates are valid and make box visible
             x1, x2 = min(x1, x2), max(x1, x2)
