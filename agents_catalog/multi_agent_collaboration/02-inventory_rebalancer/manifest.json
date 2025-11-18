@@ -1,0 +1,28 @@
+{
+  "agents": [
+    {
+      "id": "inventory_rebalancer",
+      "name": "inventory-rebalancer",
+      "version": "1.0.0",
+      "description": "A multi agent collaboration system to automatically perform intelligent inventory rebalancing decisions.",
+      "type": "agentcore",
+      "entrypoint": "agent.py",
+      "metadata": {
+        "authors": [
+          {
+            "name": "vedev",
+            "organization": "AWS"
+          }
+        ],
+        "created_date": "2025-11-17",
+        "last_updated": "2025-11-17",
+        "maturity": "development"
+      }
+    }
+  ],
+  "infrastructure": {
+    "cdk": true,
+    "stack_class": "AgentStack",
+    "stack_path": "cdk/stack.py"
+  }
+}
