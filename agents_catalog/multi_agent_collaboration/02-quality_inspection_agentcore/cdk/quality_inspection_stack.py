@@ -200,59 +200,23 @@ class QualityInspectionStack(Stack):
     
     def create_agentcore_trigger(self, bucket):
         """Create Lambda function to trigger AgentCore orchestrator on S3 events"""
-        
-        import os
+        # Use shared Lambda execution role from main stack
+        lambda_role = self.shared_resources.get('lambda_execution_role')
+        if not lambda_role:
+            print("Warning: No shared lambda execution role found, trigger function may not work properly")
+            return None
+
         project_root = os.path.dirname(os.path.dirname(__file__))
-        
-        # Create IAM role for the trigger function
-        trigger_role = iam.Role(
-            self, "AgentCoreTriggerRole",
-            assumed_by=iam.ServicePrincipal("lambda.amazonaws.com"),
-            managed_policies=[
-                iam.ManagedPolicy.from_aws_managed_policy_name("service-role/AWSLambdaBasicExecutionRole")
-            ],
-            inline_policies={
-                "AgentCoreAccessPolicy": iam.PolicyDocument(
-                    statements=[
-                        iam.PolicyStatement(
-                            effect=iam.Effect.ALLOW,
-                            actions=[
-                                "bedrock-agentcore:InvokeAgentRuntime",
-                                "bedrock-agentcore:GetAgentRuntime",
-                                "bedrock-agentcore:ListAgentRuntimes"
-                            ],
-                            resources=[
-                                f"arn:aws:bedrock-agentcore:{self.region}:{self.account}:runtime/*",
-                                f"arn:aws:bedrock-agentcore:{self.region}:{self.account}:agent-runtime/*"
-                            ]
-                        ),
-                        iam.PolicyStatement(
-                            effect=iam.Effect.ALLOW,
-                            actions=[
-                                "ssm:GetParameter",
-                                "ssm:GetParameters"
-                            ],
-                            resources=[
-                                f"arn:aws:ssm:{self.region}:{self.account}:parameter/quality-inspection/primary-model/model-id",
-                                f"arn:aws:ssm:{self.region}:{self.account}:parameter/quality-inspection/secondary-model/model-id",
-                                f"arn:aws:ssm:{self.region}:{self.account}:parameter/quality-inspection/agentcore-runtime/orchestrator"
-                            ]
-                        )
-                    ]
-                )
-            }
-        )
-        
-        # Create the trigger function - it will find orchestrator ARN dynamically
+
+        # Create the trigger function using shared role
         trigger_function = _lambda.Function(
             self, "QualityInspectionAgentTrigger",
             function_name="quality-inspection-agent-trigger",
             runtime=_lambda.Runtime.PYTHON_3_12,
             handler="quality-inspection-agent-trigger.lambda_handler",
             code=_lambda.Code.from_asset(os.path.join(project_root, "src", "lambda_functions")),
-            role=trigger_role,
+            role=lambda_role,
             timeout=Duration.minutes(5)
-            # No environment variables needed - Lambda will determine orchestrator ARN dynamically
         )
         
         # Output the Lambda function name for reference

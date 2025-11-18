@@ -168,14 +168,38 @@ class MultiAgentSupervisor(Agent):
             **kwargs
         )
         
-        # Collaboration mode will be enabled by custom resource after collaborators are added
+        # Enable collaboration mode - this will be configured after all agents are created
         self.collaboration_mode = "SUPERVISOR_ROUTER"
         
     def finalize_collaboration(self):
         """Finalize the multi-agent collaboration configuration"""
-        # Note: Collaboration is now handled via Custom Resource in the stack
-        # This method is kept for backward compatibility but does nothing
-        pass
+        if not self.collaborators:
+            print("Warning: No collaborators registered for supervisor agent")
+            return
+            
+        # Create agent collaborator properties with correct CloudFormation structure
+        collaborator_properties = []
+        for collab in self.collaborators:
+            # Add explicit CloudFormation-level dependency
+            self.agent.add_depends_on(collab["alias"].node.default_child)
+            
+            # Use the correct CloudFormation property structure for AgentCollaborators
+            collaborator_prop = {
+                "AgentDescriptor": {
+                    "AliasArn": collab["alias"].attr_agent_alias_arn
+                },
+                "CollaboratorName": collab["name"],
+                "CollaborationInstruction": collab["instruction"],
+                "RelayConversationHistory": collab.get("relay_history", "DISABLED")
+            }
+            collaborator_properties.append(collaborator_prop)
+        
+        # Configure the agent with collaboration enabled from the start
+        # This avoids the in-place update issue
+        self.agent.add_property_override("AgentCollaboration", "SUPERVISOR_ROUTER")
+        self.agent.add_property_override("AgentCollaborators", collaborator_properties)
+        
+        print(f"Configured supervisor agent with {len(collaborator_properties)} collaborators")
 
 
 class SpecialistAgent(Agent):

@@ -8,10 +8,6 @@ import os
 import aws_cdk as cdk
 from cdk_nag import AwsSolutionsChecks
 from stacks.main_stack import MainStack
-import sys
-import os
-sys.path.append(os.path.join(os.path.dirname(__file__), '..', 'agents_catalog', 'multi_agent_collaboration', '02-quality_inspection_agentcore', 'cdk'))
-from quality_inspection_stack import QualityInspectionStack
 
 app = cdk.App()
 
@@ -24,14 +20,6 @@ main_stack = MainStack(
     app, 
     "MA3TMainStack",
     description="Manufacturing & Automotive AI Toolkit - Main Infrastructure Stack",
-    env=cdk.Environment(account=account, region=region)
-)
-
-# Create the quality inspection stack
-quality_inspection_stack = QualityInspectionStack(
-    app,
-    "QualityInspectionStack",
-    description="Quality Inspection Multi-Agent System Infrastructure",
     env=cdk.Environment(account=account, region=region)
 )
 

@@ -154,6 +154,63 @@ class IAMConstruct(Construct):
             )
         )
 
+        # Add SSM parameter access for Lambda functions
+        self.lambda_execution_role.add_to_policy(
+            iam.PolicyStatement(
+                effect=iam.Effect.ALLOW,
+                actions=[
+                    "ssm:GetParameter",
+                    "ssm:GetParameters"
+                ],
+                resources=[
+                    f"arn:aws:ssm:{Stack.of(self).region}:{Stack.of(self).account}:parameter/*"
+                ]
+            )
+        )
+
+        # Add Bedrock AgentCore permissions for Lambda functions
+        self.lambda_execution_role.add_to_policy(
+            iam.PolicyStatement(
+                effect=iam.Effect.ALLOW,
+                actions=[
+                    "bedrock-agentcore:InvokeAgentRuntime",
+                    "bedrock-agentcore:GetAgentRuntime",
+                    "bedrock-agentcore:ListAgentRuntimes"
+                ],
+                resources=["*"]
+            )
+        )
+
+        # Add S3 permissions for Lambda functions
+        self.lambda_execution_role.add_to_policy(
+            iam.PolicyStatement(
+                effect=iam.Effect.ALLOW,
+                actions=[
+                    "s3:GetObject",
+                    "s3:PutObject",
+                    "s3:DeleteObject",
+                    "s3:ListBucket"
+                ],
+                resources=[
+                    f"arn:aws:s3:::*",
+                    f"arn:aws:s3:::*/*"
+                ]
+            )
+        )
+
+        # Add SNS publish permissions for Lambda functions
+        self.lambda_execution_role.add_to_policy(
+            iam.PolicyStatement(
+                effect=iam.Effect.ALLOW,
+                actions=[
+                    "sns:Publish"
+                ],
+                resources=[
+                    f"arn:aws:sns:{Stack.of(self).region}:{Stack.of(self).account}:*"
+                ]
+            )
+        )
+
     def _create_codebuild_service_role(self) -> None:
         """Create a dedicated CodeBuild service role"""
         self.codebuild_service_role = iam.Role(

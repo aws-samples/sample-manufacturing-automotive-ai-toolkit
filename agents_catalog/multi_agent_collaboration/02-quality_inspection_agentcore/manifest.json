@@ -1,58 +1,72 @@
 {
-  "name": "quality_inspection_agentcore",
-  "type": "agentcore",
-  "deployment_method": "agentcore",
-  "description": "Multi-agent quality inspection system using AgentCore with Strands framework",
-  "category": "multi_agent_collaboration",
+  "group": ["Quality Inspection"],
+  "agents": [
+    {
+      "id": "quality_inspection_vision",
+      "name": "Vision Agent",
+      "version": "1.0.0",
+      "role": "specialist",
+      "description": "Analyzes images for defects using computer vision",
+      "type": "agentcore",
+      "entrypoint": "vision_agent.py"
+    },
+    {
+      "id": "quality_inspection_analysis",
+      "name": "Analysis Agent",
+      "version": "1.0.0",
+      "role": "specialist",
+      "description": "Analyzes defect data and trends",
+      "type": "agentcore",
+      "entrypoint": "analysis_agent.py"
+    },
+    {
+      "id": "quality_inspection_sop",
+      "name": "SOP Agent",
+      "version": "1.0.0",
+      "role": "specialist",
+      "description": "Provides standard operating procedures",
+      "type": "agentcore",
+      "entrypoint": "sop_agent.py"
+    },
+    {
+      "id": "quality_inspection_action",
+      "name": "Action Agent",
+      "version": "1.0.0",
+      "role": "specialist",
+      "description": "Executes corrective actions",
+      "type": "agentcore",
+      "entrypoint": "action_agent.py"
+    },
+    {
+      "id": "quality_inspection_communication",
+      "name": "Communication Agent",
+      "version": "1.0.0",
+      "role": "specialist",
+      "description": "Handles notifications and communications",
+      "type": "agentcore",
+      "entrypoint": "communication_agent.py"
+    },
+    {
+      "id": "quality_inspection_orchestrator",
+      "name": "Quality Inspection Orchestrator",
+      "version": "1.0.0",
+      "role": "supervisor",
+      "description": "Orchestrates the quality inspection multi-agent workflow",
+      "type": "agentcore",
+      "entrypoint": "quality_inspection_orchestrator.py"
+    }
+  ],
   "infrastructure": {
     "cdk": true,
     "stack_class": "QualityInspectionStack",
     "stack_path": "cdk/quality_inspection_stack.py"
   },
-  "agentcore": {
-    "agents": [
-      "quality_inspection_orchestrator",
-      "vision_agent", 
-      "analysis_agent",
-      "sop_agent",
-      "action_agent",
-      "communication_agent"
-    ],
-    "framework": "strands",
-    "protocol": "HTTP",
-    "runtime_permissions": [
-      "ecr:GetAuthorizationToken",
-      "ecr:BatchGetImage", 
-      "ecr:GetDownloadUrlForLayer",
-      "ecr:BatchCheckLayerAvailability",
-      "ecr:DescribeRepositories",
-      "ecr:DescribeImages",
-      "dynamodb:GetItem",
-      "dynamodb:PutItem",
-      "dynamodb:UpdateItem",
-      "dynamodb:DeleteItem",
-      "dynamodb:Query",
-      "dynamodb:Scan",
-      "s3:GetObject",
-      "s3:PutObject",
-      "s3:DeleteObject",
-      "s3:ListBucket",
-
-      "sns:Publish",
-      "ssm:GetParameter",
-      "ssm:GetParameters",
-      "ssm:PutParameter",
-      "bedrock:InvokeModel",
-      "bedrock:InvokeModelWithResponseStream",
-      "bedrock-agentcore:InvokeAgentRuntime",
-      "sts:GetCallerIdentity",
-      "logs:CreateLogGroup",
-      "logs:CreateLogStream",
-      "logs:PutLogEvents"
-    ]
-  },
-  "environment": {
-    "PYTHON_VERSION": "3.12",
-    "FRAMEWORK": "strands"
+  "ssm_parameter_mapping": {
+    "quality_inspection_vision": "/quality-inspection/agentcore-runtime/vision",
+    "quality_inspection_analysis": "/quality-inspection/agentcore-runtime/analysis",
+    "quality_inspection_sop": "/quality-inspection/agentcore-runtime/sop",
+    "quality_inspection_action": "/quality-inspection/agentcore-runtime/action",
+    "quality_inspection_communication": "/quality-inspection/agentcore-runtime/communication",
+    "quality_inspection_orchestrator": "/quality-inspection/agentcore-runtime/orchestrator"
   }
 }

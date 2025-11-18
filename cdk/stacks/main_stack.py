@@ -115,13 +115,18 @@ class MainStack(cdk.Stack):
         # Get shared resources for nested stacks
         shared_resources = self.get_shared_resources()
 
-        # Register CDK nested stacks
+        # Register CDK nested stacks with explicit dependencies
         self.nested_stacks = []
+        previous_stack = None
         for cdk_config in cdk_stacks:
             nested_stack = self.agent_registry.register_cdk_stack(
                 cdk_config, shared_resources)
             if nested_stack:
+                # Add dependency on previous stack to prevent parallel deployment issues
+                if previous_stack:
+                    nested_stack.node.add_dependency(previous_stack)
                 self.nested_stacks.append(nested_stack)
+                previous_stack = nested_stack
 
         # AgentCore agents will be discovered and deployed by build_launch_agentcore.py
         # running in the CodeBuild project - no need to create individual projects here
