@@ -72,7 +72,74 @@ class MainStack(cdk.Stack):
             resource_bucket=self.storage_construct.resource_bucket
         )
 
-        # 3. Create Compute construct (Lambda functions)
+        # 3. Create VPC for custom UIs (Fargate)
+        from aws_cdk import aws_ec2 as ec2
+
+        use_private_subnets = self.use_private_subnets_param.value_as_string == "true"
+
+        if use_private_subnets:
+            # Production: Private subnets with NAT Gateway
+            self.vpc = ec2.Vpc(
+                self, "CustomUIVpc",
+                max_azs=2,
+                nat_gateways=1,
+                subnet_configuration=[
+                    ec2.SubnetConfiguration(
+                        name="Public",
+                        subnet_type=ec2.SubnetType.PUBLIC,
+                        cidr_mask=24
+                    ),
+                    ec2.SubnetConfiguration(
+                        name="Private",
+                        subnet_type=ec2.SubnetType.PRIVATE_WITH_EGRESS,
+                        cidr_mask=24
+                    )
+                ]
+            )
+        else:
+            # Development: Public subnets only (no NAT Gateway cost)
+            self.vpc = ec2.Vpc(
+                self, "CustomUIVpc",
+                max_azs=2,
+                nat_gateways=0,
+                subnet_configuration=[
+                    ec2.SubnetConfiguration(
+                        name="Public",
+                        subnet_type=ec2.SubnetType.PUBLIC,
+                        cidr_mask=24
+                    )
+                ]
+            )
+
+        # 4. Create ECS cluster for custom UIs
+        from aws_cdk import aws_ecs as ecs
+        self.ecs_cluster = ecs.Cluster(
+            self, "CustomUICluster",
+            vpc=self.vpc,
+            container_insights=True
+        )
+
+        # 5. Create ALB for custom UIs
+        from aws_cdk import aws_elasticloadbalancingv2 as elbv2
+        self.alb = elbv2.ApplicationLoadBalancer(
+            self, "CustomUIALB",
+            vpc=self.vpc,
+            internet_facing=True
+        )
+
+        # Create HTTPS listener (will add certificate later)
+        self.alb_listener = self.alb.add_listener(
+            "HttpListener",
+            port=80,
+            protocol=elbv2.ApplicationProtocol.HTTP,
+            default_action=elbv2.ListenerAction.fixed_response(
+                status_code=200,
+                content_type="text/plain",
+                message_body="MA3T Custom UI Gateway - Access agent UIs via their specific paths"
+            )
+        )
+
+        # 6. Create Compute construct (Lambda functions)
         self.compute_construct = ComputeConstruct(
             self, "Compute",
             tables=self.storage_construct.tables,
@@ -80,7 +147,7 @@ class MainStack(cdk.Stack):
             resource_bucket=self.storage_construct.resource_bucket
         )
 
-        # 4. Create CodeBuild construct (deployment projects)
+        # 7. Create CodeBuild construct (deployment projects)
         import os
         self.codebuild_construct = CodeBuildConstruct(
             self, "CodeBuild",
@@ -98,6 +165,8 @@ class MainStack(cdk.Stack):
         self.agent_role = self.iam_construct.bedrock_agent_role
         self.lambda_execution_role = self.iam_construct.lambda_execution_role
         self.tables = self.storage_construct.tables
+        self.auth_user = os.environ.get('AUTH_USER', 'admin')
+        self.auth_password = os.environ.get('AUTH_PASSWORD', 'changeme')
         self.lambda_functions = self.compute_construct.get_all_functions()
         self.codebuild_projects = {
             'agentcore_deployment': self.codebuild_construct.agentcore_deployment_project
@@ -181,6 +250,14 @@ class MainStack(cdk.Stack):
             description="Name of the S3 bucket to use for code storage"
         )
 
+        self.use_private_subnets_param = CfnParameter(
+            self, "UsePrivateSubnets",
+            type="String",
+            default="false",
+            allowed_values=["true", "false"],
+            description="Use private subnets with NAT Gateway (more secure, ~$32/month) or public subnets (lower cost)"
+        )
+
     def _create_conditions(self) -> None:
         """Create conditions matching the CloudFormation template"""
 
@@ -218,7 +295,11 @@ class MainStack(cdk.Stack):
             description="Resource bucket name for deploy script"
         )
 
-
+        CfnOutput(
+            self, "CustomUIALBUrl",
+            value=f"http://{self.alb.load_balancer_dns_name}",
+            description="URL for custom agent UIs (Streamlit, React, etc.)"
+        )
 
         CfnOutput(
             self, "AgentCoreDeploymentProject",
@@ -390,9 +471,19 @@ def handler(event, context):
             'lambda_execution_role': self.lambda_execution_role,
             'lambda_execution_role_arn': self.lambda_execution_role.role_arn if self.lambda_execution_role else None,
             'codebuild_service_role': getattr(self.iam_construct, 'codebuild_service_role', None),
+            'apprunner_access_role': self.iam_construct.apprunner_access_role,
+            'apprunner_instance_role': self.iam_construct.apprunner_instance_role,
 
             # Compute resources
             'lambda_functions': self.lambda_functions,
+
+            # Custom UI infrastructure
+            'vpc': self.vpc,
+            'ecs_cluster': self.ecs_cluster,
+            'alb': self.alb,
+            'alb_listener': self.alb_listener,
+            'auth_user': self.auth_user,
+            'auth_password': self.auth_password,
             'business_functions': getattr(self.compute_construct, 'business_functions', {}),
             'data_functions': getattr(self.compute_construct, 'data_functions', {}),
 

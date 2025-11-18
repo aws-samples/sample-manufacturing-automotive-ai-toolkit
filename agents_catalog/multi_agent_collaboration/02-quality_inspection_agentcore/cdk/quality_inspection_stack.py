@@ -23,14 +23,12 @@ from aws_cdk import (
 )
 from constructs import Construct
 
-class QualityInspectionStack(Stack):
-    def __init__(self, scope: Construct, construct_id: str, **kwargs) -> None:
+class QualityInspectionStack(NestedStack):
+    def __init__(self, scope: Construct, construct_id: str, shared_resources=None, **kwargs) -> None:
         super().__init__(scope, construct_id, **kwargs)
         
-        # Using EventBridge automation for universal compatibility
-        
-        # Create VPC
-        self.vpc = self.create_vpc()
+        # Store shared resources
+        self.shared_resources = shared_resources or {}
         
         # Create DynamoDB tables
         self.create_dynamodb_tables()
@@ -47,10 +45,12 @@ class QualityInspectionStack(Stack):
         # Create model configuration parameters
         self.create_model_parameters()
         
-        # Create CodeBuild project for AgentCore deployment
-        self.create_agentcore_codebuild_project()
+        # Create Lambda trigger function
+        self.create_agentcore_trigger()
         
-        # Note: AgentCore agents are deployed via CodeBuild after stack completion
+        # Deploy custom UI if shared resources available
+        if self.shared_resources:
+            self.deploy_custom_ui()
     
     def create_dynamodb_tables(self):
         """Create all DynamoDB tables for the multi-agent system"""
@@ -568,6 +568,49 @@ class QualityInspectionStack(Stack):
         CfnOutput(self, "AgentCoreCodeBuildRoleArn", value=agentcore_codebuild_role.role_arn)
         
         return project
+    
+    def deploy_custom_ui(self):
+        """Deploy Streamlit UI to Fargate (if shared resources available)"""
+        # Check if required shared resources are available
+        if not self.shared_resources or not self.shared_resources.get('vpc'):
+            print("Skipping custom UI deployment - no VPC in shared resources")
+            return
+        
+        # Import custom UI construct
+        import sys
+        import os
+        cdk_root = os.path.join(os.path.dirname(__file__), '..', '..', '..', '..', 'cdk')
+        sys.path.insert(0, cdk_root)
+        
+        try:
+            from stacks.constructs.custom_ui import CustomUIConstruct
+            
+            # Get agent path
+            agent_path = os.path.dirname(os.path.dirname(__file__))
+            
+            # Deploy custom UI
+            self.custom_ui = CustomUIConstruct(
+                self, "CustomUI",
+                agent_name="quality-inspection",
+                agent_path=agent_path,
+                ui_config={
+                    "type": "streamlit",
+                    "path": "/quality-inspection",
+                    "port": 8501
+                },
+                vpc=self.shared_resources.get('vpc'),
+                cluster=self.shared_resources.get('ecs_cluster'),
+                listener=self.shared_resources.get('alb_listener'),
+                shared_resources=self.shared_resources,
+                auth_user=self.shared_resources.get('auth_user', 'admin'),
+                auth_password=self.shared_resources.get('auth_password', 'changeme')
+            )
+            
+            print("Custom UI deployed successfully")
+        except Exception as e:
+            print(f"Failed to deploy custom UI: {e}")
+        finally:
+            sys.path.pop(0)
     
 
 

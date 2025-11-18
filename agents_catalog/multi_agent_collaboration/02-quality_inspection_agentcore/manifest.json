@@ -68,5 +68,12 @@
     "quality_inspection_action": "/quality-inspection/agentcore-runtime/action",
     "quality_inspection_communication": "/quality-inspection/agentcore-runtime/communication",
     "quality_inspection_orchestrator": "/quality-inspection/agentcore-runtime/orchestrator"
+  },
+  "custom_ui": {
+    "enabled": true,
+    "type": "streamlit",
+    "path": "/quality-inspection",
+    "entrypoint": "src/demo_app/quality-inspection-streamlit-demo.py",
+    "port": 8501
   }
 }
