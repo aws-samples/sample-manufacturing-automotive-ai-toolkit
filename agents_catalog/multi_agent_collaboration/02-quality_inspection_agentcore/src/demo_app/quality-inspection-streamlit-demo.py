@@ -19,6 +19,13 @@ sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 # Global AWS profile setting
 AWS_PROFILE = None
 
+# MUST be first Streamlit command
+st.set_page_config(
+    page_title="Modular Multi-Agent Quality Inspection",
+    page_icon="🏭",
+    layout="wide"
+)
+
 def get_boto3_session():
     """Get boto3 session with optional profile"""
     if AWS_PROFILE:
@@ -42,12 +49,6 @@ def get_boto3_resource(service_name, region_name=None):
 # AgentCore agents - no local imports needed
 
 def main():
-    st.set_page_config(
-        page_title="Modular Multi-Agent Quality Inspection",
-        page_icon="🏭",
-        layout="wide"
-    )
-    
     st.title("🏭 Modular Multi-Agent Quality Inspection")
     st.markdown("**Organized Agent Architecture with Separate Files**")
     
@@ -788,7 +789,14 @@ def discover_quality_inspection_bucket(region):
                 if verify_quality_inspection_bucket(bucket_name, region):
                     return bucket_name
         
-        # Method 3: Fallback to account-based naming
+        # Method 3: Search for bucket with qualityinspectionstack prefix
+        for bucket in response['Buckets']:
+            bucket_name = bucket['Name']
+            if bucket_name.startswith('qualityinspectionstack-machinepartimages'):
+                if verify_quality_inspection_bucket(bucket_name, region):
+                    return bucket_name
+        
+        # Method 4: Fallback to account-based naming
         sts = get_boto3_client('sts')
         account_id = sts.get_caller_identity()['Account']
         fallback_name = f"machinepartimages-{account_id}"

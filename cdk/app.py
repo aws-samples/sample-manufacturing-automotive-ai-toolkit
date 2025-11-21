@@ -22,7 +22,6 @@ main_stack = MainStack(
     description="Manufacturing & Automotive AI Toolkit - Main Infrastructure Stack",
     env=cdk.Environment(account=account, region=region)
 )
-
 # Add cdk-nag checks (unless explicitly skipped)
 # skip_nag = (os.environ.get("CDK_NAG_SKIP", "false").lower() == "true" or 
 #            app.node.try_get_context("skipNag") == True)
