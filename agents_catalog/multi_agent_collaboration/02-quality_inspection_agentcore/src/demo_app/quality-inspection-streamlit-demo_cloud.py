@@ -6,11 +6,137 @@ from PIL import Image, ImageDraw
 import io
 import atexit
 import argparse
+import requests
+from urllib.parse import urlparse
+import logging
+import http.cookiejar as cookielib
+import re
+import getpass
+import os
 
-
+# Must be the very first Streamlit command
+st.set_page_config(
+    page_title="Multi-Agent Quality Inspection (Cloud)",
+    page_icon="🏭",
+    layout="wide"
+)
 
 # Global AWS profile setting
 AWS_PROFILE = None
+
+# Internal authentication settings
+MIDWAY_ENDPOINT = 'https://midway-auth.amazon.com'
+USERNAME = getpass.getuser()
+COOKIE_FILE = os.path.expanduser("~") + '/.midway/cookie'
+
+def get_browser_cookies():
+    """Get cookies from browser cookie stores"""
+    import sqlite3
+    import platform
+    
+    cookies = {}
+    system = platform.system()
+    
+    # Chrome cookie locations
+    chrome_paths = {
+        'Darwin': os.path.expanduser("~/Library/Application Support/Google/Chrome/Default/Cookies"),
+        'Linux': os.path.expanduser("~/.config/google-chrome/Default/Cookies"),
+        'Windows': os.path.expanduser("~/AppData/Local/Google/Chrome/User Data/Default/Network/Cookies")
+    }
+    
+    # Firefox cookie locations  
+    firefox_paths = {
+        'Darwin': os.path.expanduser("~/Library/Application Support/Firefox/Profiles/*/cookies.sqlite"),
+        'Linux': os.path.expanduser("~/.mozilla/firefox/*/cookies.sqlite"),
+        'Windows': os.path.expanduser("~/AppData/Roaming/Mozilla/Firefox/Profiles/*/cookies.sqlite")
+    }
+    
+    # Try Chrome first
+    chrome_path = chrome_paths.get(system)
+    if chrome_path and os.path.exists(chrome_path):
+        try:
+            conn = sqlite3.connect(chrome_path)
+            cursor = conn.cursor()
+            cursor.execute("SELECT host_key, name, value FROM cookies WHERE host_key LIKE '%amazon.com%'")
+            for row in cursor.fetchall():
+                cookies[row[1]] = {'domain': row[0], 'value': row[2]}
+            conn.close()
+        except:
+            pass
+    
+    return cookies
+
+def check_internal_auth():
+    """Check if user is authenticated with internal systems"""
+    try:
+        session = requests.Session()
+        session.allow_redirects = False
+        session.max_redirects = 5
+        session.verify = "/etc/pki/tls/certs/ca-bundle.crt"
+        
+        # Load cookies from midway cookie file first
+        cookies_loaded = False
+        if os.path.exists(COOKIE_FILE):
+            with open(COOKIE_FILE) as fd:
+                for line in fd:
+                    elem = re.sub(r'^#HttpOnly_', '', line.rstrip()).split()
+                    if len(elem) == 7:
+                        cookie_obj = requests.cookies.create_cookie(
+                            domain=elem[0], name=elem[5], value=elem[6]
+                        )
+                        session.cookies.set_cookie(cookie_obj)
+                        cookies_loaded = True
+        
+        # If no file cookies, try browser cookies
+        if not cookies_loaded:
+            browser_cookies = get_browser_cookies()
+            for name, cookie_data in browser_cookies.items():
+                session.cookies.set(name, cookie_data['value'], domain=cookie_data['domain'])
+                cookies_loaded = True
+        
+        # Test with simple request if we have cookies
+        if cookies_loaded:
+            response = session.get('https://midway-auth.amazon.com', timeout=5)
+            return response.status_code == 200
+        
+        return False
+    except Exception:
+        return False
+
+def require_internal_auth():
+    """Require internal authentication for cloud version"""
+    if 'auth_checked' not in st.session_state:
+        st.session_state.auth_checked = False
+        st.session_state.authenticated = False
+    
+    if not st.session_state.auth_checked:
+        with st.spinner("Checking internal authentication..."):
+            st.session_state.authenticated = check_internal_auth()
+            st.session_state.auth_checked = True
+    
+    if not st.session_state.authenticated:
+        st.error("🔒 Internal Authentication Required")
+        st.warning("This cloud version requires internal Amazon authentication.")
+        
+        st.markdown("### To authenticate:")
+        st.markdown("1. **Get Midway cookies**: Visit [Midway](https://midway-auth.amazon.com) to authenticate")
+        st.markdown("2. **Ensure VPN**: Connect to Amazon VPN if required")
+        st.markdown("3. **Check cookie file**: Verify `~/.midway/cookie` exists and is current")
+        
+        st.info("💡 **Tip**: After authenticating with Midway, refresh this page")
+        
+        col1, col2 = st.columns(2)
+        with col1:
+            if st.button("🔄 Retry Authentication"):
+                st.session_state.auth_checked = False
+                st.rerun()
+        
+        with col2:
+            st.link_button("🔐 Go to Midway", "https://midway-auth.amazon.com")
+        
+        st.stop()
+    
+    return True
 
 def get_boto3_session():
     """Get boto3 session with optional profile"""
@@ -34,12 +160,7 @@ def get_boto3_resource(service_name, region_name=None):
 
 # AgentCore agents - no local imports needed
 
-# Must be the very first Streamlit command
-st.set_page_config(
-    page_title="Multi-Agent Quality Inspection",
-    page_icon="🏭",
-    layout="wide"
-)
+
 
 def log_agent_activity(agent, message):
     """Log agent activity"""
@@ -131,48 +252,94 @@ def parse_and_display_defects(agentcore_data):
     """Parse defects from AgentCore data"""
     defects = []
     
-    # Try to parse defects from various possible fields
-    defect_info = agentcore_data.get('defects', [])
-    if isinstance(defect_info, str):
-        try:
-            defect_info = json.loads(defect_info)
-        except:
-            defect_info = []
-    
-    for defect in defect_info:
-        if isinstance(defect, dict):
-            defects.append({
-                'type': defect.get('type', 'Unknown'),
-                'confidence': defect.get('confidence', 0),
-                'coordinates': defect.get('coordinates', {})
-            })
+    if agentcore_data.get('defect_detected') == 'Y':
+        st.error("🔍 Vision: Defects detected")
+        
+        # First try to get defects from structured array
+        if 'defects' in agentcore_data and agentcore_data['defects']:
+            defects = agentcore_data['defects']
+            # Convert string coordinates to integers if needed
+            for defect in defects:
+                for coord_key in ['grid_x1', 'grid_y1', 'grid_x2', 'grid_y2']:
+                    if coord_key in defect and isinstance(defect[coord_key], str):
+                        defect[coord_key] = int(defect[coord_key])
+            
+            # Show defect details
+            for i, defect in enumerate(defects, 1):
+                st.warning(f"**Defect {i}:** {defect.get('type', 'Unknown')}")
+                st.warning(f"**Description:** {defect.get('description', 'No description')}")
+                if all(k in defect for k in ['grid_x1', 'grid_y1', 'grid_x2', 'grid_y2']):
+                    st.info(f"**Grid Location:** ({defect['grid_x1']},{defect['grid_y1']}) to ({defect['grid_x2']},{defect['grid_y2']})")
+            st.info(f"**Confidence:** {agentcore_data.get('confidence', 'N/A')}%")
+        else:
+            st.warning("Defects detected but no structured defect data found")
+    elif agentcore_data.get('defect_detected') == 'N':
+        st.success("🔍 Vision: No defects detected")
+    else:
+        st.warning("🔍 Vision: Unknown status")
     
     return defects
 
 def annotate_image_with_defects(image, defects):
-    """Annotate image with defect bounding boxes"""
-    draw = ImageDraw.Draw(image)
+    """Draw red bounding boxes around defects on image"""
+    if not defects:
+        return image
+    
+    # Create a copy to avoid modifying original
+    annotated = image.copy()
+    draw = ImageDraw.Draw(annotated)
     
     for defect in defects:
-        coords = defect.get('coordinates', {})
-        if coords:
-            x1 = coords.get('x1', 0)
-            y1 = coords.get('y1', 0)
-            x2 = coords.get('x2', 100)
-            y2 = coords.get('y2', 100)
+        # Check for grid coordinates first
+        if all(key in defect for key in ['grid_x1', 'grid_y1', 'grid_x2', 'grid_y2']):
+            # Convert coordinates to integers (handle Decimal types from DynamoDB)
+            grid_x1 = int(float(defect['grid_x1']))
+            grid_y1 = int(float(defect['grid_y1']))
+            grid_x2 = int(float(defect['grid_x2']))
+            grid_y2 = int(float(defect['grid_y2']))
             
-            # Draw red bounding box
-            draw.rectangle([x1, y1, x2, y2], outline='red', width=3)
+            # Convert grid coordinates (1-10 scale) to pixel coordinates
+            grid_width = float(image.width) / 10.0
+            grid_height = float(image.height) / 10.0
             
-            # Add defect type label
-            defect_type = defect.get('type', 'Defect')
-            draw.text((x1, y1-20), defect_type, fill='red')
+            # Map grid coordinates to pixel coordinates (1-based to 0-based)
+            x1 = int((grid_x1 - 1) * grid_width)
+            y1 = int((grid_y1 - 1) * grid_height)
+            x2 = int(grid_x2 * grid_width)
+            y2 = int(grid_y2 * grid_height)
+            
+            # Ensure coordinates are valid and make box visible
+            x1, x2 = min(x1, x2), max(x1, x2)
+            y1, y2 = min(y1, y2), max(y1, y2)
+            
+            # Make sure box has minimum size for visibility
+            if x2 - x1 < 20:
+                x2 = x1 + 20
+            if y2 - y1 < 20:
+                y2 = y1 + 20
+            
+            # Ensure coordinates don't exceed image bounds
+            x1 = max(0, min(x1, image.width - 1))
+            y1 = max(0, min(y1, image.height - 1))
+            x2 = max(x1 + 1, min(x2, image.width))
+            y2 = max(y1 + 1, min(y2, image.height))
+            
+            # Draw red bounding box with better visibility
+            draw.rectangle([x1, y1, x2, y2], outline='red', width=6)
+            # Add inner white border for contrast
+            draw.rectangle([x1+2, y1+2, x2-2, y2-2], outline='white', width=2)
     
-    return image
+    return annotated
 
 def main():
-    st.title("🏭 Multi-Agent Quality Inspection")
-    st.markdown("**Organized Agent Architecture with Separate Files**")
+    # Require internal authentication for cloud version
+    require_internal_auth()
+    
+    st.title("🏭 Multi-Agent Quality Inspection (Cloud)")
+    st.markdown("**Internal Cloud Version - Authenticated Access**")
+    
+    # Show authentication status
+    st.success(f"✅ Authenticated as: {USERNAME}")
     
     # Initialize session state
     if 'agent_logs' not in st.session_state:
@@ -346,9 +513,6 @@ def main():
                         except:
                             continue
                 except Exception as e:
-                    st.error(f"Error loading image: {str(e)}")
-
-                except Exception as e:
                     st.info(f"Could not load image: {filename}")
             
             # Show recommendation
@@ -467,7 +631,7 @@ def display_agentcore_status():
             st.markdown(f"""
             <div style="text-align: center; padding: 8px; border: 2px solid {agent['color']}; border-radius: 8px; height: 80px; display: flex; flex-direction: column; justify-content: center;">
                 <h5 style="margin: 0; font-size: 14px;">{agent['name']}</h5>
-                <span style="color: {agent['color']}; font-size: 12px;">● {agent['status'].upper()}</span>
+                <span style="color: {agent['color']}; font-size: 12px;"> ● {agent['status'].upper()}</span>
             </div>
             """, unsafe_allow_html=True)
     
@@ -692,37 +856,7 @@ def get_agent_communications_from_db(region):
 
 
 
-def parse_and_display_defects(agentcore_data):
-    """Shared function to parse and display defects from AgentCore data"""
-    defects = []
-    
-    if agentcore_data.get('defect_detected') == 'Y':
-        st.error("🔍 Vision: Defects detected")
-        
-        # First try to get defects from structured array
-        if 'defects' in agentcore_data and agentcore_data['defects']:
-            defects = agentcore_data['defects']
-            # Convert string coordinates to integers if needed
-            for defect in defects:
-                for coord_key in ['grid_x1', 'grid_y1', 'grid_x2', 'grid_y2']:
-                    if coord_key in defect and isinstance(defect[coord_key], str):
-                        defect[coord_key] = int(defect[coord_key])
-            
-            # Show defect details
-            for i, defect in enumerate(defects, 1):
-                st.warning(f"**Defect {i}:** {defect.get('type', 'Unknown')}")
-                st.warning(f"**Description:** {defect.get('description', 'No description')}")
-                if all(k in defect for k in ['grid_x1', 'grid_y1', 'grid_x2', 'grid_y2']):
-                    st.info(f"**Grid Location:** ({defect['grid_x1']},{defect['grid_y1']}) to ({defect['grid_x2']},{defect['grid_y2']})")
-            st.info(f"**Confidence:** {agentcore_data.get('confidence', 'N/A')}%")
-        else:
-            st.warning("Defects detected but no structured defect data found")
-    elif agentcore_data.get('defect_detected') == 'N':
-        st.success("🔍 Vision: No defects detected")
-    else:
-        st.warning("🔍 Vision: Unknown status")
-    
-    return defects
+
 
 def display_agentcore_results(result):
     """Display AgentCore results from DynamoDB"""

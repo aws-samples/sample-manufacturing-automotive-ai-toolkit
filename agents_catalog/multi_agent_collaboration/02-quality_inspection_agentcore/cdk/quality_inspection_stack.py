@@ -20,6 +20,7 @@ from aws_cdk import (
     aws_bedrockagentcore as bedrockagentcore,
     CfnOutput,
     RemovalPolicy
+
 )
 from constructs import Construct
 
@@ -29,6 +30,9 @@ class QualityInspectionStack(NestedStack):
         
         # Store shared resources
         self.shared_resources = shared_resources or {}
+
+        # Create VPC
+        self.vpc = self.create_vpc()
         
         # Create DynamoDB tables
         self.create_dynamodb_tables()
@@ -45,12 +49,13 @@ class QualityInspectionStack(NestedStack):
         # Create model configuration parameters
         self.create_model_parameters()
         
-        # Create Lambda trigger function
-        self.create_agentcore_trigger()
+        # Create AgentCore execution role
+        self.agentcore_role = self.create_agentcore_execution_role()
         
-        # Deploy custom UI if shared resources available
-        if self.shared_resources:
-            self.deploy_custom_ui()
+        # Create agent-specific policies
+        self.create_agent_policies()
+        
+        # Note: AgentCore agents are deployed separately using quality_inspection_agentcore_deploy.sh
     
     def create_dynamodb_tables(self):
         """Create all DynamoDB tables for the multi-agent system"""
@@ -88,7 +93,7 @@ class QualityInspectionStack(NestedStack):
         """Create S3 bucket with required folder structure"""
         bucket = s3.Bucket(
             self, "MachinepartimagesBucket",
-            bucket_name=PhysicalName.GENERATE_IF_NEEDED,
+            bucket_name=f"machinepartimages-{self.account}",
             removal_policy=RemovalPolicy.DESTROY,
             auto_delete_objects=True,
             encryption=s3.BucketEncryption.S3_MANAGED
@@ -109,15 +114,8 @@ class QualityInspectionStack(NestedStack):
         # Create Lambda function to trigger AgentCore orchestrator
         trigger_function = self.create_agentcore_trigger(bucket)
         
-        # Output bucket name (multiple formats for compatibility)
+        # Output bucket name
         CfnOutput(self, "S3BucketName", value=bucket.bucket_name)
-        CfnOutput(self, "BucketName", value=bucket.bucket_name)
-        CfnOutput(self, "MachinepartimagesBucketName", value=bucket.bucket_name)
-        # Main output expected by deploy_cdk.sh
-        CfnOutput(self, "ResourceBucketName", value=bucket.bucket_name)
-        
-        # Store bucket for use in model parameters
-        self.bucket = bucket
         
         return bucket
     
@@ -200,23 +198,60 @@ class QualityInspectionStack(NestedStack):
     
     def create_agentcore_trigger(self, bucket):
         """Create Lambda function to trigger AgentCore orchestrator on S3 events"""
-        # Use shared Lambda execution role from main stack
-        lambda_role = self.shared_resources.get('lambda_execution_role')
-        if not lambda_role:
-            print("Warning: No shared lambda execution role found, trigger function may not work properly")
-            return None
-
+        
+        # Create IAM role for the trigger function
+        trigger_role = iam.Role(
+            self, "AgentCoreTriggerRole",
+            assumed_by=iam.ServicePrincipal("lambda.amazonaws.com"),
+            managed_policies=[
+                iam.ManagedPolicy.from_aws_managed_policy_name("service-role/AWSLambdaBasicExecutionRole")
+            ],
+            inline_policies={
+                "AgentCoreAccessPolicy": iam.PolicyDocument(
+                    statements=[
+                        iam.PolicyStatement(
+                            effect=iam.Effect.ALLOW,
+                            actions=[
+                                "bedrock-agentcore:InvokeAgentRuntime",
+                                "bedrock-agentcore:GetAgentRuntime",
+                                "bedrock-agentcore:ListAgentRuntimes"
+                            ],
+                            resources=[
+                                f"arn:aws:bedrock-agentcore:{self.region}:{self.account}:runtime/*",
+                                f"arn:aws:bedrock-agentcore:{self.region}:{self.account}:agent-runtime/*"
+                            ]
+                        ),
+                        iam.PolicyStatement(
+                            effect=iam.Effect.ALLOW,
+                            actions=[
+                                "ssm:GetParameter",
+                                "ssm:GetParameters"
+                            ],
+                            resources=[
+                                f"arn:aws:ssm:{self.region}:{self.account}:parameter/quality-inspection/primary-model/model-id",
+                                f"arn:aws:ssm:{self.region}:{self.account}:parameter/quality-inspection/secondary-model/model-id",
+                                f"arn:aws:ssm:{self.region}:{self.account}:parameter/quality-inspection/agentcore-runtime/orchestrator"
+                            ]
+                        )
+                    ]
+                )
+            }
+        )
+        
+        # Create the trigger function - it will find orchestrator ARN dynamically
+        import os
         project_root = os.path.dirname(os.path.dirname(__file__))
-
-        # Create the trigger function using shared role
+        lambda_code_path = os.path.join(project_root, "src", "lambda_functions")
+        
         trigger_function = _lambda.Function(
             self, "QualityInspectionAgentTrigger",
             function_name="quality-inspection-agent-trigger",
             runtime=_lambda.Runtime.PYTHON_3_12,
             handler="quality-inspection-agent-trigger.lambda_handler",
-            code=_lambda.Code.from_asset(os.path.join(project_root, "src", "lambda_functions")),
-            role=lambda_role,
+            code=_lambda.Code.from_asset(lambda_code_path),
+            role=trigger_role,
             timeout=Duration.minutes(5)
+            # No environment variables needed - Lambda will determine orchestrator ARN dynamically
         )
         
         # Output the Lambda function name for reference
@@ -231,7 +266,475 @@ class QualityInspectionStack(NestedStack):
         
         return trigger_function
     
-
+    def create_agentcore_execution_role(self):
+        """Create IAM role for AgentCore agents with necessary permissions"""
+        agentcore_role = iam.Role(
+            self, "AgentCoreExecutionRole",
+            role_name="QualityInspectionAgentCoreRole",
+            assumed_by=iam.ServicePrincipal("bedrock-agentcore.amazonaws.com"),
+            managed_policies=[
+                iam.ManagedPolicy.from_aws_managed_policy_name("service-role/AWSLambdaBasicExecutionRole")
+            ],
+            inline_policies={
+                "AgentCorePermissions": iam.PolicyDocument(
+                    statements=[
+                        # SSM Parameter Store access
+                        iam.PolicyStatement(
+                            effect=iam.Effect.ALLOW,
+                            actions=[
+                                "ssm:GetParameter",
+                                "ssm:GetParameters"
+                            ],
+                            resources=[
+                                f"arn:aws:ssm:{self.region}:{self.account}:parameter/quality-inspection/primary-model/model-id",
+                                f"arn:aws:ssm:{self.region}:{self.account}:parameter/quality-inspection/secondary-model/model-id",
+                                f"arn:aws:ssm:{self.region}:{self.account}:parameter/quality-inspection/reference-image-s3-uri",
+                                f"arn:aws:ssm:{self.region}:{self.account}:parameter/quality-inspection/agentcore-runtime/*"
+                            ]
+                        ),
+                        # Bedrock model access
+                        iam.PolicyStatement(
+                            effect=iam.Effect.ALLOW,
+                            actions=[
+                                "bedrock:InvokeModel",
+                                "bedrock:InvokeModelWithResponseStream",
+                                "bedrock:Converse",
+                                "bedrock:ConverseStream"
+                            ],
+                            resources=[
+                                f"arn:aws:bedrock:{self.region}::foundation-model/amazon.nova-pro-v1:0",
+                                f"arn:aws:bedrock:{self.region}::foundation-model/*"
+                            ]
+                        ),
+                        # ECR access for AgentCore
+                        iam.PolicyStatement(
+                            effect=iam.Effect.ALLOW,
+                            actions=[
+                                "ecr:GetAuthorizationToken",
+                                "ecr:BatchGetImage",
+                                "ecr:GetDownloadUrlForLayer"
+                            ],
+                            resources=["*"]
+                        ),
+                        # S3 access for images
+                        iam.PolicyStatement(
+                            effect=iam.Effect.ALLOW,
+                            actions=[
+                                "s3:GetObject",
+                                "s3:PutObject",
+                                "s3:DeleteObject"
+                            ],
+                            resources=[
+                                f"arn:aws:s3:::machinepartimages-{self.account}/*"
+                            ]
+                        ),
+                        # DynamoDB access
+                        iam.PolicyStatement(
+                            effect=iam.Effect.ALLOW,
+                            actions=[
+                                "dynamodb:PutItem",
+                                "dynamodb:GetItem",
+                                "dynamodb:UpdateItem",
+                                "dynamodb:Scan",
+                                "dynamodb:Query"
+                            ],
+                            resources=[
+                                f"arn:aws:dynamodb:{self.region}:{self.account}:table/vision-inspection-data",
+                                f"arn:aws:dynamodb:{self.region}:{self.account}:table/sop-decisions",
+                                f"arn:aws:dynamodb:{self.region}:{self.account}:table/action-execution-log",
+                                f"arn:aws:dynamodb:{self.region}:{self.account}:table/erp-integration-log",
+                                f"arn:aws:dynamodb:{self.region}:{self.account}:table/historical-trends",
+                                f"arn:aws:dynamodb:{self.region}:{self.account}:table/sap-integration-log"
+                            ]
+                        )
+                    ]
+                )
+            }
+        )
+        
+        # Attach agent policies to the role (will be created after this role)
+        # Note: These policies are attached via dependency in create_agent_policies method
+        
+        # Output role ARN for AgentCore configuration
+        CfnOutput(self, "AgentCoreExecutionRoleArn", value=agentcore_role.role_arn)
+        
+        return agentcore_role
+    
+    def create_agent_policies(self):
+        """Create customer managed policies for each AgentCore agent"""
+        
+        # Vision Agent Policy
+        vision_policy = iam.ManagedPolicy(
+            self, "QualityInspectionVisionAgentPolicy",
+            managed_policy_name="QualityInspectionVisionAgentPolicy",
+            description="Permissions for Quality Inspection Vision Agent",
+            document=iam.PolicyDocument(
+                statements=[
+                    # SSM Parameter Store access
+                    iam.PolicyStatement(
+                        sid="SSMParameterAccess",
+                        effect=iam.Effect.ALLOW,
+                        actions=[
+                            "ssm:GetParameter",
+                            "ssm:GetParameters"
+                        ],
+                        resources=[
+                            f"arn:aws:ssm:{self.region}:{self.account}:parameter/quality-inspection/primary-model/model-id",
+                            f"arn:aws:ssm:{self.region}:{self.account}:parameter/quality-inspection/secondary-model/model-id",
+                            f"arn:aws:ssm:{self.region}:{self.account}:parameter/quality-inspection/reference-image-s3-uri"
+                        ]
+                    ),
+                    # Bedrock model access
+                    iam.PolicyStatement(
+                        sid="BedrockModelAccess",
+                        effect=iam.Effect.ALLOW,
+                        actions=[
+                            "bedrock:InvokeModel",
+                            "bedrock:InvokeModelWithResponseStream",
+                            "bedrock:Converse",
+                            "bedrock:ConverseStream"
+                        ],
+                        resources=[
+                            f"arn:aws:bedrock:{self.region}::foundation-model/amazon.nova-pro-v1:0",
+                            f"arn:aws:bedrock:{self.region}::foundation-model/*"
+                        ]
+                    ),
+                    # S3 access for images
+                    iam.PolicyStatement(
+                        sid="S3ImageAccess",
+                        effect=iam.Effect.ALLOW,
+                        actions=[
+                            "s3:GetObject",
+                            "s3:PutObject",
+                            "s3:DeleteObject",
+                            "s3:ListBucket"
+                        ],
+                        resources=[
+                            f"arn:aws:s3:::machinepartimages-{self.account}",
+                            f"arn:aws:s3:::machinepartimages-{self.account}/*"
+                        ]
+                    ),
+                    # DynamoDB access
+                    iam.PolicyStatement(
+                        sid="DynamoDBAccess",
+                        effect=iam.Effect.ALLOW,
+                        actions=[
+                            "dynamodb:PutItem",
+                            "dynamodb:GetItem",
+                            "dynamodb:UpdateItem",
+                            "dynamodb:Scan",
+                            "dynamodb:Query"
+                        ],
+                        resources=[
+                            f"arn:aws:dynamodb:{self.region}:{self.account}:table/vision-inspection-data"
+                        ]
+                    ),
+                    # STS access for AgentCore
+                    iam.PolicyStatement(
+                        sid="STSAccess",
+                        effect=iam.Effect.ALLOW,
+                        actions=[
+                            "sts:GetCallerIdentity"
+                        ],
+                        resources=["*"]
+                    )
+                ]
+            )
+        )
+        
+        # Orchestrator Agent Policy
+        orchestrator_policy = iam.ManagedPolicy(
+            self, "QualityInspectionOrchestratorAgentPolicy",
+            managed_policy_name="QualityInspectionOrchestratorAgentPolicy",
+            description="Permissions for Quality Inspection Orchestrator Agent",
+            document=iam.PolicyDocument(
+                statements=[
+                    # SSM Parameter Store access
+                    iam.PolicyStatement(
+                        sid="SSMParameterAccess",
+                        effect=iam.Effect.ALLOW,
+                        actions=[
+                            "ssm:GetParameter",
+                            "ssm:GetParameters"
+                        ],
+                        resources=[
+                            f"arn:aws:ssm:{self.region}:{self.account}:parameter/quality-inspection/primary-model/model-id",
+                            f"arn:aws:ssm:{self.region}:{self.account}:parameter/quality-inspection/secondary-model/model-id",
+                            f"arn:aws:ssm:{self.region}:{self.account}:parameter/quality-inspection/reference-image-s3-uri",
+                            f"arn:aws:ssm:{self.region}:{self.account}:parameter/quality-inspection/agentcore-runtime/*"
+                        ]
+                    ),
+                    # Bedrock model access for orchestrator
+                    iam.PolicyStatement(
+                        sid="BedrockModelAccess",
+                        effect=iam.Effect.ALLOW,
+                        actions=[
+                            "bedrock:InvokeModel",
+                            "bedrock:InvokeModelWithResponseStream",
+                            "bedrock:Converse",
+                            "bedrock:ConverseStream"
+                        ],
+                        resources=[
+                            f"arn:aws:bedrock:{self.region}::foundation-model/amazon.nova-pro-v1:0",
+                            f"arn:aws:bedrock:{self.region}::foundation-model/*"
+                        ]
+                    ),
+                    # S3 access for file operations
+                    iam.PolicyStatement(
+                        sid="S3FileOperations",
+                        effect=iam.Effect.ALLOW,
+                        actions=[
+                            "s3:GetObject",
+                            "s3:PutObject",
+                            "s3:DeleteObject",
+                            "s3:ListBucket"
+                        ],
+                        resources=[
+                            f"arn:aws:s3:::machinepartimages-{self.account}",
+                            f"arn:aws:s3:::machinepartimages-{self.account}/*"
+                        ]
+                    ),
+                    # DynamoDB access for all tables
+                    iam.PolicyStatement(
+                        sid="DynamoDBAccess",
+                        effect=iam.Effect.ALLOW,
+                        actions=[
+                            "dynamodb:PutItem",
+                            "dynamodb:GetItem",
+                            "dynamodb:UpdateItem",
+                            "dynamodb:Scan",
+                            "dynamodb:Query"
+                        ],
+                        resources=[
+                            f"arn:aws:dynamodb:{self.region}:{self.account}:table/vision-inspection-data",
+                            f"arn:aws:dynamodb:{self.region}:{self.account}:table/sop-decisions",
+                            f"arn:aws:dynamodb:{self.region}:{self.account}:table/action-execution-log",
+                            f"arn:aws:dynamodb:{self.region}:{self.account}:table/erp-integration-log",
+                            f"arn:aws:dynamodb:{self.region}:{self.account}:table/historical-trends",
+                            f"arn:aws:dynamodb:{self.region}:{self.account}:table/sap-integration-log"
+                        ]
+                    ),
+                    # AgentCore invocation for calling other agents
+                    iam.PolicyStatement(
+                        sid="AgentCoreInvocation",
+                        effect=iam.Effect.ALLOW,
+                        actions=[
+                            "bedrock-agentcore:InvokeAgentRuntime",
+                            "bedrock-agentcore:InvokeAgentRuntimeForUser",
+                            "bedrock-agentcore-control:ListAgentRuntimes",
+                            "bedrock-agentcore-control:GetAgentRuntime"
+                        ],
+                        resources=[
+                            f"arn:aws:bedrock-agentcore:{self.region}:{self.account}:runtime/*",
+                            "*"
+                        ]
+                    )
+                ]
+            )
+        )
+        
+        # Analysis Agent Policy
+        analysis_policy = iam.ManagedPolicy(
+            self, "QualityInspectionAnalysisAgentPolicy",
+            managed_policy_name="QualityInspectionAnalysisAgentPolicy",
+            description="Permissions for Quality Inspection Analysis Agent",
+            document=iam.PolicyDocument(
+                statements=[
+                    # SSM Parameter Store access
+                    iam.PolicyStatement(
+                        sid="SSMParameterAccess",
+                        effect=iam.Effect.ALLOW,
+                        actions=[
+                            "ssm:GetParameter",
+                            "ssm:GetParameters"
+                        ],
+                        resources=[
+                            f"arn:aws:ssm:{self.region}:{self.account}:parameter/quality-inspection/primary-model/model-id",
+                            f"arn:aws:ssm:{self.region}:{self.account}:parameter/quality-inspection/secondary-model/model-id"
+                        ]
+                    ),
+                    # DynamoDB access for trend analysis
+                    iam.PolicyStatement(
+                        sid="DynamoDBAccess",
+                        effect=iam.Effect.ALLOW,
+                        actions=[
+                            "dynamodb:PutItem",
+                            "dynamodb:GetItem",
+                            "dynamodb:UpdateItem",
+                            "dynamodb:Scan",
+                            "dynamodb:Query"
+                        ],
+                        resources=[
+                            f"arn:aws:dynamodb:{self.region}:{self.account}:table/vision-inspection-data",
+                            f"arn:aws:dynamodb:{self.region}:{self.account}:table/historical-trends"
+                        ]
+                    )
+                ]
+            )
+        )
+        
+        # SOP Agent Policy
+        sop_policy = iam.ManagedPolicy(
+            self, "QualityInspectionSOPAgentPolicy",
+            managed_policy_name="QualityInspectionSOPAgentPolicy",
+            description="Permissions for Quality Inspection SOP Agent",
+            document=iam.PolicyDocument(
+                statements=[
+                    # SSM Parameter Store access
+                    iam.PolicyStatement(
+                        sid="SSMParameterAccess",
+                        effect=iam.Effect.ALLOW,
+                        actions=[
+                            "ssm:GetParameter",
+                            "ssm:GetParameters"
+                        ],
+                        resources=[
+                            f"arn:aws:ssm:{self.region}:{self.account}:parameter/quality-inspection/primary-model/model-id",
+                            f"arn:aws:ssm:{self.region}:{self.account}:parameter/quality-inspection/secondary-model/model-id"
+                        ]
+                    ),
+                    # DynamoDB access for SOP decisions
+                    iam.PolicyStatement(
+                        sid="DynamoDBAccess",
+                        effect=iam.Effect.ALLOW,
+                        actions=[
+                            "dynamodb:PutItem",
+                            "dynamodb:GetItem",
+                            "dynamodb:UpdateItem"
+                        ],
+                        resources=[
+                            f"arn:aws:dynamodb:{self.region}:{self.account}:table/sop-decisions"
+                        ]
+                    )
+                ]
+            )
+        )
+        
+        # Action Agent Policy
+        action_policy = iam.ManagedPolicy(
+            self, "QualityInspectionActionAgentPolicy",
+            managed_policy_name="QualityInspectionActionAgentPolicy",
+            description="Permissions for Quality Inspection Action Agent",
+            document=iam.PolicyDocument(
+                statements=[
+                    # SSM Parameter Store access
+                    iam.PolicyStatement(
+                        sid="SSMParameterAccess",
+                        effect=iam.Effect.ALLOW,
+                        actions=[
+                            "ssm:GetParameter",
+                            "ssm:GetParameters"
+                        ],
+                        resources=[
+                            f"arn:aws:ssm:{self.region}:{self.account}:parameter/quality-inspection/primary-model/model-id",
+                            f"arn:aws:ssm:{self.region}:{self.account}:parameter/quality-inspection/secondary-model/model-id"
+                        ]
+                    ),
+                    # S3 access for file operations
+                    iam.PolicyStatement(
+                        sid="S3FileOperations",
+                        effect=iam.Effect.ALLOW,
+                        actions=[
+                            "s3:GetObject",
+                            "s3:PutObject",
+                            "s3:DeleteObject",
+                            "s3:ListBucket"
+                        ],
+                        resources=[
+                            f"arn:aws:s3:::machinepartimages-{self.account}",
+                            f"arn:aws:s3:::machinepartimages-{self.account}/*"
+                        ]
+                    ),
+                    # DynamoDB access for action logs
+                    iam.PolicyStatement(
+                        sid="DynamoDBAccess",
+                        effect=iam.Effect.ALLOW,
+                        actions=[
+                            "dynamodb:PutItem",
+                            "dynamodb:GetItem",
+                            "dynamodb:UpdateItem"
+                        ],
+                        resources=[
+                            f"arn:aws:dynamodb:{self.region}:{self.account}:table/action-execution-log"
+                        ]
+                    )
+                ]
+            )
+        )
+        
+        # Communication Agent Policy
+        communication_policy = iam.ManagedPolicy(
+            self, "QualityInspectionCommunicationAgentPolicy",
+            managed_policy_name="QualityInspectionCommunicationAgentPolicy",
+            description="Permissions for Quality Inspection Communication Agent",
+            document=iam.PolicyDocument(
+                statements=[
+                    # SSM Parameter Store access
+                    iam.PolicyStatement(
+                        sid="SSMParameterAccess",
+                        effect=iam.Effect.ALLOW,
+                        actions=[
+                            "ssm:GetParameter",
+                            "ssm:GetParameters"
+                        ],
+                        resources=[
+                            f"arn:aws:ssm:{self.region}:{self.account}:parameter/quality-inspection/primary-model/model-id",
+                            f"arn:aws:ssm:{self.region}:{self.account}:parameter/quality-inspection/secondary-model/model-id"
+                        ]
+                    ),
+                    # SNS access for notifications
+                    iam.PolicyStatement(
+                        sid="SNSNotifications",
+                        effect=iam.Effect.ALLOW,
+                        actions=[
+                            "sns:Publish"
+                        ],
+                        resources=[
+                            f"arn:aws:sns:{self.region}:{self.account}:quality-inspection-alerts"
+                        ]
+                    ),
+                    # DynamoDB access for communication logs
+                    iam.PolicyStatement(
+                        sid="DynamoDBAccess",
+                        effect=iam.Effect.ALLOW,
+                        actions=[
+                            "dynamodb:PutItem",
+                            "dynamodb:GetItem",
+                            "dynamodb:UpdateItem"
+                        ],
+                        resources=[
+                            f"arn:aws:dynamodb:{self.region}:{self.account}:table/erp-integration-log",
+                            f"arn:aws:dynamodb:{self.region}:{self.account}:table/sap-integration-log"
+                        ]
+                    )
+                ]
+            )
+        )
+        
+        # Attach policies to the AgentCore execution role
+        self.agentcore_role.add_managed_policy(vision_policy)
+        self.agentcore_role.add_managed_policy(orchestrator_policy)
+        self.agentcore_role.add_managed_policy(analysis_policy)
+        self.agentcore_role.add_managed_policy(sop_policy)
+        self.agentcore_role.add_managed_policy(action_policy)
+        self.agentcore_role.add_managed_policy(communication_policy)
+        
+        # Output policy ARNs for reference
+        CfnOutput(self, "VisionAgentPolicyArn", value=vision_policy.managed_policy_arn)
+        CfnOutput(self, "OrchestratorAgentPolicyArn", value=orchestrator_policy.managed_policy_arn)
+        CfnOutput(self, "AnalysisAgentPolicyArn", value=analysis_policy.managed_policy_arn)
+        CfnOutput(self, "SOPAgentPolicyArn", value=sop_policy.managed_policy_arn)
+        CfnOutput(self, "ActionAgentPolicyArn", value=action_policy.managed_policy_arn)
+        CfnOutput(self, "CommunicationAgentPolicyArn", value=communication_policy.managed_policy_arn)
+        
+        return {
+            'vision': vision_policy,
+            'orchestrator': orchestrator_policy,
+            'analysis': analysis_policy,
+            'sop': sop_policy,
+            'action': action_policy,
+            'communication': communication_policy
+        }
     
     def create_model_parameters(self):
         """Create SSM parameters for model configuration"""
@@ -251,11 +754,11 @@ class QualityInspectionStack(NestedStack):
             description="Secondary/fallback model ID for quality inspection agents"
         )
         
-        # Reference image S3 URI parameter (using actual bucket name)
+        # Reference image S3 URI parameter
         ssm.StringParameter(
             self, "ReferenceImageS3UriParameter",
             parameter_name="/quality-inspection/reference-image-s3-uri",
-            string_value=f"s3://{self.bucket.bucket_name}/cleanimages/Cleanimage.jpg",
+            string_value=f"s3://machinepartimages-{self.account}/cleanimages/Cleanimage.jpg",
             description="S3 URI for the reference clean image used in quality inspection"
         )
         
@@ -307,311 +810,5 @@ class QualityInspectionStack(NestedStack):
         CfnOutput(self, "SecondaryModelParameterName", value="/quality-inspection/secondary-model/model-id")
         CfnOutput(self, "ReferenceImageS3UriParameterName", value="/quality-inspection/reference-image-s3-uri")
     
-    def create_agentcore_codebuild_project(self):
-        """Create a CodeBuild project for AgentCore deployment"""
-        
-        import os
-        from aws_cdk import aws_codebuild as codebuild
-        
-        # Create IAM role for CodeBuild
-        codebuild_role = iam.Role(
-            self, "QualityInspectionCodeBuildRole",
-            assumed_by=iam.ServicePrincipal("codebuild.amazonaws.com"),
-            inline_policies={
-                "AgentCoreDeploymentPolicy": iam.PolicyDocument(
-                    statements=[
-                        iam.PolicyStatement(
-                            effect=iam.Effect.ALLOW,
-                            actions=[
-                                "logs:CreateLogGroup",
-                                "logs:CreateLogStream",
-                                "logs:PutLogEvents"
-                            ],
-                            resources=[f"arn:aws:logs:{self.region}:{self.account}:*"]
-                        ),
-                        iam.PolicyStatement(
-                            effect=iam.Effect.ALLOW,
-                            actions=[
-                                "bedrock-agentcore:*",
-                                "ecr:*",
-                                "iam:PassRole",
-                                "iam:GetRole",
-                                "iam:CreateRole",
-                                "iam:DeleteRole",
-                                "iam:AttachRolePolicy",
-                                "iam:DetachRolePolicy",
-                                "iam:ListAttachedRolePolicies",
-                                "iam:TagRole",
-                                "iam:UntagRole",
-                                "iam:ListRoleTags",
-                                "iam:PutRolePolicy",
-                                "iam:DeleteRolePolicy",
-                                "iam:GetRolePolicy",
-                                "iam:ListRolePolicies",
-                                "iam:CreateServiceLinkedRole",
-                                "s3:GetObject",
-                                "s3:PutObject",
-                                "s3:DeleteObject",
-                                "s3:ListBucket",
-                                "s3:CreateBucket",
-                                "s3:GetBucketLocation",
-                                "codebuild:*",
-                                "lambda:*",
-                                "application-autoscaling:*",
-                                "cloudformation:*"
-                            ],
-                            resources=["*"]
-                        ),
-                        iam.PolicyStatement(
-                            effect=iam.Effect.ALLOW,
-                            actions=[
-                                "ssm:PutParameter",
-                                "ssm:GetParameter",
-                                "ssm:GetParameters"
-                            ],
-                            resources=[
-                                f"arn:aws:ssm:{self.region}:{self.account}:parameter/quality-inspection/agentcore-runtime/*"
-                            ]
-                        )
-                    ]
-                )
-            }
-        )
-        
-        # Create a dedicated CodeBuild role for AgentCore with all necessary permissions
-        agentcore_codebuild_role = iam.Role(
-            self, "AgentCoreCodeBuildRole",
-            role_name=f"AgentCoreCodeBuildRole-{self.region}",
-            assumed_by=iam.ServicePrincipal("codebuild.amazonaws.com"),
-            inline_policies={
-                "AgentCoreCodeBuildPolicy": iam.PolicyDocument(
-                    statements=[
-                        iam.PolicyStatement(
-                            effect=iam.Effect.ALLOW,
-                            actions=[
-                                "logs:CreateLogGroup",
-                                "logs:CreateLogStream",
-                                "logs:PutLogEvents"
-                            ],
-                            resources=["*"]
-                        ),
-                        iam.PolicyStatement(
-                            effect=iam.Effect.ALLOW,
-                            actions=[
-                                "ecr:BatchCheckLayerAvailability",
-                                "ecr:GetDownloadUrlForLayer",
-                                "ecr:BatchGetImage",
-                                "ecr:GetAuthorizationToken",
-                                "ecr:PutImage",
-                                "ecr:InitiateLayerUpload",
-                                "ecr:UploadLayerPart",
-                                "ecr:CompleteLayerUpload",
-                                "ecr:CreateRepository",
-                                "ecr:DescribeRepositories"
-                            ],
-                            resources=["*"]
-                        ),
-                        iam.PolicyStatement(
-                            effect=iam.Effect.ALLOW,
-                            actions=[
-                                "bedrock-agentcore:*"
-                            ],
-                            resources=["*"]
-                        ),
-                        iam.PolicyStatement(
-                            effect=iam.Effect.ALLOW,
-                            actions=[
-                                "s3:GetObject",
-                                "s3:PutObject",
-                                "s3:DeleteObject",
-                                "s3:ListBucket",
-                                "s3:CreateBucket",
-                                "s3:GetBucketLocation"
-                            ],
-                            resources=["*"]
-                        ),
-                        iam.PolicyStatement(
-                            effect=iam.Effect.ALLOW,
-                            actions=[
-                                "iam:PassRole",
-                                "iam:GetRole",
-                                "iam:CreateRole",
-                                "iam:DeleteRole",
-                                "iam:AttachRolePolicy",
-                                "iam:DetachRolePolicy",
-                                "iam:ListAttachedRolePolicies",
-                                "iam:TagRole",
-                                "iam:UntagRole",
-                                "iam:ListRoleTags",
-                                "iam:PutRolePolicy",
-                                "iam:DeleteRolePolicy",
-                                "iam:GetRolePolicy",
-                                "iam:ListRolePolicies"
-                            ],
-                            resources=["*"]
-                        )
-                    ]
-                )
-            }
-        )
-        
-
-        
-        # Create CodeBuild project for AgentCore deployment
-        project = codebuild.Project(
-            self, "QualityInspectionAgentCoreProject",
-            project_name="quality-inspection-agentcore-deployment",
-            role=codebuild_role,
-            environment=codebuild.BuildEnvironment(
-                build_image=codebuild.LinuxBuildImage.STANDARD_7_0,
-                compute_type=codebuild.ComputeType.SMALL
-            ),
-            build_spec=codebuild.BuildSpec.from_object({
-                "version": "0.2",
-                "phases": {
-                    "install": {
-                        "runtime-versions": {
-                            "python": "3.12"
-                        },
-                        "commands": [
-                            "echo 'Installing AgentCore CLI'",
-                            "pip install bedrock-agentcore-starter-toolkit"
-                        ]
-                    },
-                    "build": {
-                        "commands": [
-                            "echo 'Deploying AgentCore agents'",
-                            "echo 'Current directory:'",
-                            "pwd",
-                            "echo 'Listing contents:'",
-                            "ls -la",
-                            "echo 'Looking for quality inspection agents:'",
-                            "find . -name '*quality*' -type d",
-                            "cd agents_catalog/multi_agent_collaboration/02-quality_inspection_agentcore/src",
-                            "echo 'In agent directory:'",
-                            "pwd",
-                            "ls -la",
-                            "echo 'Checking for agent files:'",
-                            "ls -la *.py",
-                            "echo 'Installing agent requirements if they exist:'",
-                            "if [ -f requirements.txt ]; then pip install -r requirements.txt; fi",
-                            "echo 'Configuring agents with HTTP protocol for Strands and custom CodeBuild role'",
-                            f"agentcore configure --entrypoint quality_inspection_orchestrator.py --name quality_inspection_orchestrator --protocol HTTP --non-interactive --disable-memory --code-build-execution-role {agentcore_codebuild_role.role_arn}",
-                            f"agentcore configure --entrypoint vision_agent.py --name vision_agent --protocol HTTP --non-interactive --disable-memory --code-build-execution-role {agentcore_codebuild_role.role_arn}",
-                            f"agentcore configure --entrypoint analysis_agent.py --name analysis_agent --protocol HTTP --non-interactive --disable-memory --code-build-execution-role {agentcore_codebuild_role.role_arn}",
-                            f"agentcore configure --entrypoint sop_agent.py --name sop_agent --protocol HTTP --non-interactive --disable-memory --code-build-execution-role {agentcore_codebuild_role.role_arn}",
-                            f"agentcore configure --entrypoint action_agent.py --name action_agent --protocol HTTP --non-interactive --disable-memory --code-build-execution-role {agentcore_codebuild_role.role_arn}",
-                            f"agentcore configure --entrypoint communication_agent.py --name communication_agent --protocol HTTP --non-interactive --disable-memory --code-build-execution-role {agentcore_codebuild_role.role_arn}",
-                            "echo 'Deploying orchestrator agent'",
-                            "agentcore launch --agent quality_inspection_orchestrator --auto-update-on-conflict 2>&1 | tee orchestrator_output.txt",
-                            "if [ $? -ne 0 ]; then echo 'Orchestrator launch failed - see output above'; exit 1; fi",
-                            "cat orchestrator_output.txt",
-                            "ORCHESTRATOR_ARN=$(grep -o 'arn:aws:bedrock-agentcore:[^:]*:[^:]*:runtime/[^[:space:]]*' orchestrator_output.txt | head -1)",
-                            "echo \"Orchestrator ARN: $ORCHESTRATOR_ARN\"",
-                            "if [ ! -z \"$ORCHESTRATOR_ARN\" ]; then aws ssm put-parameter --name '/quality-inspection/agentcore-runtime/orchestrator' --value \"$ORCHESTRATOR_ARN\" --type String --overwrite; fi",
-                            "echo 'Deploying vision agent'",
-                            "agentcore launch --agent vision_agent --auto-update-on-conflict 2>&1 | tee vision_output.txt",
-                            "if [ $? -ne 0 ]; then echo 'Vision agent launch failed - see output above'; exit 1; fi",
-                            "cat vision_output.txt",
-                            "VISION_ARN=$(grep -o 'arn:aws:bedrock-agentcore:[^:]*:[^:]*:runtime/[^[:space:]]*' vision_output.txt | head -1)",
-                            "echo \"Vision ARN: $VISION_ARN\"",
-                            "if [ ! -z \"$VISION_ARN\" ]; then aws ssm put-parameter --name '/quality-inspection/agentcore-runtime/vision' --value \"$VISION_ARN\" --type String --overwrite; else echo 'No Vision ARN found, skipping SSM parameter'; fi",
-                            "echo 'Deploying analysis agent'",
-                            "agentcore launch --agent analysis_agent --auto-update-on-conflict 2>&1 | tee analysis_output.txt",
-                            "if [ $? -ne 0 ]; then echo 'Analysis agent launch failed - see output above'; exit 1; fi",
-                            "cat analysis_output.txt",
-                            "ANALYSIS_ARN=$(grep -o 'arn:aws:bedrock-agentcore:[^:]*:[^:]*:runtime/[^[:space:]]*' analysis_output.txt | head -1)",
-                            "echo \"Analysis ARN: $ANALYSIS_ARN\"",
-                            "if [ ! -z \"$ANALYSIS_ARN\" ]; then aws ssm put-parameter --name '/quality-inspection/agentcore-runtime/analysis' --value \"$ANALYSIS_ARN\" --type String --overwrite; else echo 'No Analysis ARN found, skipping SSM parameter'; fi",
-                            "echo 'Deploying sop agent'",
-                            "agentcore launch --agent sop_agent --auto-update-on-conflict 2>&1 | tee sop_output.txt",
-                            "if [ $? -ne 0 ]; then echo 'SOP agent launch failed - see output above'; exit 1; fi",
-                            "cat sop_output.txt",
-                            "SOP_ARN=$(grep -o 'arn:aws:bedrock-agentcore:[^:]*:[^:]*:runtime/[^[:space:]]*' sop_output.txt | head -1)",
-                            "echo \"SOP ARN: $SOP_ARN\"",
-                            "if [ ! -z \"$SOP_ARN\" ]; then aws ssm put-parameter --name '/quality-inspection/agentcore-runtime/sop' --value \"$SOP_ARN\" --type String --overwrite; else echo 'No SOP ARN found, skipping SSM parameter'; fi",
-                            "echo 'Deploying action agent'",
-                            "agentcore launch --agent action_agent --auto-update-on-conflict 2>&1 | tee action_output.txt",
-                            "if [ $? -ne 0 ]; then echo 'Action agent launch failed - see output above'; exit 1; fi",
-                            "cat action_output.txt",
-                            "ACTION_ARN=$(grep -o 'arn:aws:bedrock-agentcore:[^:]*:[^:]*:runtime/[^[:space:]]*' action_output.txt | head -1)",
-                            "echo \"Action ARN: $ACTION_ARN\"",
-                            "if [ ! -z \"$ACTION_ARN\" ]; then aws ssm put-parameter --name '/quality-inspection/agentcore-runtime/action' --value \"$ACTION_ARN\" --type String --overwrite; else echo 'No Action ARN found, skipping SSM parameter'; fi",
-                            "echo 'Deploying communication agent'",
-                            "agentcore launch --agent communication_agent --auto-update-on-conflict 2>&1 | tee communication_output.txt",
-                            "if [ $? -ne 0 ]; then echo 'Communication agent launch failed - see output above'; exit 1; fi",
-                            "cat communication_output.txt",
-                            "COMMUNICATION_ARN=$(grep -o 'arn:aws:bedrock-agentcore:[^:]*:[^:]*:runtime/[^[:space:]]*' communication_output.txt | head -1)",
-                            "echo \"Communication ARN: $COMMUNICATION_ARN\"",
-                            "if [ ! -z \"$COMMUNICATION_ARN\" ]; then aws ssm put-parameter --name '/quality-inspection/agentcore-runtime/communication' --value \"$COMMUNICATION_ARN\" --type String --overwrite; else echo 'No Communication ARN found, skipping SSM parameter'; fi",
-                            "echo 'AgentCore deployment completed'",
-                            "echo 'Runtime ARNs saved to SSM parameters'"
-                        ]
-                    },
-                    "post_build": {
-                        "commands": [
-                            "echo 'Build completed - checking for any errors:'",
-                            "if [ -f orchestrator_output.txt ]; then echo 'Orchestrator output:' && cat orchestrator_output.txt; fi",
-                            "if [ -f vision_output.txt ]; then echo 'Vision output:' && cat vision_output.txt; fi"
-                        ]
-                    }
-                }
-            }),
-            source=codebuild.Source.s3(
-                bucket=self.bucket,
-                path="repo"
-            )
-        )
-        
-        # Output the CodeBuild project name with dynamic naming pattern
-        CfnOutput(self, "QualityInspectionAgentCoreDeploymentProject", value=project.project_name)
-        CfnOutput(self, "AgentCoreCodeBuildRoleArn", value=agentcore_codebuild_role.role_arn)
-        
-        return project
-    
-    def deploy_custom_ui(self):
-        """Deploy Streamlit UI to Fargate (if shared resources available)"""
-        # Check if required shared resources are available
-        if not self.shared_resources or not self.shared_resources.get('vpc'):
-            print("Skipping custom UI deployment - no VPC in shared resources")
-            return
-        
-        # Import custom UI construct
-        import sys
-        import os
-        cdk_root = os.path.join(os.path.dirname(__file__), '..', '..', '..', '..', 'cdk')
-        sys.path.insert(0, cdk_root)
-        
-        try:
-            from stacks.constructs.custom_ui import CustomUIConstruct
-            
-            # Get agent path
-            agent_path = os.path.dirname(os.path.dirname(__file__))
-            
-            # Deploy custom UI
-            self.custom_ui = CustomUIConstruct(
-                self, "CustomUI",
-                agent_name="quality-inspection",
-                agent_path=agent_path,
-                ui_config={
-                    "type": "streamlit",
-                    "path": "/quality-inspection",
-                    "port": 8501
-                },
-                vpc=self.shared_resources.get('vpc'),
-                cluster=self.shared_resources.get('ecs_cluster'),
-                listener=self.shared_resources.get('alb_listener'),
-                shared_resources=self.shared_resources,
-                auth_user=self.shared_resources.get('auth_user', 'admin'),
-                auth_password=self.shared_resources.get('auth_password', 'changeme')
-            )
-            
-            print("Custom UI deployed successfully")
-        except Exception as e:
-            print(f"Failed to deploy custom UI: {e}")
-        finally:
-            sys.path.pop(0)
-    
-
 
     

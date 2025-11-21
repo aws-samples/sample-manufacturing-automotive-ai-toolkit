@@ -1,1 +1,6 @@
-# Add your dependencies here
+streamlit
+boto3
+pillow
+strands-agents
+pandas
+numpy

@@ -8,20 +8,12 @@ import os
 from datetime import datetime
 
 def get_boto3_client(service_name, region_name='us-east-1'):
-    """Get boto3 client with profile support"""
-    try:
-        session = boto3.Session(profile_name='grantaws')
-        return session.client(service_name, region_name=region_name)
-    except:
-        return boto3.client(service_name, region_name=region_name)
+    """Get boto3 client"""
+    return boto3.client(service_name, region_name=region_name)
 
 def get_boto3_resource(service_name, region_name='us-east-1'):
-    """Get boto3 resource with profile support"""
-    try:
-        session = boto3.Session(profile_name='grantaws')
-        return session.resource(service_name, region_name=region_name)
-    except:
-        return boto3.resource(service_name, region_name=region_name)
+    """Get boto3 resource"""
+    return boto3.resource(service_name, region_name=region_name)
 
 def discover_bucket():
     """Discover the quality inspection S3 bucket"""
@@ -41,7 +33,7 @@ def discover_bucket():
             except:
                 continue
         
-        # Fallback to account-based naming
+        # Get account ID and construct bucket name
         sts = get_boto3_client('sts')
         account_id = sts.get_caller_identity()['Account']
         return f"machinepartimages-{account_id}"
@@ -162,7 +154,7 @@ def main():
     
     # Check if test image exists
     script_dir = os.path.dirname(os.path.abspath(__file__))
-    test_image_path = os.path.join(script_dir, "test_images/anomalies/image1.jpg")
+    test_image_path = os.path.join(script_dir, "../test_images/anomalies/image1.jpg")
     if not os.path.exists(test_image_path):
         print(f"❌ Test image not found: {test_image_path}")
         sys.exit(1)
