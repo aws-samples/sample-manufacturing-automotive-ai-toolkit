@@ -1,18 +1,24 @@
 from aws_cdk import (
-    Duration,
-    Stack,
     CfnOutput,
     RemovalPolicy,
-    CustomResource,
+    Stack,
     aws_dynamodb as dynamodb,
-    aws_lambda as _lambda,
-    custom_resources as cr,
+    aws_iam as iam,
+    NestedStack,
+)
+from aws_cdk.custom_resources import (
+    AwsCustomResource,
+    AwsCustomResourcePolicy,
+    PhysicalResourceId
 )
 from constructs import Construct
+from typing import Dict, Any, Optional
 
-class AgentStack(Stack):
-
-    def __init__(self, scope: Construct, construct_id: str, **kwargs) -> None:
+class InventoryOptimizerStack(NestedStack):
+    ''' Docstring '''
+    def __init__(self, scope: Construct, construct_id: str,
+                 shared_resources: Optional[Dict[str, Any]] = None,
+                 foundation_model: str = None, **kwargs) -> None:
         super().__init__(scope, construct_id, **kwargs)
         self._create_dynamodb_tables()
         self._create_data_loader()
@@ -21,97 +27,222 @@ class AgentStack(Stack):
     def _create_dynamodb_tables(self):
         self.customer_order_table = dynamodb.Table(
             self, "CustomerOrderTable",
-            table_name="CustomerOrder",
+            table_name="InventoryOptimizerCustomerOrder",
             partition_key=dynamodb.Attribute(
                 name="order_id",
                 type=dynamodb.AttributeType.STRING
             ),
             billing_mode=dynamodb.BillingMode.PAY_PER_REQUEST,
             table_class=dynamodb.TableClass.STANDARD,
-            removal_policy=RemovalPolicy.DESTROY
+            removal_policy=RemovalPolicy.DESTROY,
+            point_in_time_recovery=True
         )
 
         self.product_bom_table = dynamodb.Table(
             self, "ProductBOMTable",
-            table_name="ProductBOM",
+            table_name="InventoryOptimizerProductBOM",
             partition_key=dynamodb.Attribute(
                 name="id",
                 type=dynamodb.AttributeType.STRING
             ),
             billing_mode=dynamodb.BillingMode.PAY_PER_REQUEST,
             table_class=dynamodb.TableClass.STANDARD,
-            removal_policy=RemovalPolicy.DESTROY
+            removal_policy=RemovalPolicy.DESTROY,
+            point_in_time_recovery=True
         )
 
         self.inventory_level_table = dynamodb.Table(
             self, "InventoryLevelTable",
-            table_name="InventoryLevel",
+            table_name="InventoryOptimizerInventoryLevel",
             partition_key=dynamodb.Attribute(
                 name="inventory_id",
                 type=dynamodb.AttributeType.STRING
             ),
             billing_mode=dynamodb.BillingMode.PAY_PER_REQUEST,
             table_class=dynamodb.TableClass.STANDARD,
-            removal_policy=RemovalPolicy.DESTROY
+            removal_policy=RemovalPolicy.DESTROY,
+            point_in_time_recovery=True
         )
 
         self.supplier_info_table = dynamodb.Table(
             self, "SupplierInfoTable",
-            table_name="SupplierInfo",
+            table_name="InventoryOptimizerSupplierInfo",
             partition_key=dynamodb.Attribute(
                 name="supplier_id",
                 type=dynamodb.AttributeType.STRING
             ),
             billing_mode=dynamodb.BillingMode.PAY_PER_REQUEST,
             table_class=dynamodb.TableClass.STANDARD,
-            removal_policy=RemovalPolicy.DESTROY
+            removal_policy=RemovalPolicy.DESTROY,
+            point_in_time_recovery=True
         )
 
         self.transfer_orders_table = dynamodb.Table(
             self, "TransferOrdersTable",
-            table_name="TransferOrders",
+            table_name="InventoryOptimizerTransferOrders",
             partition_key=dynamodb.Attribute(
                 name="order_id",
                 type=dynamodb.AttributeType.STRING
             ),
             billing_mode=dynamodb.BillingMode.PAY_PER_REQUEST,
             table_class=dynamodb.TableClass.STANDARD,
-            removal_policy=RemovalPolicy.DESTROY
+            removal_policy=RemovalPolicy.DESTROY,
+            point_in_time_recovery=True
         )
 
     def _create_data_loader(self):
-        self.data_loader_function = _lambda.Function(
-            self, "DataLoaderFunction",
-            function_name="MA3T_Data_Loader",
-            runtime=_lambda.Runtime.PYTHON_3_13,
-            handler="index.handler",
-            code=_lambda.Code.from_inline(self._get_data_loader_code()),
-            timeout=Duration.seconds(60),
-            description="Loads sample data into MA3T DynamoDB tables"
+        custom_resource_role = iam.Role(
+            self, "CustomResourceExecutionRole",
+            assumed_by=iam.ServicePrincipal("lambda.amazonaws.com"),
+            description="Custom execution role for DynamoDB seeding"
         )
-
-        self.customer_order_table.grant_write_data(self.data_loader_function)
-        self.product_bom_table.grant_write_data(self.data_loader_function)
-        self.inventory_level_table.grant_write_data(self.data_loader_function)
-        self.supplier_info_table.grant_write_data(self.data_loader_function)
-        self.transfer_orders_table.grant_write_data(self.data_loader_function)
-
-        self.data_loader_provider = cr.Provider(
-            self, "DataLoaderProvider",
-            on_event_handler=self.data_loader_function
+        
+        custom_resource_role.add_to_policy(
+            iam.PolicyStatement(
+                effect=iam.Effect.ALLOW,
+                actions=[
+                    "logs:CreateLogGroup",
+                    "logs:CreateLogStream", 
+                    "logs:PutLogEvents"
+                ],
+                resources=[f"arn:aws:logs:{Stack.of(self).region}:{Stack.of(self).account}:log-group:/aws/lambda/inventory-data-seeder"]
+            )
         )
-
-        self.populate_data = CustomResource(
-            self, "PopulateData",
-            service_token=self.data_loader_provider.service_token,
-            properties={"TriggerDataLoad": "true"}
+        
+        custom_resource_role.add_to_policy(
+            iam.PolicyStatement(
+                effect=iam.Effect.ALLOW,
+                actions=["dynamodb:PutItem"],
+                resources=[
+                    self.customer_order_table.table_arn,
+                    self.product_bom_table.table_arn,
+                    self.inventory_level_table.table_arn,
+                    self.supplier_info_table.table_arn,
+                    self.transfer_orders_table.table_arn
+                ]
+            )
         )
-
-        self.populate_data.node.add_dependency(self.customer_order_table)
-        self.populate_data.node.add_dependency(self.product_bom_table)
-        self.populate_data.node.add_dependency(self.inventory_level_table)
-        self.populate_data.node.add_dependency(self.supplier_info_table)
-        self.populate_data.node.add_dependency(self.transfer_orders_table)
+        
+        # Customer Orders
+        customer_orders = [
+            {'order_id': {'S': 'CO_001'}, 'customer_id': {'S': 'Cosmo Inc'}, 'order_due_date': {'S': 't1'}, 'order_qty': {'N': '22'}, 'product_id': {'S': 'ebike-01'}, 'ship_from': {'S': 'Seattle'}},
+            {'order_id': {'S': 'CO_002'}, 'customer_id': {'S': 'Cosmo Inc'}, 'order_due_date': {'S': 't2'}, 'order_qty': {'N': '22'}, 'product_id': {'S': 'ebike-01'}, 'ship_from': {'S': 'Seattle'}},
+            {'order_id': {'S': 'CO_003'}, 'customer_id': {'S': 'Cosmo Inc'}, 'order_due_date': {'S': 't3'}, 'order_qty': {'N': '28'}, 'product_id': {'S': 'ebike-01'}, 'ship_from': {'S': 'Seattle'}},
+            {'order_id': {'S': 'CO_004'}, 'customer_id': {'S': 'Cosmo Inc'}, 'order_due_date': {'S': 't4'}, 'order_qty': {'N': '29'}, 'product_id': {'S': 'ebike-01'}, 'ship_from': {'S': 'Seattle'}},
+            {'order_id': {'S': 'CO_005'}, 'customer_id': {'S': 'Cosmo Inc'}, 'order_due_date': {'S': 't5'}, 'order_qty': {'N': '35'}, 'product_id': {'S': 'ebike-01'}, 'ship_from': {'S': 'Seattle'}},
+            {'order_id': {'S': 'CO_006'}, 'customer_id': {'S': 'Cosmo Inc'}, 'order_due_date': {'S': 't6'}, 'order_qty': {'N': '32'}, 'product_id': {'S': 'ebike-01'}, 'ship_from': {'S': 'Seattle'}},
+            {'order_id': {'S': 'CO_007'}, 'customer_id': {'S': 'Cosmo Inc'}, 'order_due_date': {'S': 't7'}, 'order_qty': {'N': '38'}, 'product_id': {'S': 'ebike-01'}, 'ship_from': {'S': 'Seattle'}}
+        ]
+        
+        for i, item in enumerate(customer_orders):
+            AwsCustomResource(
+                self, f"SeedCustomerOrder{i}",
+                on_create={
+                    "service": "DynamoDB",
+                    "action": "putItem",
+                    "parameters": {
+                        "TableName": self.customer_order_table.table_name,
+                        "Item": item
+                    },
+                    "physical_resource_id": PhysicalResourceId.of(f"seed-customer-order-{i}")
+                },
+                policy=AwsCustomResourcePolicy.from_statements([
+                    iam.PolicyStatement(
+                        actions=["dynamodb:PutItem"],
+                        resources=[self.customer_order_table.table_arn]
+                    )
+                ]),
+                role=custom_resource_role
+            )
+        
+        # Product BOM
+        bom_items = [
+            {'id': {'S': 'B1'}, 'product_id': {'S': 'ebike_01'}, 'component_product_id': {'S': 'Frame'}, 'component_quantity_per': {'N': '1'}, 'production_process_id': {'S': 'assembly'}, 'site_id': {'S': 'Seattle'}},
+            {'id': {'S': 'B12'}, 'product_id': {'S': 'ebike_01'}, 'component_product_id': {'S': 'Battery'}, 'component_quantity_per': {'N': '1'}, 'production_process_id': {'S': 'assembly'}, 'site_id': {'S': 'Seattle'}},
+            {'id': {'S': 'B11'}, 'product_id': {'S': 'ebike_01'}, 'component_product_id': {'S': 'Wheel'}, 'component_quantity_per': {'N': '2'}, 'production_process_id': {'S': 'assembly'}, 'site_id': {'S': 'Seattle'}}
+        ]
+        
+        for i, item in enumerate(bom_items):
+            AwsCustomResource(
+                self, f"SeedBOM{i}",
+                on_create={
+                    "service": "DynamoDB",
+                    "action": "putItem",
+                    "parameters": {
+                        "TableName": self.product_bom_table.table_name,
+                        "Item": item
+                    },
+                    "physical_resource_id": PhysicalResourceId.of(f"seed-bom-{i}")
+                },
+                policy=AwsCustomResourcePolicy.from_statements([
+                    iam.PolicyStatement(
+                        actions=["dynamodb:PutItem"],
+                        resources=[self.product_bom_table.table_arn]
+                    )
+                ]),
+                role=custom_resource_role
+            )
+        
+        # Inventory Levels
+        inventory_items = [
+            {'inventory_id': {'S': 'inv_1'}, 'product_id': {'S': 'ebike_01'}, 'on_hand_inventory': {'N': '2'}, 'site_id': {'S': 'Seattle'}},
+            {'inventory_id': {'S': 'inv_2'}, 'component_id': {'S': 'Battery'}, 'on_hand_inventory': {'N': '150'}, 'site_id': {'S': 'Seattle'}},
+            {'inventory_id': {'S': 'inv_3'}, 'component_id': {'S': 'Frame'}, 'on_hand_inventory': {'N': '250'}, 'site_id': {'S': 'Seattle'}},
+            {'inventory_id': {'S': 'inv_4'}, 'component_id': {'S': 'Wheel'}, 'on_hand_inventory': {'N': '500'}, 'site_id': {'S': 'Seattle'}},
+            {'inventory_id': {'S': 'inv_5'}, 'product_id': {'S': 'ebike_01'}, 'on_hand_inventory': {'N': '2'}, 'site_id': {'S': 'LosAngeles'}},
+            {'inventory_id': {'S': 'inv_6'}, 'product_id': {'S': 'ebike_01'}, 'on_hand_inventory': {'N': '2'}, 'site_id': {'S': 'NewYork'}},
+            {'inventory_id': {'S': 'inv_7'}, 'component_id': {'S': 'Battery'}, 'on_hand_inventory': {'N': '85'}, 'site_id': {'S': 'LosAngeles'}},
+            {'inventory_id': {'S': 'inv_8'}, 'component_id': {'S': 'Battery'}, 'on_hand_inventory': {'N': '100'}, 'site_id': {'S': 'NewYork'}}
+        ]
+        
+        for i, item in enumerate(inventory_items):
+            AwsCustomResource(
+                self, f"SeedInventory{i}",
+                on_create={
+                    "service": "DynamoDB",
+                    "action": "putItem",
+                    "parameters": {
+                        "TableName": self.inventory_level_table.table_name,
+                        "Item": item
+                    },
+                    "physical_resource_id": PhysicalResourceId.of(f"seed-inventory-{i}")
+                },
+                policy=AwsCustomResourcePolicy.from_statements([
+                    iam.PolicyStatement(
+                        actions=["dynamodb:PutItem"],
+                        resources=[self.inventory_level_table.table_arn]
+                    )
+                ]),
+                role=custom_resource_role
+            )
+        
+        # Suppliers
+        suppliers = [
+            {'supplier_id': {'S': 'SUP001'}, 'Supplier_Name': {'S': 'Acme Battery Supply Co'}, 'component_id': {'S': 'Battery'}, 'Emissions': {'N': '1'}, 'Lead_time': {'N': '1'}, 'Location': {'S': 'Seattle'}, 'Min_Order_Qty': {'N': '50'}, 'Unit_Price': {'N': '8'}},
+            {'supplier_id': {'S': 'SUP002'}, 'Supplier_Name': {'S': 'PowerCell Industries'}, 'component_id': {'S': 'Battery'}, 'Emissions': {'N': '12'}, 'Lead_time': {'N': '4'}, 'Location': {'S': 'Seattle'}, 'Min_Order_Qty': {'N': '50'}, 'Unit_Price': {'N': '9'}},
+            {'supplier_id': {'S': 'SUP003'}, 'Supplier_Name': {'S': 'TechFrame Manufacturing'}, 'component_id': {'S': 'Battery'}, 'Emissions': {'N': '612'}, 'Lead_time': {'N': '4'}, 'Location': {'S': 'New York'}, 'Min_Order_Qty': {'N': '25'}, 'Unit_Price': {'N': '10'}}
+        ]
+        
+        for i, item in enumerate(suppliers):
+            AwsCustomResource(
+                self, f"SeedSupplier{i}",
+                on_create={
+                    "service": "DynamoDB",
+                    "action": "putItem",
+                    "parameters": {
+                        "TableName": self.supplier_info_table.table_name,
+                        "Item": item
+                    },
+                    "physical_resource_id": PhysicalResourceId.of(f"seed-supplier-{i}")
+                },
+                policy=AwsCustomResourcePolicy.from_statements([
+                    iam.PolicyStatement(
+                        actions=["dynamodb:PutItem"],
+                        resources=[self.supplier_info_table.table_arn]
+                    )
+                ]),
+                role=custom_resource_role
+            )
 
     def _create_outputs(self):
         CfnOutput(self, "CustomerOrderTableName", value=self.customer_order_table.table_name)
@@ -119,138 +250,4 @@ class AgentStack(Stack):
         CfnOutput(self, "InventoryLevelTableName", value=self.inventory_level_table.table_name)
         CfnOutput(self, "SupplierInfoTableName", value=self.supplier_info_table.table_name)
         CfnOutput(self, "TransferOrdersTableName", value=self.transfer_orders_table.table_name)
-        CfnOutput(self, "DataLoaderFunctionArn", value=self.data_loader_function.function_arn)
-        CfnOutput(self, "DataLoaderFunctionName", value=self.data_loader_function.function_name)
-        CfnOutput(
-            self, "ManualDataLoadCommand",
-            value=f"aws lambda invoke --function-name {self.data_loader_function.function_name} --payload '{{}}' response.json"
-        )
 
-    def _get_data_loader_code(self) -> str:
-        return '''
-import boto3
-import json
-import urllib.request
-from decimal import Decimal
-
-def handler(event, context):
-    print(f"Received event: {json.dumps(event)}")
-    
-    response_url = event.get('ResponseURL')
-    stack_id = event.get('StackId')
-    request_id = event.get('RequestId')
-    logical_resource_id = event.get('LogicalResourceId')
-    physical_resource_id = event.get('PhysicalResourceId', 'DataLoaderPopulation')
-    
-    response_body = {
-        'Status': 'SUCCESS',
-        'PhysicalResourceId': physical_resource_id,
-        'StackId': stack_id,
-        'RequestId': request_id,
-        'LogicalResourceId': logical_resource_id
-    }
-    
-    if event.get('RequestType') == 'Delete':
-        print("Delete request - sending success response")
-        send_response(response_url, response_body)
-        return
-    
-    try:
-        dynamodb = boto3.resource('dynamodb')
-        
-        customer_order_table = dynamodb.Table('CustomerOrder')
-        customer_orders = [
-            {'order_id': 'CO_001', 'customer_id': 'Cosmo Inc', 'order_due_date': 't1', 'order_qty': 22, 'product_id': 'ebike-01', 'ship_from': 'Seattle'},
-            {'order_id': 'CO_002', 'customer_id': 'Cosmo Inc', 'order_due_date': 't2', 'order_qty': 22, 'product_id': 'ebike-01', 'ship_from': 'Seattle'},
-            {'order_id': 'CO_003', 'customer_id': 'Cosmo Inc', 'order_due_date': 't3', 'order_qty': 28, 'product_id': 'ebike-01', 'ship_from': 'Seattle'},
-            {'order_id': 'CO_004', 'customer_id': 'Cosmo Inc', 'order_due_date': 't4', 'order_qty': 29, 'product_id': 'ebike-01', 'ship_from': 'Seattle'},
-            {'order_id': 'CO_005', 'customer_id': 'Cosmo Inc', 'order_due_date': 't5', 'order_qty': 35, 'product_id': 'ebike-01', 'ship_from': 'Seattle'},
-            {'order_id': 'CO_006', 'customer_id': 'Cosmo Inc', 'order_due_date': 't6', 'order_qty': 32, 'product_id': 'ebike-01', 'ship_from': 'Seattle'},
-            {'order_id': 'CO_007', 'customer_id': 'Cosmo Inc', 'order_due_date': 't7', 'order_qty': 38, 'product_id': 'ebike-01', 'ship_from': 'Seattle'}
-        ]
-        for item in customer_orders:
-            customer_order_table.put_item(Item=item)
-        print(f"Added {len(customer_orders)} customer orders")
-        
-        product_bom_table = dynamodb.Table('ProductBOM')
-        bom_items = [
-            {'id': 'B1', 'product_id': 'ebike_01', 'component_product_id': 'Frame', 'component_quantity_per': 1, 'production_process_id': 'assembly', 'site_id': 'Seattle'},
-            {'id': 'B12', 'product_id': 'ebike_01', 'component_product_id': 'Battery', 'component_quantity_per': 1, 'production_process_id': 'assembly', 'site_id': 'Seattle'},
-            {'id': 'B11', 'product_id': 'ebike_01', 'component_product_id': 'Wheel', 'component_quantity_per': 2, 'production_process_id': 'assembly', 'site_id': 'Seattle'}
-        ]
-        for item in bom_items:
-            product_bom_table.put_item(Item=item)
-        print(f"Added {len(bom_items)} BOM items")
-        
-        inventory_table = dynamodb.Table('InventoryLevel')
-        inventory_items = [
-            {'inventory_id': 'inv_1', 'product_id': 'ebike_01', 'on_hand_inventory': 2, 'site_id': 'Seattle'},
-            {'inventory_id': 'inv_2', 'component_id': 'Battery', 'on_hand_inventory': 150, 'site_id': 'Seattle'},
-            {'inventory_id': 'inv_3', 'component_id': 'Frame', 'on_hand_inventory': 250, 'site_id': 'Seattle'},
-            {'inventory_id': 'inv_4', 'component_id': 'Wheel', 'on_hand_inventory': 500, 'site_id': 'Seattle'},
-            {'inventory_id': 'inv_5', 'product_id': 'ebike_01', 'on_hand_inventory': 2, 'site_id': 'LosAngeles'},
-            {'inventory_id': 'inv_6', 'product_id': 'ebike_01', 'on_hand_inventory': 2, 'site_id': 'NewYork'},
-            {'inventory_id': 'inv_7', 'component_id': 'Battery', 'on_hand_inventory': 85, 'site_id': 'LosAngeles'},
-            {'inventory_id': 'inv_8', 'component_id': 'Battery', 'on_hand_inventory': 100, 'site_id': 'NewYork'}
-        ]
-        for item in inventory_items:
-            inventory_table.put_item(Item=item)
-        print(f"Added {len(inventory_items)} inventory items")
-        
-        supplier_table = dynamodb.Table('SupplierInfo')
-        suppliers = [
-            {'supplier_id': 'SUP001', 'Supplier_Name': 'Acme Battery Supply Co', 'component_id': 'Battery', 
-             'Emissions': 1, 'Lead_time': 1, 'Location': 'Seattle', 'Min_Order_Qty': 50, 'Unit_Price': Decimal('8')},
-            {'supplier_id': 'SUP002', 'Supplier_Name': 'PowerCell Industries', 'component_id': 'Battery', 
-             'Emissions': 12, 'Lead_time': 4, 'Location': 'Seattle', 'Min_Order_Qty': 50, 'Unit_Price': Decimal('9')},
-            {'supplier_id': 'SUP003', 'Supplier_Name': 'TechFrame Manufacturing', 'component_id': 'Battery', 
-             'Emissions': 612, 'Lead_time': 4, 'Location': 'New York', 'Min_Order_Qty': 25, 'Unit_Price': Decimal('10')}
-        ]
-        for item in suppliers:
-            supplier_table.put_item(Item=item)
-        print(f"Added {len(suppliers)} suppliers")
-        
-        total_records = len(customer_orders) + len(bom_items) + len(inventory_items) + len(suppliers)
-        print(f"Successfully added {total_records} total records across all tables")
-        
-        response_body['Data'] = {'Message': f"Added {total_records} sample records"}
-        send_response(response_url, response_body)
-        
-        return {
-            'statusCode': 200,
-            'body': json.dumps(f'Successfully loaded {total_records} records into DynamoDB tables!')
-        }
-        
-    except Exception as e:
-        error_message = str(e)
-        print(f"Error adding sample data: {error_message}")
-        response_body['Status'] = 'FAILED'
-        response_body['Reason'] = error_message
-        send_response(response_url, response_body)
-        
-        return {
-            'statusCode': 500,
-            'body': json.dumps(f'Error: {str(e)}')
-        }
-
-def send_response(response_url, response_body):
-    json_response_body = json.dumps(response_body)
-    print(f"Sending response to: {response_url}")
-    
-    headers = {
-        'content-type': '',
-        'content-length': str(len(json_response_body))
-    }
-    
-    try:
-        req = urllib.request.Request(response_url, 
-                                    data=json_response_body.encode('utf-8'),
-                                    headers=headers,
-                                    method='PUT')
-        response = urllib.request.urlopen(req)
-        print(f"Status code: {response.getcode()}")
-        return True
-    except Exception as e:
-        print(f"Failed to send response: {str(e)}")
-        return False
-'''

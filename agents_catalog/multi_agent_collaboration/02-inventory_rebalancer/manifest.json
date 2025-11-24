@@ -22,7 +22,7 @@
   ],
   "infrastructure": {
     "cdk": true,
-    "stack_class": "AgentStack",
+    "stack_class": "InventoryOptimizerStack",
     "stack_path": "cdk/stack.py"
   }
 }

@@ -25,7 +25,7 @@ def list_pending_transfers() -> str:
     """List all pending transfer orders. Call this function with no arguments to retrieve all pending orders. Returns all pending transfer order data including order_id, from_location, to_location, component_id, quantity, status, and created_at."""
     try:
         logger.info("Getting pending transfer orders")
-        table = boto3.resource('dynamodb', region_name=REGION).Table('TransferOrders')
+        table = boto3.resource('dynamodb', region_name=REGION).Table('InventoryOptimizerTransferOrders')
         response = table.scan()
         items = response.get('Items', [])
         
@@ -57,7 +57,7 @@ def create_transfer_order(from_location: str, component_id: str, quantity: int) 
             logger.error(error_msg)
             return json.dumps({"error": error_msg})
         
-        table = boto3.resource('dynamodb', region_name=REGION).Table('TransferOrders')
+        table = boto3.resource('dynamodb', region_name=REGION).Table('InventoryOptimizerTransferOrders')
         order_id = f"TO-{datetime.utcnow().strftime('%Y%m%d%H%M%S')}"
         
         item = {
@@ -89,7 +89,7 @@ def create_transfer_order(from_location: str, component_id: str, quantity: int) 
 def get_production_schedule(days_ahead: int = 7) -> str:
     """Get production schedule from CustomerOrder DynamoDB table"""
     try:
-        table = boto3.resource('dynamodb', region_name=REGION).Table('CustomerOrder')
+        table = boto3.resource('dynamodb', region_name=REGION).Table('InventoryOptimizerCustomerOrder')
         orders = table.scan().get('Items', [])
         
         schedule = {}
@@ -121,7 +121,7 @@ def get_production_schedule(days_ahead: int = 7) -> str:
 def get_supplier_info() -> str:
     """Get supplier information from SupplierInfo DynamoDB table"""
     try:
-        table = boto3.resource('dynamodb', region_name=REGION).Table('SupplierInfo')
+        table = boto3.resource('dynamodb', region_name=REGION).Table('InventoryOptimizerSupplierInfo')
         response = table.scan()
         items = response.get('Items', [])
         
@@ -148,7 +148,7 @@ def get_supplier_info() -> str:
 def get_inventory_levels() -> str:
     """Get inventory levels from InventoryLevel DynamoDB table"""
     try:
-        table = boto3.resource('dynamodb', region_name=REGION).Table('InventoryLevel')
+        table = boto3.resource('dynamodb', region_name=REGION).Table('InventoryOptimizerInventoryLevel')
         response = table.scan(
             FilterExpression='component_id > :empty',
             ExpressionAttributeValues={':empty': ' '}
@@ -174,7 +174,7 @@ def get_inventory_levels() -> str:
 def get_product_bom(product_id: str = None) -> str:
     """Get bill of materials from ProductBOM DynamoDB table"""
     try:
-        table = boto3.resource('dynamodb', region_name=REGION).Table('ProductBOM')
+        table = boto3.resource('dynamodb', region_name=REGION).Table('InventoryOptimizerProductBOM')
         response = table.scan()
         items = response.get('Items', [])
         
