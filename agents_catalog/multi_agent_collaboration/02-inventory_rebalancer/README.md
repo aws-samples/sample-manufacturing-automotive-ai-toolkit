@@ -2,6 +2,7 @@
 
 A multi agent collaboration system to automatically perform intelligent inventory rebalancing decisions.
 
+
 ## Setup
 
 1. Install dependencies:
