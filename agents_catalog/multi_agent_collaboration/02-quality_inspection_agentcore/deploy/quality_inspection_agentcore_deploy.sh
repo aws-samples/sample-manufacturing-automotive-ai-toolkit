@@ -76,7 +76,7 @@ check_prerequisites() {
 deploy_agents() {
     log_info "Deploying agents to AgentCore..."
     
-    cd src/agents
+    cd ../src/agents
     
     # Create account-specific AgentCore config
     log_info "Creating account-specific AgentCore configuration..."
@@ -106,9 +106,9 @@ EOF
     agent_files=("quality_inspection_orchestrator.py" "vision_agent.py" "analysis_agent.py" "sop_agent.py" "action_agent.py" "communication_agent.py")
     
     # Create output file for deployment results
-    echo "# Quality Inspection AgentCore Deployment Results" > ../../agentcore_deployment_results.md
-    echo "Generated on: $(date)" >> ../../agentcore_deployment_results.md
-    echo "" >> ../../agentcore_deployment_results.md
+    echo "# Quality Inspection AgentCore Deployment Results" > ../agentcore_deployment_results.md
+    echo "Generated on: $(date)" >> ../agentcore_deployment_results.md
+    echo "" >> ../agentcore_deployment_results.md
     
     for i in "${!agent_names[@]}"; do
         agent_name="${agent_names[$i]}"
@@ -122,7 +122,6 @@ EOF
             --name "$agent_name" \
             --region "$REGION" \
             --execution-role "$AGENTCORE_ROLE_ARN" \
-            --disable-memory \
             --non-interactive
         
         if [ $? -ne 0 ]; then
@@ -190,11 +189,11 @@ EOF
             fi
             
             # Add to results file
-            echo "## $agent_name" >> ../../agentcore_deployment_results.md
-            echo "- **Runtime ARN**: \`$RUNTIME_ARN\`" >> ../../agentcore_deployment_results.md
-            echo "- **ECR Repository**: \`$ECR_REPO\`" >> ../../agentcore_deployment_results.md
-            echo "- **SSM Parameter**: \`$SSM_PARAM\`" >> ../../agentcore_deployment_results.md
-            echo "" >> ../../agentcore_deployment_results.md
+            echo "## $agent_name" >> ../agentcore_deployment_results.md
+            echo "- **Runtime ARN**: \`$RUNTIME_ARN\`" >> ../agentcore_deployment_results.md
+            echo "- **ECR Repository**: \`$ECR_REPO\`" >> ../agentcore_deployment_results.md
+            echo "- **SSM Parameter**: \`$SSM_PARAM\`" >> ../agentcore_deployment_results.md
+            echo "" >> ../agentcore_deployment_results.md
             
             # Clean up
             rm -f launch_output.txt status_output.txt
@@ -205,7 +204,7 @@ EOF
         fi
     done
     
-    cd ../..
+    cd ..
     log_success "All agents processed"
     log_info "Deployment results saved to: agentcore_deployment_results.md"
 }

@@ -46,9 +46,9 @@ cleanup() {
         # Rollback infrastructure stack
         if [ "$INFRASTRUCTURE_DEPLOYED" = "true" ]; then
             log_warning "Rolling back infrastructure stack..."
-            cd infrastructure
+            cd ../cdk
             cdk destroy --profile "$PROFILE" --force || true
-            cd ..
+            cd ../deploy
         fi
         
         log_error "Rollback completed. Please check AWS Console for any remaining resources."
@@ -119,7 +119,7 @@ check_prerequisites() {
 deploy_infrastructure() {
     log_info "Deploying infrastructure stack..."
     
-    cd infrastructure
+    cd ../cdk
     
     # Install CDK dependencies
     log_info "Installing CDK dependencies..."
@@ -131,7 +131,7 @@ deploy_infrastructure() {
     
     # Deploy infrastructure stack
     log_info "Deploying infrastructure stack..."
-    cdk deploy --profile "$PROFILE" --require-approval never
+    cdk deploy "$STACK_NAME" --profile "$PROFILE" --require-approval never
     
     cd ..
     INFRASTRUCTURE_DEPLOYED=true
@@ -143,12 +143,12 @@ deploy_agentcore_agents() {
     log_info "Deploying AgentCore agents..."
     
     # Run the AgentCore deployment script
-    if [ -f "quality_inspection_agentcore_deploy.sh" ]; then
+    if [ -f "./quality_inspection_agentcore_deploy.sh" ]; then
         log_info "Running AgentCore deployment script..."
-        bash quality_inspection_agentcore_deploy.sh
+        bash ./quality_inspection_agentcore_deploy.sh
         log_success "AgentCore agents deployed successfully"
     else
-        log_error "AgentCore deployment script not found: quality_inspection_agentcore_deploy.sh"
+        log_error "AgentCore deployment script not found: ./quality_inspection_agentcore_deploy.sh"
         exit 1
     fi
 }
