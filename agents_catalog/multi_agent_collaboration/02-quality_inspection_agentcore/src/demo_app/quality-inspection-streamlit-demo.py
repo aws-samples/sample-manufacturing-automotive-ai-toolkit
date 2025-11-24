@@ -4,33 +4,18 @@ import json
 from datetime import datetime
 from PIL import Image, ImageDraw
 import io
-import atexit
-import argparse
-
-
-
-# Global AWS profile setting
-AWS_PROFILE = None
-
-def get_boto3_session():
-    """Get boto3 session with optional profile"""
-    if AWS_PROFILE:
-        return boto3.Session(profile_name=AWS_PROFILE)
-    return boto3.Session()
 
 def get_boto3_client(service_name, region_name=None):
-    """Get boto3 client with optional profile"""
-    session = get_boto3_session()
+    """Get boto3 client using current AWS credentials"""
     if region_name:
-        return session.client(service_name, region_name=region_name)
-    return session.client(service_name)
+        return boto3.client(service_name, region_name=region_name)
+    return boto3.client(service_name)
 
 def get_boto3_resource(service_name, region_name=None):
-    """Get boto3 resource with optional profile"""
-    session = get_boto3_session()
+    """Get boto3 resource using current AWS credentials"""
     if region_name:
-        return session.resource(service_name, region_name=region_name)
-    return session.resource(service_name)
+        return boto3.resource(service_name, region_name=region_name)
+    return boto3.resource(service_name)
 
 # AgentCore agents - no local imports needed
 
@@ -943,18 +928,4 @@ def download_s3_image(bucket_name, s3_key, region):
 
 
 if __name__ == "__main__":
-    # Parse command line arguments for AWS profile
-    parser = argparse.ArgumentParser(description='Quality Inspection Streamlit App')
-    parser.add_argument('--profile', help='AWS profile to use', default=None)
-    
-    # Parse known args to avoid conflicts with Streamlit
-    args, unknown = parser.parse_known_args()
-    
-    # Set global AWS profile
-    if args.profile:
-        AWS_PROFILE = args.profile
-        st.sidebar.info(f"Using AWS Profile: {AWS_PROFILE}")
-    else:
-        st.sidebar.info("Using default AWS profile")
-    
     main()
