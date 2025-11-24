@@ -6,7 +6,7 @@
       "version": "1.0.0",
       "description": "A multi agent collaboration system to automatically perform intelligent inventory rebalancing decisions.",
       "type": "agentcore",
-      "entrypoint": "agent.py",
+      "entrypoint": "agents.py",
       "metadata": {
         "authors": [
           {
