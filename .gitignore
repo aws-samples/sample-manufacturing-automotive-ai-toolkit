@@ -20,3 +20,4 @@ agents_catalog/**/Dockerfile
 agents_catalog/**/.dockerignore
 .vscode/*
 **/cdk/cdk.context.json
+agents_catalog/multi_agent_collaboration/02-quality_inspection_agentcore/streamlit_cloud_demo/
