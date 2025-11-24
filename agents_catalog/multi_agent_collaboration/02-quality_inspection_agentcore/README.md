@@ -69,37 +69,37 @@ cd quality-inspection
 pip install -r requirements.txt
 
 # Deploy AWS infrastructure and AgentCore runtimes
-./deploy_full_stack_quality_inspection.sh
+./deploy/deploy_full_stack_quality_inspection.sh
 
-# Run Streamlit application (local version)
+# Run Streamlit application locally for testing and demos
 streamlit run src/demo_app/quality-inspection-streamlit-demo.py
-
-# Or run cloud version (requires internal auth)
-streamlit run src/demo_app/quality-inspection-streamlit-demo_cloud.py
-```
 
 ## 📁 Project Structure
 
 ```
-quality-inspection/
-├── src/                          # Source code
-│   ├── agents/                   # Multi-agent implementations
-│   ├── demo_app/                 # Streamlit demo applications
-│   ├── lambda_functions/         # AWS Lambda functions
-│   └── tools/                    # Utility tools
-├── infrastructure/               # Infrastructure as Code (CDK)
+02-quality_inspection_agentcore/
+├── cdk/                         # Infrastructure as Code (CDK)
 │   ├── app.py                   # CDK application entry point
 │   ├── quality_inspection_stack.py # Main CDK stack
 │   ├── quality_inspection_streamlit_demo_stack.py # Streamlit deployment stack
 │   ├── cdk.json                 # CDK configuration
+│   ├── cdk.context.json         # CDK context
 │   └── requirements.txt         # CDK dependencies
+├── deploy/                      # Deployment scripts
+│   ├── deploy_full_stack_quality_inspection.sh # Full deployment script
+│   └── quality_inspection_agentcore_deploy.sh # AgentCore deployment script
+├── src/                         # Source code
+│   ├── agents/                  # Multi-agent implementations
+│   ├── demo_app/                # Streamlit demo applications
+│   ├── lambda_functions/        # AWS Lambda functions
+│   ├── tools/                   # Utility tools
+│   └── agentcore_deployment_results.md # Deployment results
 ├── tests/                       # Test files and test images
 │   ├── scripts/                 # Agent test scripts
 │   └── test_images/             # Test image datasets
 ├── docs/                        # Documentation
+├── manifest.json                # Agent manifest
 ├── requirements.txt             # Python dependencies
-├── deploy_full_stack_quality_inspection.sh # Full deployment script
-├── quality_inspection_agentcore_deploy.sh # AgentCore deployment script
 └── README.md                    # This file
 ```
 
@@ -171,24 +171,6 @@ Test images are available for demo app or direct S3 upload:
 - **Quality Metrics**: Defect rates and trends
 - **System Health**: AWS CloudWatch integration
 - **AgentCore Observability**: Built-in monitoring and tracing
-
-## 🌐 Deployment Options
-
-### 1. Local Development
-- Streamlit web application (`src/demo_app/quality-inspection-streamlit-demo.py`)
-- Direct agent testing via test scripts
-- Local debugging and development
-
-### 2. Cloud Streamlit (Internal)
-- Internal cloud version (`src/demo_app/quality-inspection-streamlit-demo_cloud.py`)
-- Requires internal Amazon authentication
-- CDK deployment via `quality_inspection_streamlit_demo_stack.py`
-
-### 3. Amazon Bedrock AgentCore
-- Managed agent runtime with orchestrator
-- Auto-scaling and load balancing
-- Built-in memory and observability
-- S3 event-driven workflow automation
 
 ## 🤝 Contributing
 

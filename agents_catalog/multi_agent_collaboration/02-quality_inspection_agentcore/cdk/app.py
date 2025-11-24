@@ -2,7 +2,6 @@
 import aws_cdk as cdk
 import os
 from quality_inspection_stack import QualityInspectionStack
-from quality_inspection_streamlit_demo_stack import QualityInspectionStreamlitDemoStack
 
 app = cdk.App()
 
@@ -15,12 +14,5 @@ env = cdk.Environment(
 
 # Main infrastructure stack
 main_stack = QualityInspectionStack(app, "AgenticQualityInspectionStack", env=env)
-
-# Streamlit demo stack (depends on main stack for VPC)
-streamlit_stack = QualityInspectionStreamlitDemoStack(
-    app, "QualityInspectionStreamlitDemoStack", 
-    env=env
-)
-streamlit_stack.add_dependency(main_stack)
 
 app.synth()
