@@ -1,8 +1,6 @@
 from aws_cdk import (
     Stack,
-    NestedStack,
     Duration,
-    PhysicalName,
     aws_dynamodb as dynamodb,
     aws_s3 as s3,
     aws_s3_notifications as s3n,
@@ -10,28 +8,28 @@ from aws_cdk import (
     aws_lambda as _lambda,
     aws_iam as iam,
     aws_sns as sns,
-    aws_sns_subscriptions as subscriptions,
     aws_ec2 as ec2,
     aws_logs as logs,
     aws_ssm as ssm,
-    aws_events as events,
-    aws_events_targets as targets,
-    aws_s3_assets as s3_assets,
-    aws_bedrockagentcore as bedrockagentcore,
     CfnOutput,
     RemovalPolicy
-
 )
 from constructs import Construct
 
 class QualityInspectionStack(Stack):
-    def __init__(self, scope: Construct, construct_id: str, shared_resources=None, **kwargs) -> None:
+    def __init__(self, scope: Construct, construct_id: str, shared_resources=None, existing_vpc_id=None, **kwargs) -> None:
         super().__init__(scope, construct_id, **kwargs)
         
         # Store shared resources
         self.shared_resources = shared_resources or {}
+        self.existing_vpc_id = existing_vpc_id
+        
+        # Create unique suffix for resource names
+        import hashlib
+        unique_string = hashlib.md5(f"{self.account}-{self.region}-{construct_id}".encode()).hexdigest()[:8]
+        self.unique_suffix = unique_string
 
-        # Create VPC
+        # Create or use existing VPC
         self.vpc = self.create_vpc()
         
         # Create DynamoDB tables
@@ -93,7 +91,7 @@ class QualityInspectionStack(Stack):
         """Create S3 bucket with required folder structure"""
         bucket = s3.Bucket(
             self, "MachinepartimagesBucket",
-            bucket_name=f"machinepartimages-{self.account}",
+            bucket_name=f"machinepartimages-{self.unique_suffix}",
             removal_policy=RemovalPolicy.DESTROY,
             auto_delete_objects=True,
             encryption=s3.BucketEncryption.S3_MANAGED
@@ -123,8 +121,7 @@ class QualityInspectionStack(Stack):
         """Create SNS topic without subscriptions"""
         topic = sns.Topic(
             self, "QualityInspectionAlerts",
-            topic_name="quality-inspection-alerts",
-            master_key=None  # Use AWS managed encryption
+            topic_name="quality-inspection-alerts"
         )
         
         # Output topic ARN
@@ -133,26 +130,34 @@ class QualityInspectionStack(Stack):
         return topic
     
     def create_vpc(self):
-        """Create VPC with public and private subnets"""
-        vpc = ec2.Vpc(
-            self, "AgenticQualityInspectionVpc",
-            vpc_name="vpc-agentic-quality-inspection",
-            ip_addresses=ec2.IpAddresses.cidr("10.0.0.0/16"),
-            max_azs=2,
-            subnet_configuration=[
-                ec2.SubnetConfiguration(
-                    name="subnet-vpc-agentic-quality-inspection-public",
-                    subnet_type=ec2.SubnetType.PUBLIC,
-                    cidr_mask=24
-                ),
-                ec2.SubnetConfiguration(
-                    name="subnet-vpc-agentic-quality-inspection-private",
-                    subnet_type=ec2.SubnetType.PRIVATE_WITH_EGRESS,
-                    cidr_mask=24
-                )
-            ],
-            nat_gateways=2
-        )
+        """Create VPC with public and private subnets or use existing VPC"""
+        if self.existing_vpc_id:
+            # Use existing VPC
+            vpc = ec2.Vpc.from_lookup(
+                self, "ExistingVpc",
+                vpc_id=self.existing_vpc_id
+            )
+        else:
+            # Create new VPC
+            vpc = ec2.Vpc(
+                self, "AgenticQualityInspectionVpc",
+                vpc_name="vpc-agentic-quality-inspection",
+                ip_addresses=ec2.IpAddresses.cidr("10.0.0.0/16"),
+                max_azs=2,
+                subnet_configuration=[
+                    ec2.SubnetConfiguration(
+                        name="subnet-vpc-agentic-quality-inspection-public",
+                        subnet_type=ec2.SubnetType.PUBLIC,
+                        cidr_mask=24
+                    ),
+                    ec2.SubnetConfiguration(
+                        name="subnet-vpc-agentic-quality-inspection-private",
+                        subnet_type=ec2.SubnetType.PRIVATE_WITH_EGRESS,
+                        cidr_mask=24
+                    )
+                ],
+                nat_gateways=2
+            )
         
         # Create security group for AgentCore
         agentcore_sg = ec2.SecurityGroup(
@@ -169,9 +174,12 @@ class QualityInspectionStack(Stack):
             description="HTTPS from VPC"
         )
         
-        # Output VPC details for AgentCore (only add new outputs)
-        CfnOutput(self, "PrivateSubnet1Id", value=vpc.private_subnets[0].subnet_id)
-        CfnOutput(self, "PrivateSubnet2Id", value=vpc.private_subnets[1].subnet_id)
+        # Output VPC details for AgentCore
+        CfnOutput(self, "VpcId", value=vpc.vpc_id)
+        if vpc.private_subnets:
+            CfnOutput(self, "PrivateSubnet1Id", value=vpc.private_subnets[0].subnet_id)
+            if len(vpc.private_subnets) > 1:
+                CfnOutput(self, "PrivateSubnet2Id", value=vpc.private_subnets[1].subnet_id)
         CfnOutput(self, "BedrockAgentCoreSecurityGroupId", value=agentcore_sg.security_group_id)
         
         return vpc
@@ -270,7 +278,7 @@ class QualityInspectionStack(Stack):
         """Create IAM role for AgentCore agents with necessary permissions"""
         agentcore_role = iam.Role(
             self, "AgentCoreExecutionRole",
-            role_name="QualityInspectionAgentCoreRole",
+            role_name=f"QualityInspectionAgentCoreRole-{self.unique_suffix}",
             assumed_by=iam.ServicePrincipal("bedrock-agentcore.amazonaws.com"),
             managed_policies=[
                 iam.ManagedPolicy.from_aws_managed_policy_name("service-role/AWSLambdaBasicExecutionRole")
@@ -325,7 +333,7 @@ class QualityInspectionStack(Stack):
                                 "s3:DeleteObject"
                             ],
                             resources=[
-                                f"arn:aws:s3:::machinepartimages-{self.account}/*"
+                                f"arn:aws:s3:::machinepartimages-{self.unique_suffix}/*"
                             ]
                         ),
                         # DynamoDB access
@@ -366,7 +374,7 @@ class QualityInspectionStack(Stack):
         # Vision Agent Policy
         vision_policy = iam.ManagedPolicy(
             self, "QualityInspectionVisionAgentPolicy",
-            managed_policy_name="QualityInspectionVisionAgentPolicy",
+            managed_policy_name=f"QualityInspectionVisionAgentPolicy-{self.unique_suffix}",
             description="Permissions for Quality Inspection Vision Agent",
             document=iam.PolicyDocument(
                 statements=[
@@ -381,7 +389,8 @@ class QualityInspectionStack(Stack):
                         resources=[
                             f"arn:aws:ssm:{self.region}:{self.account}:parameter/quality-inspection/primary-model/model-id",
                             f"arn:aws:ssm:{self.region}:{self.account}:parameter/quality-inspection/secondary-model/model-id",
-                            f"arn:aws:ssm:{self.region}:{self.account}:parameter/quality-inspection/reference-image-s3-uri"
+                            f"arn:aws:ssm:{self.region}:{self.account}:parameter/quality-inspection/reference-image-s3-uri",
+                            f"arn:aws:ssm:{self.region}:{self.account}:parameter/quality-inspection/s3-bucket-name"
                         ]
                     ),
                     # Bedrock model access
@@ -410,8 +419,8 @@ class QualityInspectionStack(Stack):
                             "s3:ListBucket"
                         ],
                         resources=[
-                            f"arn:aws:s3:::machinepartimages-{self.account}",
-                            f"arn:aws:s3:::machinepartimages-{self.account}/*"
+                            f"arn:aws:s3:::machinepartimages-{self.unique_suffix}",
+                            f"arn:aws:s3:::machinepartimages-{self.unique_suffix}/*"
                         ]
                     ),
                     # DynamoDB access
@@ -445,7 +454,7 @@ class QualityInspectionStack(Stack):
         # Orchestrator Agent Policy
         orchestrator_policy = iam.ManagedPolicy(
             self, "QualityInspectionOrchestratorAgentPolicy",
-            managed_policy_name="QualityInspectionOrchestratorAgentPolicy",
+            managed_policy_name=f"QualityInspectionOrchestratorAgentPolicy-{self.unique_suffix}",
             description="Permissions for Quality Inspection Orchestrator Agent",
             document=iam.PolicyDocument(
                 statements=[
@@ -461,6 +470,7 @@ class QualityInspectionStack(Stack):
                             f"arn:aws:ssm:{self.region}:{self.account}:parameter/quality-inspection/primary-model/model-id",
                             f"arn:aws:ssm:{self.region}:{self.account}:parameter/quality-inspection/secondary-model/model-id",
                             f"arn:aws:ssm:{self.region}:{self.account}:parameter/quality-inspection/reference-image-s3-uri",
+                            f"arn:aws:ssm:{self.region}:{self.account}:parameter/quality-inspection/s3-bucket-name",
                             f"arn:aws:ssm:{self.region}:{self.account}:parameter/quality-inspection/agentcore-runtime/*"
                         ]
                     ),
@@ -490,8 +500,8 @@ class QualityInspectionStack(Stack):
                             "s3:ListBucket"
                         ],
                         resources=[
-                            f"arn:aws:s3:::machinepartimages-{self.account}",
-                            f"arn:aws:s3:::machinepartimages-{self.account}/*"
+                            f"arn:aws:s3:::machinepartimages-{self.unique_suffix}",
+                            f"arn:aws:s3:::machinepartimages-{self.unique_suffix}/*"
                         ]
                     ),
                     # DynamoDB access for all tables
@@ -536,7 +546,7 @@ class QualityInspectionStack(Stack):
         # Analysis Agent Policy
         analysis_policy = iam.ManagedPolicy(
             self, "QualityInspectionAnalysisAgentPolicy",
-            managed_policy_name="QualityInspectionAnalysisAgentPolicy",
+            managed_policy_name=f"QualityInspectionAnalysisAgentPolicy-{self.unique_suffix}",
             description="Permissions for Quality Inspection Analysis Agent",
             document=iam.PolicyDocument(
                 statements=[
@@ -550,7 +560,8 @@ class QualityInspectionStack(Stack):
                         ],
                         resources=[
                             f"arn:aws:ssm:{self.region}:{self.account}:parameter/quality-inspection/primary-model/model-id",
-                            f"arn:aws:ssm:{self.region}:{self.account}:parameter/quality-inspection/secondary-model/model-id"
+                            f"arn:aws:ssm:{self.region}:{self.account}:parameter/quality-inspection/secondary-model/model-id",
+                            f"arn:aws:ssm:{self.region}:{self.account}:parameter/quality-inspection/s3-bucket-name"
                         ]
                     ),
                     # DynamoDB access for trend analysis
@@ -576,7 +587,7 @@ class QualityInspectionStack(Stack):
         # SOP Agent Policy
         sop_policy = iam.ManagedPolicy(
             self, "QualityInspectionSOPAgentPolicy",
-            managed_policy_name="QualityInspectionSOPAgentPolicy",
+            managed_policy_name=f"QualityInspectionSOPAgentPolicy-{self.unique_suffix}",
             description="Permissions for Quality Inspection SOP Agent",
             document=iam.PolicyDocument(
                 statements=[
@@ -590,7 +601,8 @@ class QualityInspectionStack(Stack):
                         ],
                         resources=[
                             f"arn:aws:ssm:{self.region}:{self.account}:parameter/quality-inspection/primary-model/model-id",
-                            f"arn:aws:ssm:{self.region}:{self.account}:parameter/quality-inspection/secondary-model/model-id"
+                            f"arn:aws:ssm:{self.region}:{self.account}:parameter/quality-inspection/secondary-model/model-id",
+                            f"arn:aws:ssm:{self.region}:{self.account}:parameter/quality-inspection/s3-bucket-name"
                         ]
                     ),
                     # DynamoDB access for SOP decisions
@@ -613,7 +625,7 @@ class QualityInspectionStack(Stack):
         # Action Agent Policy
         action_policy = iam.ManagedPolicy(
             self, "QualityInspectionActionAgentPolicy",
-            managed_policy_name="QualityInspectionActionAgentPolicy",
+            managed_policy_name=f"QualityInspectionActionAgentPolicy-{self.unique_suffix}",
             description="Permissions for Quality Inspection Action Agent",
             document=iam.PolicyDocument(
                 statements=[
@@ -627,7 +639,8 @@ class QualityInspectionStack(Stack):
                         ],
                         resources=[
                             f"arn:aws:ssm:{self.region}:{self.account}:parameter/quality-inspection/primary-model/model-id",
-                            f"arn:aws:ssm:{self.region}:{self.account}:parameter/quality-inspection/secondary-model/model-id"
+                            f"arn:aws:ssm:{self.region}:{self.account}:parameter/quality-inspection/secondary-model/model-id",
+                            f"arn:aws:ssm:{self.region}:{self.account}:parameter/quality-inspection/s3-bucket-name"
                         ]
                     ),
                     # S3 access for file operations
@@ -641,8 +654,8 @@ class QualityInspectionStack(Stack):
                             "s3:ListBucket"
                         ],
                         resources=[
-                            f"arn:aws:s3:::machinepartimages-{self.account}",
-                            f"arn:aws:s3:::machinepartimages-{self.account}/*"
+                            f"arn:aws:s3:::machinepartimages-{self.unique_suffix}",
+                            f"arn:aws:s3:::machinepartimages-{self.unique_suffix}/*"
                         ]
                     ),
                     # DynamoDB access for action logs
@@ -665,7 +678,7 @@ class QualityInspectionStack(Stack):
         # Communication Agent Policy
         communication_policy = iam.ManagedPolicy(
             self, "QualityInspectionCommunicationAgentPolicy",
-            managed_policy_name="QualityInspectionCommunicationAgentPolicy",
+            managed_policy_name=f"QualityInspectionCommunicationAgentPolicy-{self.unique_suffix}",
             description="Permissions for Quality Inspection Communication Agent",
             document=iam.PolicyDocument(
                 statements=[
@@ -679,7 +692,8 @@ class QualityInspectionStack(Stack):
                         ],
                         resources=[
                             f"arn:aws:ssm:{self.region}:{self.account}:parameter/quality-inspection/primary-model/model-id",
-                            f"arn:aws:ssm:{self.region}:{self.account}:parameter/quality-inspection/secondary-model/model-id"
+                            f"arn:aws:ssm:{self.region}:{self.account}:parameter/quality-inspection/secondary-model/model-id",
+                            f"arn:aws:ssm:{self.region}:{self.account}:parameter/quality-inspection/s3-bucket-name"
                         ]
                     ),
                     # SNS access for notifications
@@ -754,11 +768,19 @@ class QualityInspectionStack(Stack):
             description="Secondary/fallback model ID for quality inspection agents"
         )
         
+        # S3 bucket name parameter
+        ssm.StringParameter(
+            self, "S3BucketNameParameter",
+            parameter_name="/quality-inspection/s3-bucket-name",
+            string_value=f"machinepartimages-{self.unique_suffix}",
+            description="S3 bucket name for quality inspection images"
+        )
+        
         # Reference image S3 URI parameter
         ssm.StringParameter(
             self, "ReferenceImageS3UriParameter",
             parameter_name="/quality-inspection/reference-image-s3-uri",
-            string_value=f"s3://machinepartimages-{self.account}/cleanimages/Cleanimage.jpg",
+            string_value=f"s3://machinepartimages-{self.unique_suffix}/cleanimages/Cleanimage.jpg",
             description="S3 URI for the reference clean image used in quality inspection"
         )
         

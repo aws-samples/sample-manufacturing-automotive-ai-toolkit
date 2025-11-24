@@ -16,30 +16,12 @@ def get_boto3_resource(service_name, region_name='us-east-1'):
     return boto3.resource(service_name, region_name=region_name)
 
 def discover_bucket():
-    """Discover the quality inspection S3 bucket"""
+    """Get the quality inspection S3 bucket name from SSM parameter"""
     try:
-        # Try CloudFormation stacks first
-        cf = get_boto3_client('cloudformation')
-        stacks = ['QualityInspectionStack', 'AgenticQualityInspectionStack', 'MA3TMainStack']
-        
-        for stack_name in stacks:
-            try:
-                response = cf.describe_stacks(StackName=stack_name)
-                outputs = response['Stacks'][0].get('Outputs', [])
-                for output in outputs:
-                    key = output['OutputKey'].lower()
-                    if any(word in key for word in ['bucket', 'machinepartimages', 'resourcebucket']):
-                        return output['OutputValue']
-            except:
-                continue
-        
-        # Get account ID and construct bucket name
-        sts = get_boto3_client('sts')
-        account_id = sts.get_caller_identity()['Account']
-        return f"machinepartimages-{account_id}"
-        
+        ssm = get_boto3_client('ssm')
+        return ssm.get_parameter(Name='/quality-inspection/s3-bucket-name')['Parameter']['Value']
     except Exception as e:
-        print(f"Error discovering bucket: {e}")
+        print(f"Error getting bucket name from SSM: {e}")
         return "machinepartimages"
 
 def upload_test_image(bucket_name, test_image_path):

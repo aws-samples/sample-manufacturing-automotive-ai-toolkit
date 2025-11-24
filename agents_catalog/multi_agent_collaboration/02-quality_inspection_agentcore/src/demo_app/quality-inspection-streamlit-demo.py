@@ -182,11 +182,10 @@ def main():
     with col1:
         st.header("📸 Image Processing")
         
-        # S3 Configuration - Get dynamic bucket name
+        # S3 Configuration - Get bucket name from SSM parameter
         try:
-            sts = get_boto3_client('sts')
-            account_id = sts.get_caller_identity()['Account']
-            bucket_name = f"machinepartimages-{account_id}"
+            ssm = get_boto3_client('ssm')
+            bucket_name = ssm.get_parameter(Name='/quality-inspection/s3-bucket-name')['Parameter']['Value']
         except:
             bucket_name = "machinepartimages"
         st.info(f"📦 S3 Bucket: {bucket_name}")
@@ -306,9 +305,8 @@ def main():
             if image_key:
                 try:
                     try:
-                        sts = get_boto3_client('sts')
-                        account_id = sts.get_caller_identity()['Account']
-                        bucket_name = f"machinepartimages-{account_id}"
+                        ssm = get_boto3_client('ssm')
+                        bucket_name = ssm.get_parameter(Name='/quality-inspection/s3-bucket-name')['Parameter']['Value']
                     except:
                         bucket_name = "machinepartimages"
                     
@@ -507,9 +505,8 @@ def display_processing_history():
                         try:
                             # Try to load and display the image
                             try:
-                                sts = get_boto3_client('sts')
-                                account_id = sts.get_caller_identity()['Account']
-                                bucket_name = f"machinepartimages-{account_id}"
+                                ssm = get_boto3_client('ssm')
+                                bucket_name = ssm.get_parameter(Name='/quality-inspection/s3-bucket-name')['Parameter']['Value']
                             except:
                                 bucket_name = "machinepartimages"
                             

@@ -46,16 +46,17 @@ cleanup() {
         # Rollback infrastructure stack
         if [ "$INFRASTRUCTURE_DEPLOYED" = "true" ]; then
             log_warning "Rolling back infrastructure stack..."
-            SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
             cd "$SCRIPT_DIR/../cdk"
             cdk destroy --profile "$PROFILE" --force || true
-            cd "$SCRIPT_DIR"
         fi
         
         log_error "Rollback completed. Please check AWS Console for any remaining resources."
         exit $exit_code
     fi
 }
+
+# Get script directory early for cleanup
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 # Set trap for cleanup on exit
 trap cleanup EXIT
@@ -120,8 +121,7 @@ check_prerequisites() {
 deploy_infrastructure() {
     log_info "Deploying infrastructure stack..."
     
-    # Get the script directory and navigate to the CDK directory
-    SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+    # Navigate to the CDK directory
     CDK_DIR="$SCRIPT_DIR/../cdk"
     
     if [ ! -d "$CDK_DIR" ]; then
@@ -168,8 +168,14 @@ deploy_agentcore_agents() {
 verify_deployment() {
     log_info "Verifying deployment..."
     
-    # Check S3 bucket
-    BUCKET_NAME="machinepartimages-$ACCOUNT_ID"
+    # Get S3 bucket name from SSM parameter
+    BUCKET_NAME=$(aws ssm get-parameter --name "/quality-inspection/s3-bucket-name" --profile "$PROFILE" --query 'Parameter.Value' --output text 2>/dev/null || echo "")
+    
+    if [ -z "$BUCKET_NAME" ]; then
+        log_error "Could not retrieve S3 bucket name from SSM parameter"
+        return 1
+    fi
+    
     if aws s3 ls "s3://$BUCKET_NAME" --profile "$PROFILE" &> /dev/null; then
         log_success "S3 bucket verified: $BUCKET_NAME"
     else
@@ -193,7 +199,11 @@ print_summary() {
     log_success "=== DEPLOYMENT COMPLETED SUCCESSFULLY ==="
     echo
     log_info "Key Resources Created:"
-    echo "  • S3 Bucket: machinepartimages-$ACCOUNT_ID"
+    
+    # Get actual bucket name for display
+    DISPLAY_BUCKET_NAME=$(aws ssm get-parameter --name "/quality-inspection/s3-bucket-name" --profile "$PROFILE" --query 'Parameter.Value' --output text 2>/dev/null || echo "machinepartimages-[unique-suffix]")
+    
+    echo "  • S3 Bucket: $DISPLAY_BUCKET_NAME"
     echo "  • DynamoDB Tables: vision-inspection-data, sop-decisions, action-execution-log, etc."
     echo "  • AgentCore Agents: 6 agent runtimes deployed"
     echo "  • VPC: vpc-agentic-quality-inspection"
@@ -201,7 +211,7 @@ print_summary() {
     echo
     log_info "Next Steps:"
     echo "  1. Check agentcore_deployment_results.md for ECR repositories and Runtime ARNs"
-    echo "  2. Upload test images to s3://machinepartimages-$ACCOUNT_ID/inputimages/"
+    echo "  2. Upload test images to s3://$DISPLAY_BUCKET_NAME/inputimages/"
     echo "  3. Monitor CloudWatch logs for agent execution"
     echo "  4. Check DynamoDB tables for inspection results"
     echo "  5. Review SNS notifications for quality alerts"

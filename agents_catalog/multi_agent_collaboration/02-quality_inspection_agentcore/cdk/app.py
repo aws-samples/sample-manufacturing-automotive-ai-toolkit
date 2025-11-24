@@ -12,7 +12,15 @@ env = cdk.Environment(
     region=os.environ.get('CDK_DEFAULT_REGION', 'us-east-1')
 )
 
+# Get optional existing VPC ID from context
+existing_vpc_id = app.node.try_get_context("existing_vpc_id")
+
 # Main infrastructure stack
-main_stack = QualityInspectionStack(app, "AgenticQualityInspectionStack", env=env)
+main_stack = QualityInspectionStack(
+    app, 
+    "AgenticQualityInspectionStack", 
+    existing_vpc_id=existing_vpc_id,
+    env=env
+)
 
 app.synth()

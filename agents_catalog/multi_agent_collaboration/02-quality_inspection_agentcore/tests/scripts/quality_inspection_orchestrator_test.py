@@ -35,9 +35,14 @@ def test_orchestrator_agent():
     
     # Upload to S3
     s3 = boto3.client('s3')
-    sts = boto3.client('sts')
-    account_id = sts.get_caller_identity()['Account']
-    bucket_name = f"machinepartimages-{account_id}"
+    
+    # Get bucket name from SSM parameter
+    ssm = boto3.client('ssm')
+    try:
+        bucket_name = ssm.get_parameter(Name='/quality-inspection/s3-bucket-name')['Parameter']['Value']
+    except Exception as e:
+        print(f"❌ Failed to get bucket name from SSM: {e}")
+        return False
     s3_key = f"uploads/orchestrator_test_{int(time.time())}.jpg"
     
     try:
