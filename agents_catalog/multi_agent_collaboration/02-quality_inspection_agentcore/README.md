@@ -72,6 +72,8 @@ pip install -r requirements.txt
 ./deploy/deploy_full_stack_quality_inspection.sh
 
 # Run Streamlit application locally for testing and demos
+# Note: The Streamlit app uses your currently active AWS profile
+# Ensure the solution is deployed in the same AWS account
 streamlit run src/demo_app/quality-inspection-streamlit-demo.py
 
 ## 📁 Project Structure
@@ -105,6 +107,13 @@ streamlit run src/demo_app/quality-inspection-streamlit-demo.py
 
 ## 🔧 Configuration
 
+### AWS Profile Requirements
+**Important**: The Streamlit demo application uses your currently active AWS profile/credentials. You must:
+- Have the solution deployed in the same AWS account as your active profile
+- Ensure your AWS credentials are valid (run `aws sts get-caller-identity` to verify)
+- For SSO users: Run `aws sso login` if your token has expired
+
+### Agent Configuration
 Agent configuration is handled in `src/agents/model_config.py`:
 ```python
 # Model configuration for all agents
