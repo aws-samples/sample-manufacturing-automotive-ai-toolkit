@@ -76,6 +76,19 @@ if [[ ! " ${VALID_REGIONS[@]} " =~ " ${REGION} " ]]; then
   export REGION="us-west-2"
 fi
 
+# Check if this is a Quality Inspection deployment
+if [ "$STACK_NAME" = "QualityInspectionStack" ]; then
+  echo "Quality Inspection stack detected. Redirecting to specialized deployment script..."
+  echo "  Stack Name: $STACK_NAME"
+  echo "  Region: $REGION"
+  
+  # Set environment variables for the quality inspection script
+  export AWS_REGION="$REGION"
+  
+  # Run the quality inspection deployment script
+  exec bash "./agents_catalog/multi_agent_collaboration/02-quality_inspection_agentcore/deploy/deploy_full_stack_quality_inspection.sh"
+fi
+
 echo "Deploying MA3T Toolkit with CDK"
 echo "  Stack Name: $STACK_NAME"
 echo "  Region: $REGION"

@@ -46,9 +46,10 @@ cleanup() {
         # Rollback infrastructure stack
         if [ "$INFRASTRUCTURE_DEPLOYED" = "true" ]; then
             log_warning "Rolling back infrastructure stack..."
-            cd ../cdk
+            SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+            cd "$SCRIPT_DIR/../cdk"
             cdk destroy --profile "$PROFILE" --force || true
-            cd ../deploy
+            cd "$SCRIPT_DIR"
         fi
         
         log_error "Rollback completed. Please check AWS Console for any remaining resources."
@@ -119,7 +120,16 @@ check_prerequisites() {
 deploy_infrastructure() {
     log_info "Deploying infrastructure stack..."
     
-    cd ../cdk
+    # Get the script directory and navigate to the CDK directory
+    SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+    CDK_DIR="$SCRIPT_DIR/../cdk"
+    
+    if [ ! -d "$CDK_DIR" ]; then
+        log_error "CDK directory not found: $CDK_DIR"
+        exit 1
+    fi
+    
+    cd "$CDK_DIR"
     
     # Install CDK dependencies
     log_info "Installing CDK dependencies..."
@@ -133,7 +143,8 @@ deploy_infrastructure() {
     log_info "Deploying infrastructure stack..."
     cdk deploy "$STACK_NAME" --profile "$PROFILE" --require-approval never
     
-    cd ..
+    # Return to the deploy directory
+    cd "$SCRIPT_DIR"
     INFRASTRUCTURE_DEPLOYED=true
     log_success "Infrastructure deployment completed"
 }

@@ -76,6 +76,9 @@ pip install -r requirements.txt
 # Ensure the solution is deployed in the same AWS account
 streamlit run src/demo_app/quality-inspection-streamlit-demo.py
 
+# Destroy all resources (CDK stack and AgentCore runtimes)
+./deploy/destroy_full_stack_quality_inspection.sh
+
 ## 📁 Project Structure
 
 ```
@@ -199,6 +202,27 @@ For support and questions:
 - Create an issue in this repository
 - Check the documentation in `/docs`
 - Review the troubleshooting guide
+
+## 🧹 Cleanup
+
+### Complete Resource Cleanup
+To destroy all resources including CDK stack and AgentCore runtimes:
+```bash
+./deploy/destroy_full_stack_quality_inspection.sh
+```
+
+This script will:
+- Destroy all 6 AgentCore agent runtimes
+- Clean up ECR repositories and CodeBuild projects
+- Remove IAM roles and policies
+- Destroy the CDK infrastructure stack
+- Clean up S3 buckets and DynamoDB tables
+
+### AgentCore Only Cleanup
+To destroy only AgentCore agents (keeping CDK infrastructure):
+```bash
+./deploy/destroy_agentcore_only.sh
+```
 
 ## 🔮 Roadmap
 
