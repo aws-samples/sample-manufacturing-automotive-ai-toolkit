@@ -180,6 +180,9 @@ class MultiAgentSupervisor(Agent):
         # Create agent collaborator properties with correct CloudFormation structure
         collaborator_properties = []
         for collab in self.collaborators:
+            # Add explicit CloudFormation-level dependency
+            self.agent.add_depends_on(collab["alias"].node.default_child)
+            
             # Use the correct CloudFormation property structure for AgentCollaborators
             collaborator_prop = {
                 "AgentDescriptor": {
