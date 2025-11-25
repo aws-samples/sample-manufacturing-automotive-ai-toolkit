@@ -8,6 +8,7 @@ from datetime import datetime
 from strands.models import BedrockModel
 from strands import Agent
 from strands.tools import tool
+from bedrock_agentcore.runtime import BedrockAgentCoreApp
 
 logger = logging.getLogger(__name__)
 
@@ -256,28 +257,16 @@ class AgentOrchestrator:
             tools=self._get_tools()
         )
 
-def main():
-    """Main entry point for the inventory rebalancer agent"""
-    logging.basicConfig(
-        level=logging.INFO,
-        format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
-    )
-    
-    try:
-        logger.info("Starting Inventory Rebalancer Agent...")
-        
-        # Create the agent orchestrator
-        orchestrator = AgentOrchestrator()
-        agent = orchestrator.create_agent()
-        
-        logger.info("Agent created successfully")
-        logger.info("Agent is ready to process inventory rebalancing requests")
-        
-        return agent
-        
-    except Exception as e:
-        logger.error(f"Error starting agent: {str(e)}")
-        raise
+app = BedrockAgentCoreApp()
+orchestrator = AgentOrchestrator()
+agent = orchestrator.create_agent()
+
+@app.entrypoint
+def invoke(payload):
+    """AgentCore entrypoint for inventory rebalancer agent"""
+    user_message = payload.get("prompt", "")
+    result = agent(user_message)
+    return {"result": result.message}
 
 if __name__ == "__main__":
-    main()
+    app.run()

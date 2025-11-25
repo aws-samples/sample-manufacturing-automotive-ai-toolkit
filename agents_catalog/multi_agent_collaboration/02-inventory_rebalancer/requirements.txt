@@ -1,1 +1,3 @@
-# Add your dependencies here
+strands-agents
+boto3
+bedrock-agentcore
