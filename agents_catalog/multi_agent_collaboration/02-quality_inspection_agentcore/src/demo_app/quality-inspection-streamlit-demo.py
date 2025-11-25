@@ -225,7 +225,7 @@ def main():
             try:
                 ref_image_bytes = download_s3_image(ref_bucket, ref_key, region)
                 ref_image = Image.open(io.BytesIO(ref_image_bytes))
-                st.image(ref_image, caption="Reference (Clean)", use_container_width=True)
+                st.image(ref_image, caption="Reference (Clean)", width='stretch')
             except:
                 st.warning("Could not load reference image")
         
@@ -234,7 +234,7 @@ def main():
                 # Show the uploaded image preview
                 try:
                     uploaded_image = Image.open(uploaded_file)
-                    st.image(uploaded_image, caption=f"Uploaded: {uploaded_file.name}", use_container_width=True)
+                    st.image(uploaded_image, caption=f"Uploaded: {uploaded_file.name}", width='stretch')
                 except:
                     st.info("Could not display uploaded image")
             elif available_images:
@@ -244,7 +244,7 @@ def main():
                     test_image_bytes = download_s3_image(bucket_name, latest_image, region)
                     test_image = Image.open(io.BytesIO(test_image_bytes))
                     filename = latest_image.split('/')[-1]
-                    st.image(test_image, caption=f"Latest Upload: {filename}", use_container_width=True)
+                    st.image(test_image, caption=f"Latest Upload: {filename}", width='stretch')
                 except:
                     st.info("Upload an image to see preview")
             else:
