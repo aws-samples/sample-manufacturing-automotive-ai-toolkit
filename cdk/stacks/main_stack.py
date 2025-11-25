@@ -467,5 +467,6 @@ def handler(event, context):
                     "id": "AwsSolutions-DDB3",
                     "reason": "DynamoDB point-in-time recovery not required for demo data"
                 }
-            ]
+            ],
+            apply_to_nested_stacks=True
         )
