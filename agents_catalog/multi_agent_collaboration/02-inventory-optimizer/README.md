@@ -1,6 +1,6 @@
-# inventory-rebalancer
+# inventory-optimizer
 
-A multi agent collaboration system to automatically perform intelligent inventory rebalancing decisions.
+A multi agent collaboration system to automatically perform intelligent inventory optimizing decisions.
 
 
 ## Setup
