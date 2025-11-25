@@ -287,7 +287,7 @@ class VistaServiceStack(NestedStack):
             self, "FindDealerAvailabilitySpecialist",
             agent_name="SAM-agent-finddealeravailability",
             agent_description="Find dealership availability that will help customer to book appt",
-            agent_instruction=f"""As an agent, check available appointment slots for customers to book appointments to bring their vehicle for analysis. 
+            agent_instruction=f"""As an agent, check available appointment slots for customers to book appointments to bring their vehicle for analysis.
 
 IMPORTANT: Today's date is {datetime.now().strftime('%Y-%m-%d')} ({datetime.now().strftime('%B %d, %Y')}). When customers mention dates like "June 18, 2025" or "June 18th", always use the year 2025 or later.
 
@@ -486,7 +486,7 @@ Please provide:
 5. Find dealership availability that will help customer to book appoinment
 6. Book appointment based on customer availability
 7. Using DTC look up find the automotive part
-7) check dealer inventory for availability of parts in their internal database. 
+7) check dealer inventory for availability of parts in their internal database.
 8) If out of stock, order parts now. This will help dealership to stock parts and service customer and deliver vehicle on time with out delay
 9) Get customer details
 10)Get warranty information for the vehicle""",
@@ -545,8 +545,119 @@ Please provide:
 
         print("Created supervisor agent with multi-agent collaboration")
 
-        # Configure the collaboration after all collaborators are added
-        self.supervisor_agent.finalize_collaboration()
+        # Create custom resource to associate collaborators after agent creation
+        self._create_collaborator_association()
+
+    def _create_collaborator_association(self):
+        """Create custom resource to associate collaborators with supervisor agent"""
+
+        # Prepare collaborator data
+        collaborator_data = []
+        for collab in self.supervisor_agent.collaborators:
+            collaborator_data.append({
+                'aliasArn': collab['alias'].attr_agent_alias_arn,
+                'name': collab['name'],
+                'instruction': collab['instruction'],
+                'relayHistory': collab.get('relay_history', 'DISABLED')
+            })
+
+        # Create Lambda function to handle collaborator association
+        collaborator_lambda = lambda_.Function(
+            self, "CollaboratorAssociationFunction",
+            runtime=lambda_.Runtime.PYTHON_3_12,
+            handler="index.handler",
+            code=lambda_.Code.from_inline("""
+import json
+import boto3
+import cfnresponse
+
+bedrock = boto3.client('bedrock-agent')
+
+def handler(event, context):
+    try:
+        request_type = event['RequestType']
+
+        if request_type == 'Create' or request_type == 'Update':
+            props = event['ResourceProperties']
+            supervisor_id = props['SupervisorAgentId']
+            role_arn = props['RoleArn']
+            foundation_model = props['FoundationModel']
+            instruction = props['Instruction']
+            agent_name = props['AgentName']
+            collaborators = json.loads(props['Collaborators'])
+
+            # Update agent to enable supervisor mode
+            bedrock.update_agent(
+                agentId=supervisor_id,
+                agentName=agent_name,
+                agentResourceRoleArn=role_arn,
+                foundationModel=foundation_model,
+                instruction=instruction,
+                agentCollaboration='SUPERVISOR_ROUTER'
+            )
+
+            # Associate collaborators
+            for collab in collaborators:
+                bedrock.associate_agent_collaborator(
+                    agentId=supervisor_id,
+                    agentVersion='DRAFT',
+                    agentDescriptor={'aliasArn': collab['aliasArn']},
+                    collaboratorName=collab['name'],
+                    collaborationInstruction=collab['instruction'],
+                    relayConversationHistory=collab.get('relayHistory', 'DISABLED')
+                )
+
+            # Prepare the agent
+            bedrock.prepare_agent(agentId=supervisor_id)
+
+            cfnresponse.send(event, context, cfnresponse.SUCCESS, {})
+        else:
+            cfnresponse.send(event, context, cfnresponse.SUCCESS, {})
+    except Exception as e:
+        print(f"Error: {str(e)}")
+        cfnresponse.send(event, context, cfnresponse.FAILED, {'Error': str(e)})
+"""),
+            timeout=Duration.minutes(5)
+        )
+
+        # Grant permissions
+        collaborator_lambda.add_to_role_policy(
+            iam.PolicyStatement(
+                effect=iam.Effect.ALLOW,
+                actions=[
+                    "bedrock:UpdateAgent",
+                    "bedrock:AssociateAgentCollaborator",
+                    "bedrock:PrepareAgent"
+                ],
+                resources=[
+                    self.supervisor_agent.agent_arn,
+                    *[agent.agent_arn for agent in self.specialist_agents.values()]
+                ]
+            )
+        )
+
+        # Add iam:PassRole permission for the agent role
+        collaborator_lambda.add_to_role_policy(
+            iam.PolicyStatement(
+                effect=iam.Effect.ALLOW,
+                actions=["iam:PassRole"],
+                resources=[self.bedrock_agent_role.role_arn]
+            )
+        )
+
+        # Create custom resource
+        CustomResource(
+            self, "CollaboratorAssociation",
+            service_token=collaborator_lambda.function_arn,
+            properties={
+                'SupervisorAgentId': self.supervisor_agent.agent_id,
+                'AgentName': self.supervisor_agent.agent_name,
+                'RoleArn': self.bedrock_agent_role.role_arn,
+                'FoundationModel': self.foundation_model,
+                'Instruction': self.supervisor_agent.agent.instruction,
+                'Collaborators': json.dumps(collaborator_data)
+            }
+        )
 
     def create_outputs(self):
         """Create stack outputs for Vista agents"""
