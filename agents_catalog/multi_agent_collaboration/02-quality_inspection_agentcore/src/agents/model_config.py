@@ -18,4 +18,4 @@ def get_model_id():
             return secondary_response['Parameter']['Value']
         except Exception:
             # Fallback to hardcoded default
-            return "amazon.nova-pro-v1:0"
+            return "us.amazon.nova-pro-v1:0"

@@ -310,7 +310,7 @@ class QualityInspectionStack(Stack):
                                 "bedrock:ConverseStream"
                             ],
                             resources=[
-                                f"arn:aws:bedrock:{self.region}::foundation-model/amazon.nova-pro-v1:0",
+                                f"arn:aws:bedrock:{self.region}::foundation-model/us.amazon.nova-pro-v1:0",
                                 f"arn:aws:bedrock:{self.region}::foundation-model/*"
                             ]
                         ),
@@ -404,7 +404,7 @@ class QualityInspectionStack(Stack):
                             "bedrock:ConverseStream"
                         ],
                         resources=[
-                            f"arn:aws:bedrock:{self.region}::foundation-model/amazon.nova-pro-v1:0",
+                            f"arn:aws:bedrock:{self.region}::foundation-model/us.amazon.nova-pro-v1:0",
                             f"arn:aws:bedrock:{self.region}::foundation-model/*"
                         ]
                     ),
@@ -485,7 +485,7 @@ class QualityInspectionStack(Stack):
                             "bedrock:ConverseStream"
                         ],
                         resources=[
-                            f"arn:aws:bedrock:{self.region}::foundation-model/amazon.nova-pro-v1:0",
+                            f"arn:aws:bedrock:{self.region}::foundation-model/us.amazon.nova-pro-v1:0",
                             f"arn:aws:bedrock:{self.region}::foundation-model/*"
                         ]
                     ),
@@ -756,7 +756,7 @@ class QualityInspectionStack(Stack):
         ssm.StringParameter(
             self, "PrimaryModelParameter",
             parameter_name="/quality-inspection/primary-model/model-id",
-            string_value="amazon.nova-pro-v1:0",
+            string_value="us.amazon.nova-pro-v1:0",
             description="Primary model ID for quality inspection agents"
         )
         
@@ -764,7 +764,7 @@ class QualityInspectionStack(Stack):
         ssm.StringParameter(
             self, "SecondaryModelParameter",
             parameter_name="/quality-inspection/secondary-model/model-id",
-            string_value="amazon.nova-pro-v1:0",
+            string_value="us.amazon.nova-pro-v1:0",
             description="Secondary/fallback model ID for quality inspection agents"
         )
         

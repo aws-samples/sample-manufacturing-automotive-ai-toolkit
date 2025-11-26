@@ -22,4 +22,4 @@ agents_catalog/**/.dockerignore
 **/cdk/cdk.context.json
 agents_catalog/multi_agent_collaboration/02-quality_inspection_agentcore/streamlit_cloud_demo/
 agents_catalog/multi_agent_collaboration/02-quality_inspection_agentcore/src/demo_app/react/
-**/agentcore_deployment_results.md
+agentcore_deployment_results.md

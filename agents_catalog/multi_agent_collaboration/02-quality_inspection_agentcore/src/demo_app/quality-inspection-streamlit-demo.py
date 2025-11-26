@@ -634,8 +634,7 @@ def get_all_recent_results(region):
             return items
         
         return []
-    except Exception as e:
-        st.error(f"Error getting results: {str(e)}")
+    except Exception:
         return []
 
 def get_agent_communications_from_db(region):

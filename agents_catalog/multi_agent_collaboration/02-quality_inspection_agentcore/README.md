@@ -123,7 +123,7 @@ streamlit run src/demo_app/quality-inspection-streamlit-demo.py
 Agent configuration is handled in `src/agents/model_config.py`:
 ```python
 # Model configuration for all agents
-MODEL_ID = "amazon.nova-pro-v1:0"
+MODEL_ID = "us.amazon.nova-pro-v1:0"
 TEMPERATURE = 0.1
 MAX_TOKENS = 4000
 ```
