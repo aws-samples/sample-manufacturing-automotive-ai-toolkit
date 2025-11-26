@@ -23,10 +23,8 @@ main_stack = MainStack(
     env=cdk.Environment(account=account, region=region)
 )
 # Add cdk-nag checks (unless explicitly skipped)
-# skip_nag = (os.environ.get("CDK_NAG_SKIP", "false").lower() == "true" or 
-#            app.node.try_get_context("skipNag") == True)
-# if not skip_nag:
-#     # AWS Solutions checks for general best practices
-#     cdk.Aspects.of(app).add(AwsSolutionsChecks(verbose=True))
+if not os.environ.get("CDK_NAG_SKIP"):
+    # AWS Solutions checks for general best practices
+    cdk.Aspects.of(app).add(AwsSolutionsChecks(verbose=True))
 
 app.synth()
