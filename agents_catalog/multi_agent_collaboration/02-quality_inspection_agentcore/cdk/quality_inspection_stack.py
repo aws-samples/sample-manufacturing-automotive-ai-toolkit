@@ -25,8 +25,10 @@ class QualityInspectionStack(Stack):
         self.existing_vpc_id = existing_vpc_id
         
         # Create unique suffix for resource names
+        # Note: MD5 is used here for generating a short unique identifier for resource naming,
+        # not for security purposes. This ensures resource names are unique across deployments.
         import hashlib
-        unique_string = hashlib.md5(f"{self.account}-{self.region}-{construct_id}".encode()).hexdigest()[:8]
+        unique_string = hashlib.md5(f"{self.account}-{self.region}-{construct_id}".encode(), usedforsecurity=False).hexdigest()[:8]
         self.unique_suffix = unique_string
 
         # Create or use existing VPC
@@ -300,7 +302,7 @@ class QualityInspectionStack(Stack):
                                 f"arn:aws:ssm:{self.region}:{self.account}:parameter/quality-inspection/agentcore-runtime/*"
                             ]
                         ),
-                        # Bedrock model access
+                        # Bedrock model access (cross-region for Nova Pro)
                         iam.PolicyStatement(
                             effect=iam.Effect.ALLOW,
                             actions=[
@@ -311,7 +313,13 @@ class QualityInspectionStack(Stack):
                             ],
                             resources=[
                                 f"arn:aws:bedrock:{self.region}::foundation-model/us.amazon.nova-pro-v1:0",
-                                f"arn:aws:bedrock:{self.region}::foundation-model/*"
+                                f"arn:aws:bedrock:{self.region}::foundation-model/*",
+                                f"arn:aws:bedrock:{self.region}:{self.account}:inference-profile/us.amazon.nova-pro-v1:0",
+                                f"arn:aws:bedrock:{self.region}:{self.account}:inference-profile/*",
+                                "arn:aws:bedrock:us-west-2::foundation-model/amazon.nova-pro-v1:0",
+                                "arn:aws:bedrock:us-west-2::foundation-model/*",
+                                f"arn:aws:bedrock:us-west-2:{self.account}:inference-profile/amazon.nova-pro-v1:0",
+                                f"arn:aws:bedrock:us-west-2:{self.account}:inference-profile/*"
                             ]
                         ),
                         # ECR access for AgentCore
@@ -393,7 +401,7 @@ class QualityInspectionStack(Stack):
                             f"arn:aws:ssm:{self.region}:{self.account}:parameter/quality-inspection/s3-bucket-name"
                         ]
                     ),
-                    # Bedrock model access
+                    # Bedrock model access (cross-region for Nova Pro)
                     iam.PolicyStatement(
                         sid="BedrockModelAccess",
                         effect=iam.Effect.ALLOW,
@@ -405,7 +413,13 @@ class QualityInspectionStack(Stack):
                         ],
                         resources=[
                             f"arn:aws:bedrock:{self.region}::foundation-model/us.amazon.nova-pro-v1:0",
-                            f"arn:aws:bedrock:{self.region}::foundation-model/*"
+                            f"arn:aws:bedrock:{self.region}::foundation-model/*",
+                            f"arn:aws:bedrock:{self.region}:{self.account}:inference-profile/us.amazon.nova-pro-v1:0",
+                            f"arn:aws:bedrock:{self.region}:{self.account}:inference-profile/*",
+                            "arn:aws:bedrock:us-west-2::foundation-model/amazon.nova-pro-v1:0",
+                            "arn:aws:bedrock:us-west-2::foundation-model/*",
+                            f"arn:aws:bedrock:us-west-2:{self.account}:inference-profile/amazon.nova-pro-v1:0",
+                            f"arn:aws:bedrock:us-west-2:{self.account}:inference-profile/*"
                         ]
                     ),
                     # S3 access for images
@@ -474,7 +488,7 @@ class QualityInspectionStack(Stack):
                             f"arn:aws:ssm:{self.region}:{self.account}:parameter/quality-inspection/agentcore-runtime/*"
                         ]
                     ),
-                    # Bedrock model access for orchestrator
+                    # Bedrock model access for orchestrator (cross-region for Nova Pro)
                     iam.PolicyStatement(
                         sid="BedrockModelAccess",
                         effect=iam.Effect.ALLOW,
@@ -486,7 +500,13 @@ class QualityInspectionStack(Stack):
                         ],
                         resources=[
                             f"arn:aws:bedrock:{self.region}::foundation-model/us.amazon.nova-pro-v1:0",
-                            f"arn:aws:bedrock:{self.region}::foundation-model/*"
+                            f"arn:aws:bedrock:{self.region}::foundation-model/*",
+                            f"arn:aws:bedrock:{self.region}:{self.account}:inference-profile/us.amazon.nova-pro-v1:0",
+                            f"arn:aws:bedrock:{self.region}:{self.account}:inference-profile/*",
+                            "arn:aws:bedrock:us-west-2::foundation-model/amazon.nova-pro-v1:0",
+                            "arn:aws:bedrock:us-west-2::foundation-model/*",
+                            f"arn:aws:bedrock:us-west-2:{self.account}:inference-profile/amazon.nova-pro-v1:0",
+                            f"arn:aws:bedrock:us-west-2:{self.account}:inference-profile/*"
                         ]
                     ),
                     # S3 access for file operations
@@ -756,7 +776,7 @@ class QualityInspectionStack(Stack):
         ssm.StringParameter(
             self, "PrimaryModelParameter",
             parameter_name="/quality-inspection/primary-model/model-id",
-            string_value="us.amazon.nova-pro-v1:0",
+            string_value="amazon.nova-pro-v1:0",
             description="Primary model ID for quality inspection agents"
         )
         
@@ -764,7 +784,7 @@ class QualityInspectionStack(Stack):
         ssm.StringParameter(
             self, "SecondaryModelParameter",
             parameter_name="/quality-inspection/secondary-model/model-id",
-            string_value="us.amazon.nova-pro-v1:0",
+            string_value="amazon.nova-pro-v1:0",
             description="Secondary/fallback model ID for quality inspection agents"
         )
         
