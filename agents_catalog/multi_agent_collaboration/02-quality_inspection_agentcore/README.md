@@ -6,7 +6,7 @@ AI-powered quality inspection system using Amazon Nova Pro and multi-agent archi
 
 This system implements a complete manufacturing quality inspection pipeline using:
 - **Amazon Nova Pro** for visual defect detection. The solution uses Amazon Nova Pro which is currently only available in US-EAST-1
-and in GovCloud for US. If you need to deploy the solution in a different US region, you must use cross-region inference to use the model in US-EAST-1. See the documentation here for setting up CRI: https://docs.aws.amazon.com/bedrock/latest/userguide/cross-region-inference.html
+and in GovCloud for US.
 
 If you are outside of the US, pick the appropriate region. You can find supported regions here: https://docs.aws.amazon.com/bedrock/latest/userguide/models-supported.html
 
