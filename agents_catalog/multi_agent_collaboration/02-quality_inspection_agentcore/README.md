@@ -8,7 +8,8 @@ This system implements a complete manufacturing quality inspection pipeline usin
 - **Amazon Nova Pro** for visual defect detection. The solution uses Amazon Nova Pro which is currently only available in US-EAST-1
 and in GovCloud for US. If you need to deploy the solution in a different US region, you must use cross-region inference to use the model in US-EAST-1. See the documetation here for setting up CRI: https://docs.aws.amazon.com/bedrock/latest/userguide/cross-region-inference.html
 
-The solution is set to use the model id = us.amazon.nova-pro-v1:0 which means your data will not leave AWS US based infrastructure. If you are outside of the US, pick the appropriate model id for your region.
+If you are outside of the US, pick the appropriate region. You can find supported regions here: https://docs.aws.amazon.com/bedrock/latest/userguide/models-supported.html
+
 - **Multi-Agent Architecture** with Strands framework
 - **Real-time Processing** with S3 and DynamoDB integration
 - **SNS Notifications** for quality alerts
@@ -123,7 +124,7 @@ streamlit run src/demo_app/quality-inspection-streamlit-demo.py
 Agent configuration is handled in `src/agents/model_config.py`:
 ```python
 # Model configuration for all agents
-MODEL_ID = "us.amazon.nova-pro-v1:0"
+MODEL_ID = "amazon.nova-pro-v1:0"
 TEMPERATURE = 0.1
 MAX_TOKENS = 4000
 ```
