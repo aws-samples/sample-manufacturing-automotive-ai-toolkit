@@ -165,11 +165,14 @@ def main():
     if 'agent_communications' not in st.session_state:
         st.session_state.agent_communications = []
     
+    # Initialize region in session state
+    if 'region' not in st.session_state:
+        st.session_state.region = 'us-east-1'
+    
     # Always load recent results on page load/refresh
     with st.spinner("Loading recent results..."):
         try:
-            region = 'us-east-1'
-            load_recent_results(region)
+            load_recent_results(st.session_state.region)
             if 'initialized' not in st.session_state:
                 log_agent_activity("system", "AgentCore agents ready - no local initialization needed")
                 st.session_state.initialized = True
@@ -183,13 +186,19 @@ def main():
         st.header("📸 Image Processing")
         
         # S3 Configuration - Get bucket name from SSM parameter
+        region = st.selectbox("AWS Region", ["us-east-1", "us-west-2"], index=0 if st.session_state.region == 'us-east-1' else 1)
+        
+        # Update session state when region changes
+        if region != st.session_state.region:
+            st.session_state.region = region
+            st.rerun()
+        
         try:
-            ssm = get_boto3_client('ssm')
+            ssm = get_boto3_client('ssm', region)
             bucket_name = ssm.get_parameter(Name='/quality-inspection/s3-bucket-name')['Parameter']['Value']
         except:
             bucket_name = "machinepartimages"
         st.info(f"📦 S3 Bucket: {bucket_name}")
-        region = st.selectbox("AWS Region", ["us-east-1", "us-west-2"], index=0)
         
         # File upload section
         uploaded_file = st.file_uploader("Upload Image", type=['jpg', 'jpeg', 'png'])
@@ -223,7 +232,7 @@ def main():
         
         with img_col1:
             try:
-                ref_image_bytes = download_s3_image(ref_bucket, ref_key, region)
+                ref_image_bytes = download_s3_image(ref_bucket, ref_key, st.session_state.region)
                 ref_image = Image.open(io.BytesIO(ref_image_bytes))
                 st.image(ref_image, caption="Reference (Clean)", width='stretch')
             except:
@@ -241,7 +250,7 @@ def main():
                 # Show most recent uploaded image if no current upload
                 try:
                     latest_image = available_images[-1]  # Most recent
-                    test_image_bytes = download_s3_image(bucket_name, latest_image, region)
+                    test_image_bytes = download_s3_image(bucket_name, latest_image, st.session_state.region)
                     test_image = Image.open(io.BytesIO(test_image_bytes))
                     filename = latest_image.split('/')[-1]
                     st.image(test_image, caption=f"Latest Upload: {filename}", width='stretch')
@@ -253,7 +262,7 @@ def main():
         # Auto-refresh for latest results
         if st.button("🔄 Refresh Results"):
             with st.spinner("Checking for latest processing results..."):
-                load_recent_results(region)
+                load_recent_results(st.session_state.region)
                 recent_count = len(st.session_state.processing_history)
                 st.success(f"✅ Found {recent_count} recent processing results!")
                 st.rerun()
@@ -305,7 +314,7 @@ def main():
             if image_key:
                 try:
                     try:
-                        ssm = get_boto3_client('ssm')
+                        ssm = get_boto3_client('ssm', st.session_state.region)
                         bucket_name = ssm.get_parameter(Name='/quality-inspection/s3-bucket-name')['Parameter']['Value']
                     except:
                         bucket_name = "machinepartimages"
@@ -315,7 +324,7 @@ def main():
                     
                     for key in possible_keys:
                         try:
-                            image_bytes = download_s3_image(bucket_name, key, 'us-east-1')
+                            image_bytes = download_s3_image(bucket_name, key, st.session_state.region)
                             image = Image.open(io.BytesIO(image_bytes))
                             
                             # Use shared defect parsing function
@@ -505,7 +514,7 @@ def display_processing_history():
                         try:
                             # Try to load and display the image
                             try:
-                                ssm = get_boto3_client('ssm')
+                                ssm = get_boto3_client('ssm', st.session_state.region)
                                 bucket_name = ssm.get_parameter(Name='/quality-inspection/s3-bucket-name')['Parameter']['Value']
                             except:
                                 bucket_name = "machinepartimages"
@@ -516,7 +525,7 @@ def display_processing_history():
                             
                             for key in possible_keys:
                                 try:
-                                    image_bytes = download_s3_image(bucket_name, key, 'us-east-1')
+                                    image_bytes = download_s3_image(bucket_name, key, st.session_state.region)
                                     image = Image.open(io.BytesIO(image_bytes))
                                     
                                     # Annotate image with defects if any
@@ -734,7 +743,7 @@ def display_agent_communications():
     
     # Get actual agent communications from CloudWatch logs
     try:
-        agentcore_logs = get_agentcore_logs('us-east-1')
+        agentcore_logs = get_agentcore_logs(st.session_state.region)
         
         if agentcore_logs:
             st.info(f"💬 Showing {len(agentcore_logs)} recent agent communications")
@@ -772,7 +781,7 @@ def display_agent_communications():
         st.warning(f"CloudWatch logs unavailable: {str(e)}")
         
         # Fallback: Show DynamoDB results as communications
-        agent_comms = get_agent_communications_from_db('us-east-1')
+        agent_comms = get_agent_communications_from_db(st.session_state.region)
         
         if agent_comms:
             st.info(f"📊 Fallback: Showing {len(agent_comms)} results from DynamoDB tables")
