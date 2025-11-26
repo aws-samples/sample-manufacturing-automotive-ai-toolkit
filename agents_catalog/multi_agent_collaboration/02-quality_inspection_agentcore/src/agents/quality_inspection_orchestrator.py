@@ -32,7 +32,8 @@ if app:
         try:
             # Create orchestrator agent with proper tools
             model_id = get_model_id()
-            nova_model = BedrockModel(model_id=model_id)
+            current_region = boto3.Session().region_name
+            nova_model = BedrockModel(model_id=model_id, region_name=current_region)
             
             orchestrator = Agent(
                 system_prompt=ORCHESTRATOR_SYSTEM_PROMPT,
@@ -567,8 +568,10 @@ def create_orchestrator_agent():
     """
     # Configure model for orchestration
     model_id = get_model_id()
+    current_region = boto3.Session().region_name
     nova_model = BedrockModel(
-        model_id=model_id
+        model_id=model_id,
+        region_name=current_region
     )
     
     # Create orchestrator with routing tools

@@ -47,9 +47,11 @@ def handler(event):
 
 # Initialize the Communication Agent
 model_id = get_model_id()
+current_region = boto3.Session().region_name
 bedrock_model = BedrockModel(
     model_id=model_id,
     temperature=0.1,
+    region_name=current_region
 )
 
 @tool
@@ -97,9 +99,11 @@ class CommunicationAgent:
     def __init__(self, model_id=None, temperature=0.1):
         if model_id is None:
             model_id = get_model_id()
+        current_region = boto3.Session().region_name
         self.bedrock_model = BedrockModel(
             model_id=model_id,
             temperature=temperature,
+            region_name=current_region
         )
         
         self.agent = Agent(

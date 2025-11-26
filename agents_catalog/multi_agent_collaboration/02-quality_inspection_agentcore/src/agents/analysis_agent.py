@@ -6,6 +6,7 @@ from bedrock_agentcore.runtime import BedrockAgentCoreApp
 from strands import Agent
 from strands.models import BedrockModel
 import json
+import boto3
 from model_config import get_model_id
 
 # Initialize AgentCore App
@@ -41,9 +42,11 @@ def handler(event):
 
 # Initialize the Analysis Agent
 model_id = get_model_id()
+current_region = boto3.Session().region_name
 bedrock_model = BedrockModel(
     model_id=model_id,
     temperature=0.1,
+    region_name=current_region
 )
 
 analysis_agent = Agent(
@@ -72,9 +75,11 @@ class AnalysisAgent:
     def __init__(self, model_id=None, temperature=0.1):
         if model_id is None:
             model_id = get_model_id()
+        current_region = boto3.Session().region_name
         self.bedrock_model = BedrockModel(
             model_id=model_id,
             temperature=temperature,
+            region_name=current_region
         )
         
         self.agent = Agent(
