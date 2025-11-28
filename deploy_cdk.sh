@@ -86,7 +86,7 @@ if [ "$STACK_NAME" = "QualityInspectionStack" ]; then
   export AWS_REGION="$REGION"
   
   # Run the quality inspection deployment script
-  exec bash "./agents_catalog/multi_agent_collaboration/02-quality_inspection_agentcore/deploy/deploy_full_stack_quality_inspection.sh"
+  exec bash "./agents_catalog/multi_agent_collaboration/03-quality-inspection/deploy/deploy_full_stack_quality_inspection.sh"
 fi
 
 echo "Deploying MA3T Toolkit with CDK"

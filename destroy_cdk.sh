@@ -35,7 +35,7 @@ if [ "$STACK_NAME" = "QualityInspectionStack" ]; then
   export AWS_REGION="$REGION"
   
   # Run the quality inspection destroy script with --force flag
-  exec bash "./agents_catalog/multi_agent_collaboration/02-quality_inspection_agentcore/deploy/destroy_full_stack_quality_inspection.sh" --force
+  exec bash "./agents_catalog/multi_agent_collaboration/03-quality-inspection/deploy/destroy_full_stack_quality_inspection.sh" --force
 fi
 
 echo "Checking for Quality Inspection stack..."
@@ -47,7 +47,7 @@ if aws cloudformation describe-stacks --stack-name "$QI_STACK_NAME" --region "$R
     echo "Destroying Quality Inspection stack..."
     
     # Change to quality inspection CDK directory and destroy
-    cd agents_catalog/multi_agent_collaboration/02-quality_inspection_agentcore/cdk
+    cd agents_catalog/multi_agent_collaboration/03-quality-inspection/cdk
     cdk destroy "$QI_STACK_NAME" --force --region "$REGION"
     
     # Return to root directory
