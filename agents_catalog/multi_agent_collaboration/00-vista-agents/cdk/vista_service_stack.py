@@ -620,18 +620,22 @@ def handler(event, context):
             timeout=Duration.minutes(5)
         )
 
-        # Grant permissions
+        # Grant permissions - include both agent ARNs and alias ARNs
         collaborator_lambda.add_to_role_policy(
             iam.PolicyStatement(
                 effect=iam.Effect.ALLOW,
                 actions=[
                     "bedrock:UpdateAgent",
                     "bedrock:AssociateAgentCollaborator",
-                    "bedrock:PrepareAgent"
+                    "bedrock:PrepareAgent",
+                    "bedrock:GetAgentAlias"
                 ],
                 resources=[
                     self.supervisor_agent.agent_arn,
-                    *[agent.agent_arn for agent in self.specialist_agents.values()]
+                    *[agent.agent_arn for agent in self.specialist_agents.values()],
+                    # Add alias ARNs - use wildcard for aliases under each agent
+                    f"{self.supervisor_agent.agent_arn}/alias/*",
+                    *[f"{agent.agent_arn}/alias/*" for agent in self.specialist_agents.values()]
                 ]
             )
         )

@@ -76,19 +76,32 @@ if [[ ! " ${VALID_REGIONS[@]} " =~ " ${REGION} " ]]; then
   export REGION="us-west-2"
 fi
 
+# Check if this is a Quality Inspection deployment
+if [ "$STACK_NAME" = "QualityInspectionStack" ]; then
+  echo "Quality Inspection stack detected. Redirecting to specialized deployment script..."
+  echo "  Stack Name: $STACK_NAME"
+  echo "  Region: $REGION"
+  
+  # Set environment variables for the quality inspection script
+  export AWS_REGION="$REGION"
+  
+  # Run the quality inspection deployment script
+  exec bash "./agents_catalog/multi_agent_collaboration/03-quality-inspection/deploy/deploy_full_stack_quality_inspection.sh"
+fi
+
 echo "Deploying MA3T Toolkit with CDK"
 echo "  Stack Name: $STACK_NAME"
 echo "  Region: $REGION"
-
-# Deploy CDK stack first
-echo "Deploying CDK stack..."
-cd cdk
 
 # Set environment variable to skip cdk-nag if requested
 if [ "$SKIP_NAG" = true ]; then
   echo "Skipping cdk-nag checks..."
   export CDK_NAG_SKIP=true
 fi
+
+# Deploy CDK stack first
+echo "Deploying CDK stack..."
+cd cdk
 
 # Pass auth credentials to CDK
 export AUTH_USER="$AUTH_USER"
@@ -97,9 +110,17 @@ export AUTH_PASSWORD="$AUTH_PASSWORD"
 # Set account for all CDK apps if specified
 if [ -n "$ACCOUNT" ]; then
   export CDK_DEFAULT_ACCOUNT="$ACCOUNT"
-  cdk deploy --require-approval never --context region="$REGION" --context account="$ACCOUNT"
+  if [ "$SKIP_NAG" = true ]; then
+    cdk deploy "$STACK_NAME" --require-approval never --context region="$REGION" --context account="$ACCOUNT" --context skipNag=true
+  else
+    cdk deploy "$STACK_NAME" --require-approval never --context region="$REGION" --context account="$ACCOUNT"
+  fi
 else
-  cdk deploy --require-approval never --context region="$REGION"
+  if [ "$SKIP_NAG" = true ]; then
+    cdk deploy "$STACK_NAME" --require-approval never --context region="$REGION" --context skipNag=true
+  else
+    cdk deploy "$STACK_NAME" --require-approval never --context region="$REGION"
+  fi
 fi
 
 # Check if the deployment was successful
@@ -159,12 +180,32 @@ if [ $? -eq 0 ]; then
   # Clean up the temporary directory
   rm -rf "$TEMP_DIR"
   
+  # Debug: List all stack outputs
+  echo "Available stack outputs:"
+  aws cloudformation describe-stacks \
+    --stack-name "$STACK_NAME" \
+    --query "Stacks[0].Outputs[].{Key:OutputKey,Value:OutputValue}" \
+    --output table \
+    --region "$REGION"
+  
   # Get the CodeBuild project name for AgentCore deployment
+  # Try main stack first, then look for any nested stack deployment projects
   CODEBUILD_PROJECT=$(aws cloudformation describe-stacks \
     --stack-name "$STACK_NAME" \
     --query "Stacks[0].Outputs[?OutputKey=='AgentCoreDeploymentProject'].OutputValue" \
     --output text \
     --region "$REGION")
+  
+  # If not found in main stack, look for any output ending with 'DeploymentProject'
+  if [ -z "$CODEBUILD_PROJECT" ] || [ "$CODEBUILD_PROJECT" = "None" ]; then
+    CODEBUILD_PROJECT=$(aws cloudformation describe-stacks \
+      --stack-name "$STACK_NAME" \
+      --query "Stacks[0].Outputs[?ends_with(OutputKey, 'DeploymentProject')].OutputValue | [0]" \
+      --output text \
+      --region "$REGION")
+  fi
+  
+  echo "Found CodeBuild project: '$CODEBUILD_PROJECT'"
   
   # Start the CodeBuild project to deploy the agents
   if [ ! -z "$CODEBUILD_PROJECT" ]; then

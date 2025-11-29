@@ -18,4 +18,6 @@ packaged_infra_cfn.yaml
 **/cdk.out/
 agents_catalog/**/Dockerfile
 agents_catalog/**/.dockerignore
-.vscode/
+.vscode/*
+**/cdk/cdk.context.json
+agentcore_deployment_results.md

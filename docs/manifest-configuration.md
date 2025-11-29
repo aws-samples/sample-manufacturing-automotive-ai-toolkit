@@ -105,6 +105,59 @@ Relative path to your CDK stack file.
 
 Example: `"cdk/stack.py"`
 
+## SSM Parameter Mapping (AgentCore Only)
+
+For AgentCore agents, automatically store runtime ARNs in SSM Parameter Store after deployment:
+
+```json
+{
+  "agents": [{
+    "id": "my_agentcore_agent",
+    "type": "agentcore"
+  }],
+  "ssm_parameter_mapping": {
+    "my_agentcore_agent": "/my-app/agentcore-runtime/main"
+  }
+}
+```
+
+### How It Works
+
+1. Agent deploys to AgentCore and receives a runtime ARN
+2. Build script automatically updates the SSM parameter with the runtime ARN
+3. Your application can retrieve the ARN from SSM to invoke the agent
+
+### Use Cases
+
+- **Multi-agent systems**: Store each agent's runtime ARN for agent-to-agent communication
+- **UI integration**: Retrieve runtime ARNs to display agent status
+- **Lambda functions**: Read runtime ARNs to invoke agents programmatically
+
+### Example: Multi-Agent System
+
+```json
+{
+  "agents": [{
+    "id": "orchestrator_agent",
+    "type": "agentcore",
+    "entrypoint": "orchestrator.py"
+  }],
+  "ssm_parameter_mapping": {
+    "orchestrator_agent": "/quality-inspection/agentcore-runtime/orchestrator"
+  }
+}
+```
+
+After deployment, retrieve the runtime ARN:
+
+```python
+import boto3
+
+ssm = boto3.client('ssm')
+response = ssm.get_parameter(Name='/quality-inspection/agentcore-runtime/orchestrator')
+runtime_arn = response['Parameter']['Value']
+```
+
 ## Bedrock Agent Configuration
 
 For Bedrock agents, add bedrock-specific settings:
@@ -153,6 +206,9 @@ For Bedrock agents, add bedrock-specific settings:
     "cdk": true,
     "stack_class": "QualityInspectorStack",
     "stack_path": "cdk/stack.py"
+  },
+  "ssm_parameter_mapping": {
+    "quality_inspector": "/quality-inspector/agentcore-runtime/main"
   }
 }
 ```

@@ -22,7 +22,6 @@ main_stack = MainStack(
     description="Manufacturing & Automotive AI Toolkit - Main Infrastructure Stack",
     env=cdk.Environment(account=account, region=region)
 )
-
 # Add cdk-nag checks (unless explicitly skipped)
 if not os.environ.get("CDK_NAG_SKIP"):
     # AWS Solutions checks for general best practices
