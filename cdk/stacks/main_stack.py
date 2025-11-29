@@ -98,8 +98,6 @@ class MainStack(cdk.Stack):
         self.agent_role = self.iam_construct.bedrock_agent_role
         self.lambda_execution_role = self.iam_construct.lambda_execution_role
         self.tables = self.storage_construct.tables
-        self.auth_user = os.environ.get('AUTH_USER', 'admin')
-        self.auth_password = os.environ.get('AUTH_PASSWORD', 'changeme')
         self.lambda_functions = self.compute_construct.get_all_functions()
         self.codebuild_projects = {
             'agentcore_deployment': self.codebuild_construct.agentcore_deployment_project
@@ -117,18 +115,13 @@ class MainStack(cdk.Stack):
         # Get shared resources for nested stacks
         shared_resources = self.get_shared_resources()
 
-        # Register CDK nested stacks with explicit dependencies
+        # Register CDK nested stacks
         self.nested_stacks = []
-        previous_stack = None
         for cdk_config in cdk_stacks:
             nested_stack = self.agent_registry.register_cdk_stack(
                 cdk_config, shared_resources)
             if nested_stack:
-                # Add dependency on previous stack to prevent parallel deployment issues
-                if previous_stack:
-                    nested_stack.node.add_dependency(previous_stack)
                 self.nested_stacks.append(nested_stack)
-                previous_stack = nested_stack
 
         # AgentCore agents will be discovered and deployed by build_launch_agentcore.py
         # running in the CodeBuild project - no need to create individual projects here
@@ -219,6 +212,8 @@ class MainStack(cdk.Stack):
             value=self.resource_bucket.bucket_name,
             description="Resource bucket name for deploy script"
         )
+
+
 
         CfnOutput(
             self, "AgentCoreDeploymentProject",
@@ -390,13 +385,9 @@ def handler(event, context):
             'lambda_execution_role': self.lambda_execution_role,
             'lambda_execution_role_arn': self.lambda_execution_role.role_arn if self.lambda_execution_role else None,
             'codebuild_service_role': getattr(self.iam_construct, 'codebuild_service_role', None),
-            'apprunner_access_role': self.iam_construct.apprunner_access_role,
-            'apprunner_instance_role': self.iam_construct.apprunner_instance_role,
 
             # Compute resources
             'lambda_functions': self.lambda_functions,
-            'auth_user': self.auth_user,
-            'auth_password': self.auth_password,
             'business_functions': getattr(self.compute_construct, 'business_functions', {}),
             'data_functions': getattr(self.compute_construct, 'data_functions', {}),
 
