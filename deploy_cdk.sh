@@ -78,12 +78,20 @@ fi
 
 # Check if this is a Quality Inspection deployment
 if [ "$STACK_NAME" = "QualityInspectionStack" ]; then
+  # Force us-east-1 for Quality Inspection
+  REGION="us-east-1"
+  
   echo "Quality Inspection stack detected. Redirecting to specialized deployment script..."
   echo "  Stack Name: $STACK_NAME"
-  echo "  Region: $REGION"
+  echo "  Region: $REGION (forced to us-east-1)"
   
   # Set environment variables for the quality inspection script
   export AWS_REGION="$REGION"
+  
+  # Pass AWS_PROFILE if set, otherwise use default
+  if [ -z "$AWS_PROFILE" ]; then
+    export AWS_PROFILE="default"
+  fi
   
   # Run the quality inspection deployment script
   exec bash "./agents_catalog/multi_agent_collaboration/03-quality-inspection/deploy/deploy_full_stack_quality_inspection.sh"
