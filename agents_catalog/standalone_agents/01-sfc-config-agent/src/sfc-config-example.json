@@ -1,0 +1,96 @@
+{
+  "AWSVersion": "2022-04-02",
+  "Name": "Sinus to File Configuration with Buffer Size",
+  "Description": "Configuration for Sinus simulator to File and DEBUG targets with 50ms interval and 100 buffer size",
+  "LogLevel": "Trace",
+  "Schedules": [
+    {
+      "Name": "SimulatorSchedule",
+      "Interval": 50,
+      "Active": true,
+      "TimestampLevel": "Both",
+      "Sources": {
+        "SimulatorSource": [
+          "*"
+        ]
+      },
+      "Targets": [
+        "#DEBUGTarget",
+        "FileTarget"
+      ]
+    }
+  ],
+  "Sources": {
+    "SimulatorSource": {
+      "Name": "SimulatorSource",
+      "ProtocolAdapter": "SIMULATOR",
+      "Description": "Sinus simulator source configuration",
+      "Channels": {
+        "counter": {
+          "Simulation": {
+            "SimulationType": "Counter",
+            "DataType": "Float",
+            "Min": 0,
+            "Max": 10
+          }
+        },
+        "sinus": {
+          "Simulation": {
+            "SimulationType": "Sinus",
+            "DataType": "Float",
+            "Min": 0,
+            "Max": 10
+          }
+        },
+        "triangle": {
+          "Simulation": {
+            "SimulationType": "Triangle",
+            "DataType": "Float",
+            "Min": 0,
+            "Max": 10
+          }
+        }
+      }
+    }
+  },
+  "Targets": {
+    "DEBUGTarget": {
+      "Active": true,
+      "TargetType": "DEBUG-TARGET"
+    },
+    "FileTarget": {
+      "Active": true,
+      "TargetType": "FILE-TARGET",
+      "BufferSize": 100,
+      "Extension": ".json",
+      "Directory": "data"
+    }
+  },
+  "TargetTypes": {
+    "DEBUG-TARGET": {
+      "JarFiles": [
+        "${MODULES_DIR}/debug-target/lib"
+      ],
+      "FactoryClassName": "com.amazonaws.sfc.debugtarget.DebugTargetWriter"
+    },
+    "FILE-TARGET": {
+      "JarFiles": [
+        "${MODULES_DIR}/file-target/lib"
+      ],
+      "FactoryClassName": "com.amazonaws.sfc.filetarget.FileTargetWriter"
+    }
+  },
+  "AdapterTypes": {
+    "SIMULATOR": {
+      "JarFiles": [
+        "${MODULES_DIR}/simulator/lib"
+      ],
+      "FactoryClassName": "com.amazonaws.sfc.simulator.SimulatorAdapter"
+    }
+  },
+  "ProtocolAdapters": {
+    "SIMULATOR": {
+      "AdapterType": "SIMULATOR"
+    }
+  }
+}
