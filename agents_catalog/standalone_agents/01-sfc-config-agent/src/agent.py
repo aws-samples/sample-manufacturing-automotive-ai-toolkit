@@ -64,43 +64,96 @@ try:
     from mcp import stdio_client, StdioServerParameters
     from strands.tools.mcp import MCPClient
     from bedrock_agentcore.runtime import BedrockAgentCoreApp
+    from contextlib import asynccontextmanager
 except ImportError:
     print(
         "Strands SDK not found. Please run 'scripts/init.sh' to install dependencies."
     )
     sys.exit(1)
 
-# Initialize AgentCore app
-app = BedrockAgentCoreApp()
+# Configure logging
+import logging
+logger = logging.getLogger(__name__)
+logging.basicConfig(level=logging.INFO)
+
+# Global variables for lazy initialization
+_mcp_client = None
+_agent = None
 
 
-def _create_mcp_client():
-    """Create MCP client from environment variables"""
-    # Get MCP server configuration from environment variables - defaults to uvx based mcp runtime
-
-    # NOTE: Use .env file at repo-root for local dev setup (copy 1:1 from .env.template as a start...)
-    mcp_command = os.getenv("MCP_SERVER_COMMAND", "python")
-    mcp_args_str = os.getenv(
-        "MCP_SERVER_ARGS",
-        "src/sfc-spec-mcp-server.py",
-    )
-    mcp_path = os.getenv("MCP_SERVER_PATH", ".")
-
-    # Parse comma-separated args and add the path
-    mcp_args = [arg.strip() for arg in mcp_args_str.split(",")]
-    mcp_args.append(mcp_path)
-
-    return MCPClient(
-        lambda: stdio_client(
-            StdioServerParameters(
-                command=mcp_command,
-                args=mcp_args,
+def initialize_mcp_client():
+    """Initialize MCP client - called on first request"""
+    global _mcp_client
+    
+    if _mcp_client is not None:
+        logger.info("MCP client already initialized")
+        return _mcp_client
+    
+    try:
+        logger.info("Initializing MCP client")
+        
+        # Get MCP server configuration from environment variables
+        mcp_command = os.getenv("MCP_SERVER_COMMAND", "python")
+        
+        # Construct absolute path to MCP server
+        # agent.py is at: agents_catalog/standalone_agents/01-sfc-config-agent/src/agent.py
+        # MCP server is at: agents_catalog/standalone_agents/01-sfc-config-agent/src/sfc-spec-mcp-server.py
+        agent_dir = os.path.dirname(os.path.abspath(__file__))
+        mcp_server_path = os.path.join(agent_dir, "sfc-spec-mcp-server.py")
+        
+        # Check if MCP server exists
+        if not os.path.exists(mcp_server_path):
+            raise FileNotFoundError(f"MCP server not found at {mcp_server_path}")
+        
+        logger.info(f"Using MCP server at: {mcp_server_path}")
+        
+        # Allow override from environment, but default to absolute path
+        mcp_args_str = os.getenv("MCP_SERVER_ARGS", mcp_server_path)
+        
+        # Parse comma-separated args
+        mcp_args = [arg.strip() for arg in mcp_args_str.split(",")]
+        
+        _mcp_client = MCPClient(
+            lambda: stdio_client(
+                StdioServerParameters(
+                    command=mcp_command,
+                    args=mcp_args,
+                )
             )
         )
-    )
+        
+        # Explicit start - required before using the client
+        _mcp_client.start()
+        logger.info("✅ MCP client started successfully")
+        
+        return _mcp_client
+        
+    except Exception as e:
+        logger.error(f"❌ Failed to initialize MCP client: {str(e)}")
+        logger.error(f"   Working directory: {os.getcwd()}")
+        logger.error(f"   Agent file location: {os.path.abspath(__file__)}")
+        return None
 
 
-stdio_mcp_client = _create_mcp_client()
+@asynccontextmanager
+async def lifespan(app):
+    """Application lifespan manager for startup and cleanup."""
+    logger.info("Application starting")
+    
+    yield  # Application runs here
+    
+    # Cleanup
+    logger.info("Cleaning up MCP client resources")
+    if _mcp_client is not None:
+        try:
+            _mcp_client.stop()
+            logger.info("✅ MCP client stopped")
+        except Exception as e:
+            logger.error(f"❌ Error stopping MCP client: {e}")
+
+
+# Initialize AgentCore app with lifespan manager
+app = BedrockAgentCoreApp(lifespan=lifespan)
 
 
 def _get_test_payload_for_model(model_id: str) -> dict:
@@ -660,42 +713,23 @@ class SFCWizardAgent:
                 # Error case or no content
                 return message
 
-        # Create agent with SFC-specific tools
-        try:
-            # Use global Bedrock configuration
-            bedrock_model = BedrockModel(
-                model_id=AWS_BEDROCK_MODEL_ID, region_name=AWS_BEDROCK_REGION
-            )
-            agent_internal_tools = [
-                read_config_from_file,
-                save_config_to_file,
-                save_results_to_file,
-                run_sfc_config_locally,
-                tail_logs,
-                clean_runs_folder,
-                confirm_clean_runs_folder,
-                visualize_data,
-                run_example,
-                save_conversation,
-                read_context_from_file,
-            ]
+        # Store internal tools as instance variable for use by initialize_agent
+        self.agent_internal_tools = [
+            read_config_from_file,
+            save_config_to_file,
+            save_results_to_file,
+            run_sfc_config_locally,
+            tail_logs,
+            clean_runs_folder,
+            confirm_clean_runs_folder,
+            visualize_data,
+            run_example,
+            save_conversation,
+            read_context_from_file,
+        ]
 
-            mcp_tools = stdio_mcp_client.list_tools_sync()
-
-            agent_system_prompt = """You are a specialized assistant for creating, validating & running SFC (stands for "Shop Floor Connectivity") configurations.
-            "Use your MCP (shall be your main resource for validation) and internal tools to gather required information.
-            "Always explain your reasoning and cite sources when possible."""
-
-            agent = Agent(
-                model=bedrock_model,
-                tools=agent_internal_tools + mcp_tools,
-                system_prompt=agent_system_prompt,
-            )
-        except Exception as e:
-            print(e)
-            agent = Agent(tools=agent_internal_tools)
-
-        return agent
+        # Agent will be created lazily by initialize_agent()
+        return None
 
     def _run_sfc_config_locally(self, config_json: str, config_name: str = "") -> str:
         """Run SFC configuration locally in a test environment"""
@@ -911,10 +945,75 @@ class SFCWizardAgent:
 
 
 
+def initialize_agent():
+    """Initialize agent with MCP tools - called on first request"""
+    global _agent
+    
+    if _agent is not None:
+        logger.info("Agent already initialized")
+        return _agent
+    
+    try:
+        logger.info("Initializing agent")
+        
+        # Create SFCWizardAgent instance to get tools
+        wizard = SFCWizardAgent()
+        
+        # Initialize MCP client
+        mcp_client = initialize_mcp_client()
+        
+        # Get MCP tools
+        mcp_tools = []
+        if mcp_client:
+            try:
+                mcp_tools = mcp_client.list_tools_sync()
+                logger.info(f"✅ Loaded {len(mcp_tools)} MCP tools")
+            except Exception as e:
+                logger.warning(f"⚠️  Could not load MCP tools: {str(e)}")
+        else:
+            logger.warning("⚠️  MCP client not available, agent will use internal tools only")
+        
+        # Agent system prompt
+        agent_system_prompt = """You are a specialized assistant for creating, validating & running SFC (stands for "Shop Floor Connectivity") configurations.
+        "Use your MCP (shall be your main resource for validation) and internal tools to gather required information.
+        "Always explain your reasoning and cite sources when possible."""
+        
+        # Create agent with Bedrock model and all tools
+        try:
+            bedrock_model = BedrockModel(
+                model_id=AWS_BEDROCK_MODEL_ID, 
+                region_name=AWS_BEDROCK_REGION
+            )
+            
+            _agent = Agent(
+                model=bedrock_model,
+                tools=wizard.agent_internal_tools + mcp_tools,
+                system_prompt=agent_system_prompt,
+            )
+            logger.info(f"✅ Agent initialized with {len(wizard.agent_internal_tools)} internal tools and {len(mcp_tools)} MCP tools")
+            
+        except Exception as model_error:
+            logger.error(f"❌ Error creating agent with Bedrock model: {str(model_error)}")
+            logger.info("   Creating agent with internal tools only (no model)")
+            _agent = Agent(tools=wizard.agent_internal_tools)
+        
+        return _agent
+        
+    except Exception as e:
+        logger.error(f"❌ Failed to initialize agent: {str(e)}")
+        raise RuntimeError(f"Agent initialization failed: {str(e)}")
+
+
 @app.entrypoint
 def invoke(payload):
     """AgentCore entrypoint for HTTP requests - processes user input and returns response"""
     try:
+        # Initialize agent on first request
+        agent = initialize_agent()
+        
+        if agent is None:
+            raise RuntimeError("Agent not initialized. Check application startup logs.")
+        
         # Extract prompt from payload
         user_message = payload.get("prompt", "")
         if not user_message:
@@ -922,14 +1021,14 @@ def invoke(payload):
                 "error": "No prompt found in input. Please provide a 'prompt' key in the input."
             }
         
-        # Use existing MCP client context manager pattern
-        with stdio_mcp_client:
-            wizard = SFCWizardAgent()
-            # Direct agent call without streaming (suitable for HTTP)
-            response = wizard.agent(user_message)
-            return {"result": str(response)}
+        logger.info(f"Processing request with prompt: {user_message[:100]}...")
+        
+        # Direct agent call without streaming (suitable for HTTP)
+        response = agent(user_message)
+        return {"result": str(response)}
             
     except Exception as e:
+        logger.error(f"Agent processing failed: {str(e)}")
         return {
             "error": f"Agent processing failed: {str(e)}"
         }
