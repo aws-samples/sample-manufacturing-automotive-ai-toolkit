@@ -13,6 +13,7 @@ import inspect
 import asyncio
 import signal
 import json
+import subprocess
 from pathlib import Path
 from dotenv import load_dotenv
 
@@ -134,11 +135,69 @@ def initialize_mcp_client():
         logger.error(f"   Agent file location: {os.path.abspath(__file__)}")
         return None
 
+# TODO: That is a dirty hack - think of ways to bring custom deps into agentcore cli automations...
+def ensure_deps_installed():
+    """Ensure required dependencies are installed on the system.
+    
+    Installs git, wget, gpg, and Java 11 Amazon Corretto JDK using apt.
+    This function is designed for Debian/Ubuntu-based systems.
+    
+    Returns:
+        bool: True if dependencies are installed or were successfully installed, False otherwise
+    """
+    try:
+        logger.info("📦 Installing required dependencies (git, wget, gpg, Java 11 Corretto)...")
+        
+        # Run apt update first
+        logger.info("   Running: apt update")
+        subprocess.run(
+            'apt update',
+            shell=True,
+            check=True,
+            capture_output=True,
+            timeout=120
+        )
+        
+        # Install all dependencies in one command chain
+        logger.info("   Installing dependencies and setting up Java 11 Corretto...")
+        subprocess.run(
+            "apt install -y git wget gpg && "
+            "wget -O - https://apt.corretto.aws/corretto.key | gpg --dearmor -o /usr/share/keyrings/corretto-keyring.gpg && "
+            "echo 'deb [signed-by=/usr/share/keyrings/corretto-keyring.gpg] https://apt.corretto.aws stable main' | tee /etc/apt/sources.list.d/corretto.list && "
+            "apt update && "
+            "apt install -y java-11-amazon-corretto-jdk",
+            shell=True,
+            check=True,
+            capture_output=True,
+            timeout=600
+        )
+        
+        logger.info("✅ All dependencies installed successfully")
+        return True
+        
+    except subprocess.TimeoutExpired:
+        logger.error("❌ Dependency installation timed out")
+        return False
+    except subprocess.CalledProcessError as e:
+        logger.error(f"❌ Failed to install dependencies: {e}")
+        if e.stderr:
+            logger.error(f"   Error output: {e.stderr.decode('utf-8')}")
+        return False
+    except FileNotFoundError as e:
+        logger.error(f"❌ Required command not found: {e}. This function requires a Debian/Ubuntu-based system.")
+        return False
+    except Exception as e:
+        logger.error(f"❌ Unexpected error during dependency installation: {str(e)}")
+        return False
+
 
 @asynccontextmanager
 async def lifespan(app):
     """Application lifespan manager for startup and cleanup."""
     logger.info("Application starting")
+    
+    # Ensure dependencies are installed at startup
+    ensure_deps_installed()
     
     yield  # Application runs here
     
