@@ -1084,7 +1084,7 @@ def invoke(payload):
         
         # Direct agent call without streaming (suitable for HTTP)
         response = agent(user_message)
-        return {"result": str(response)}
+        return {"result": response.message}
             
     except Exception as e:
         logger.error(f"Agent processing failed: {str(e)}")
