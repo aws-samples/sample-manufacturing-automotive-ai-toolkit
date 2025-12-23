@@ -27,10 +27,6 @@ except ImportError:
 
 # Import the externalized functions
 from src.tools.file_operations import SFCFileOperations
-from src.tools.log_operations import SFCLogOperations
-from src.tools.folder_operations import SFCFolderOperations
-from src.tools.sfc_runner import SFCRunner
-from src.tools.sfc_visualization import visualize_file_target_data
 from src.tools.prompt_logger import PromptLogger
 from src.tools.sfc_knowledge import load_sfc_knowledge
 
@@ -140,12 +136,55 @@ def ensure_deps_installed():
     """Ensure required dependencies are installed on the system.
     
     Installs git, wget, gpg, and Java 11 Amazon Corretto JDK using apt.
-    This function is designed for Debian/Ubuntu-based systems.
+    This function is designed for Debian/Ubuntu-based systems and will skip
+    installation on non-Debian systems.
     
     Returns:
         bool: True if dependencies are installed or were successfully installed, False otherwise
     """
     try:
+        # Check if running on a Debian-based system
+        import platform
+        
+        # Check if we're on Linux first
+        if platform.system() != 'Linux':
+            return True
+        
+        # Check if it's a Debian-based distribution
+        is_debian = os.path.exists('/etc/debian_version')
+        
+        if not is_debian:
+            return True
+        
+        # Check if git is already installed
+        git_installed = False
+        try:
+            result = subprocess.run(
+                ['which', 'git'],
+                capture_output=True,
+                timeout=5
+            )
+            git_installed = result.returncode == 0
+        except:
+            pass
+        
+        # Check if java is already installed
+        java_installed = False
+        try:
+            result = subprocess.run(
+                ['which', 'java'],
+                capture_output=True,
+                timeout=5
+            )
+            java_installed = result.returncode == 0
+        except:
+            pass
+        
+        # If both are installed, silently return
+        if git_installed and java_installed:
+            return True
+        
+        # At least one dependency is missing, proceed with installation
         logger.info("📦 Installing required dependencies (git, wget, gpg, Java 11 Corretto)...")
         
         # Run apt update first
@@ -524,8 +563,6 @@ class SFCWizardAgent:
         self.current_config = None
         self.validation_errors = []
         self.recommendations = []
-        # Track active SFC processes for cleanup
-        self.active_processes = []
 
         # Initialize the prompt logger
         self.prompt_logger = PromptLogger(max_history=20, log_dir=".sfc")
@@ -565,12 +602,6 @@ class SFCWizardAgent:
     def _create_agent(self) -> Agent:
         """Create a Strands agent with SFC-specific tools"""
 
-        # Current running SFC config and log tail thread
-        self.current_config_name = None
-        self.log_tail_thread = None
-        self.log_tail_stop_event = threading.Event()
-        self.log_buffer = queue.Queue(maxsize=100)  # Buffer for log messages
-
         @tool
         def read_config_from_file(filename: str) -> str:
             """Read an SFC configuration from a JSON file.
@@ -597,138 +628,8 @@ class SFCWizardAgent:
             Args:
                 content: Content to save to the file
                 filename: Name of the file to save the content to (defaults to .txt extension if none provided)
-
-            Notes:
-                When an SFC configuration is running, this will save the file both to the
-                central storage directory (.sfc/stored_results) and to the current run directory.
             """
-            return SFCFileOperations.save_results_to_file(
-                content, filename, self.current_config_name
-            )
-
-        @tool
-        def run_sfc_config_locally(config_json: str, config_name: str = "") -> str:
-            """Run an SFC configuration locally in a test environment.
-
-            Downloads SFC resources and runs the configuration in a local test environment.
-
-            Args:
-                config_json: SFC configuration to run
-                config_name: Optional name for the configuration and test folder (defaults to timestamp if not provided)
-            """
-            return self._run_sfc_config_locally(config_json, config_name)
-
-        @tool
-        def tail_logs(lines: int = 20, follow: bool = False) -> str:
-            """Display the most recent lines from the SFC log file for the current running configuration.
-
-            Args:
-                lines: Number of recent log lines to show (default: 20)
-                follow: If True, continuously display new log lines in real-time.
-                        To exit follow mode, press Ctrl+C in the terminal.
-
-            Note: When follow=True, the function will enter a real-time viewing mode.
-                  The only way to exit this mode is by pressing Ctrl+C in the terminal.
-                  After exiting, you'll be returned to the command prompt.
-
-                  This feature is only available in CLI mode and will be disabled in UI mode.
-            """
-            # Disable follow mode in UI mode since it requires terminal interaction
-            if self.is_ui_mode and follow:
-                return "❌ Log follow mode is not available in the web interface. Please use the standard log viewing without the follow option."
-
-            return SFCLogOperations.tail_logs(
-                self.current_config_name, lines, follow, self.log_buffer
-            )
-
-        @tool
-        def clean_runs_folder() -> str:
-            """Clean the runs folder by removing all SFC runs to free up disk space.
-
-            This tool will ask for confirmation (y/n) before deleting any files.
-            Active configurations will be preserved.
-            """
-            return SFCFolderOperations.clean_runs_folder(
-                current_config_name=self.current_config_name,
-                last_config_name=self.last_config_name,
-            )
-
-        @tool
-        def confirm_clean_runs_folder(confirmation: str) -> str:
-            """Confirm and execute the cleaning of the runs folder after receiving user confirmation.
-
-            Args:
-                confirmation: User's response (y/n) to the deletion confirmation prompt
-            """
-            return SFCFolderOperations.confirm_clean_runs_folder(
-                confirmation,
-                current_config_name=self.current_config_name,
-                last_config_name=self.last_config_name,
-            )
-
-        @tool
-        def visualize_data(
-            minutes: int = 10, jmespath_expr: str = "value", seconds: int = None
-        ) -> str:
-            """Visualize data from the currently running SFC configuration with FILE-TARGET enabled.
-
-            Shows the data using a visualizer (ncurses in CLI mode or markdown in UI mode).
-
-            Args:
-                minutes: Number of minutes of data to visualize (default: 10, ignored if seconds is provided)
-                jmespath_expr: JMESPath expression to extract values from the data (e.g., "sources.SinusSource.values.sinus.value")
-                seconds: Optional number of seconds for finer time control (overrides minutes when provided)
-                         For UI mode, you can specify smaller timeframes: 5, 10, 15, 20, 30, 50 seconds
-            """
-            # Debug print for UI mode detection
-            print(f"🔍 Visualization UI mode detected: {self.is_ui_mode}")
-
-            # Log timeframe info
-            if seconds is not None:
-                print(f"📊 Visualizing data from the last {seconds} seconds")
-            else:
-                print(f"📊 Visualizing data from the last {minutes} minutes")
-
-            result = visualize_file_target_data(
-                config_name=self.current_config_name,
-                minutes=minutes,
-                jmespath_expr=jmespath_expr,
-                ui_mode=self.is_ui_mode,
-                seconds=seconds,
-            )
-
-            # Force the visualization to print directly in UI mode
-            if self.is_ui_mode:
-                print(f"\n{result}\n")
-
-            return result
-
-        @tool
-        def run_example(input_text: str) -> str:
-            """Run the example SFC configuration when receiving 'example' as input.
-            Example demo channel is: e.g. "sources.SimulatorSource.values.sinus.value" - simulationType sinus
-            that is accesible for visualization from the file-target - approx. 20 sec after start, next to other channels.
-
-            Args:
-                input_text: The text input from the user
-            """
-            if input_text.lower().strip() == "example":
-                # Path to the example config file
-                example_config_path = "sfc-config-example.json"
-
-                try:
-                    # Read the example config file
-                    with open(example_config_path, "r") as f:
-                        config_json = f.read()
-
-                    # Run the example configuration using the existing tool
-                    return self._run_sfc_config_locally(config_json, "example-config")
-                except Exception as e:
-                    result = f"❌ Error running example configuration: {str(e)}"
-                    return result
-            else:
-                result = f"Input '{input_text}' not recognized as 'example'. No action taken."
-                return result
+            return SFCFileOperations.save_results_to_file(content, filename)
 
         @tool
         def save_conversation(count: int = 1) -> str:
@@ -777,46 +678,12 @@ class SFCWizardAgent:
             read_config_from_file,
             save_config_to_file,
             save_results_to_file,
-            run_sfc_config_locally,
-            tail_logs,
-            clean_runs_folder,
-            confirm_clean_runs_folder,
-            visualize_data,
-            run_example,
             save_conversation,
             read_context_from_file,
         ]
 
         # Agent will be created lazily by initialize_agent()
         return None
-
-    def _run_sfc_config_locally(self, config_json: str, config_name: str = "") -> str:
-        """Run SFC configuration locally in a test environment"""
-        # Call the refactored method from SFCRunner
-        (
-            result,
-            current_config_name,
-            last_config_name,
-            last_config_file,
-            updated_processes,
-            updated_log_tail_thread,
-        ) = SFCRunner.run_sfc_config_locally(
-            config_json=config_json,
-            config_name=config_name,
-            active_processes=self.active_processes,
-            log_tail_thread=self.log_tail_thread,
-            log_tail_stop_event=self.log_tail_stop_event,
-            log_buffer=self.log_buffer,
-        )
-
-        # Update instance variables with results from refactored method
-        self.current_config_name = current_config_name
-        self.last_config_name = last_config_name
-        self.last_config_file = last_config_file
-        self.active_processes = updated_processes
-        self.log_tail_thread = updated_log_tail_thread
-
-        return result
 
     def _signal_handler(self, signum, frame):
         """Handle SIGINT (Ctrl+C) during streaming response"""
