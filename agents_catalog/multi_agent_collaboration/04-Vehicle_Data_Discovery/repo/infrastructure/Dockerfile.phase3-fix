@@ -1,0 +1,70 @@
+# Tesla Fleet Phase 3 - InternVideo2.5 Dependencies Fix
+# Base: Existing GPU image with missing dependencies added
+FROM 757513153970.dkr.ecr.us-west-2.amazonaws.com/vehicle-fleet-pipeline:v64-scope-fix-x86_64
+
+# --- 1. OS DEPENDENCIES + PYTHON 3.9 UPGRADE (Required for Cosmos transformers ≥3.9) ---
+RUN apt-get update && \
+    apt-get install -y software-properties-common && \
+    add-apt-repository ppa:deadsnakes/ppa && \
+    apt-get update && \
+    apt-get install -y \
+    python3.9 \
+    python3.9-dev \
+    python3.9-distutils \
+    ffmpeg \
+    libsm6 \
+    libxext6 \
+    libx264-dev \
+    git \
+    curl \
+    && rm -rf /var/lib/apt/lists/*
+
+# Upgrade to Python 3.9 for Cosmos compatibility (transformers requires ≥3.9)
+RUN ln -sf /usr/bin/python3.9 /usr/bin/python3 && \
+    ln -sf /usr/bin/python3.9 /usr/bin/python && \
+    curl -sS https://bootstrap.pypa.io/get-pip.py | python3.9
+
+# --- 2. PYTHON DEPENDENCIES (Cosmos + InternVideo with Python 3.9) ---
+# Clean pip cache and install core dependencies with Python 3.9
+RUN python3.9 -m pip cache purge
+
+# Install transformers==4.40.1 (InternVideo2.5 officially specified version + Cosmos compatible)
+RUN python3.9 -m pip install --no-cache-dir --upgrade \
+    torch \
+    accelerate \
+    "transformers==4.40.1" \
+    timm \
+    opencv-python-headless \
+    sentence-transformers \
+    pillow \
+    numpy \
+    torchvision \
+    einops \
+    decord \
+    boto3 \
+    botocore \
+    sentencepiece \
+    protobuf \
+    requests
+
+# Install latest bitsandbytes explicitly (fixes quantization requirement error)
+RUN python3.9 -m pip install --no-cache-dir -U bitsandbytes
+
+# Verify installations with Python 3.9
+RUN python3.9 --version && \
+    python3.9 -c "import accelerate; print(f'Accelerate version: {accelerate.__version__}')" && \
+    python3.9 -c "import bitsandbytes; print(f'Bitsandbytes version: {bitsandbytes.__version__}')" && \
+    python3.9 -c "import transformers; print(f'Transformers version: {transformers.__version__}')" && \
+    python3.9 -c "from transformers.modeling_utils import apply_chunking_to_forward; print('✅ Cosmos imports: OK')" && \
+    python3.9 -c "from transformers import AutoModel, AutoTokenizer; print('✅ InternVideo2.5 imports: OK')" && \
+    ffmpeg -version
+
+# Create the missing script that CDK expects - COPY FROM PIPELINE DIRECTORY
+COPY pipeline/internvideo25_behavioral_analyzer.py /app/internvideo25_behavioral_analyzer.py
+RUN chmod +x /app/internvideo25_behavioral_analyzer.py
+
+# Set working directory
+WORKDIR /app
+
+# Default command with Python 3.9 (can be overridden by ECS task definition)
+CMD ["python3.9", "/app/internvideo25_behavioral_analyzer.py"]

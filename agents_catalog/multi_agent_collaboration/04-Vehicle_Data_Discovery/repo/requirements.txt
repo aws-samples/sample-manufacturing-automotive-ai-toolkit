@@ -1,0 +1,24 @@
+# Tesla Fleet Discovery Studio - Python Dependencies (NO ROS dependencies)
+# Core AWS and Tesla Fleet dependencies
+boto3>=1.34.0
+fastapi>=0.104.0
+uvicorn[standard]>=0.24.0
+httpx>=0.25.0
+aiofiles>=23.2.0
+
+# ROS bag processing (modern Python library, no ROS system required)
+rosbags==0.10.11
+
+# Computer Vision and Scientific Computing (NO cv_bridge!)
+opencv-python-headless>=4.8.0
+numpy>=1.24.0
+Pillow>=10.0.0
+scikit-learn>=1.3.0
+scipy>=1.11.0
+matplotlib>=3.7.0
+pandas>=2.0.0
+
+# AI/ML Frameworks
+strands-agents>=1.0.0
+strands-agents-tools
+bedrock-agentcore

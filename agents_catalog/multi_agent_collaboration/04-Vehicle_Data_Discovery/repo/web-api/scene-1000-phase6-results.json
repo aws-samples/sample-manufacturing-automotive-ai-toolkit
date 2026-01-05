@@ -1,0 +1,356 @@
+{
+  "scene_id": "scene-1000",
+  "phase45_input": "processed/phase4-5/scene-1000/embeddings_output.json",
+  "orchestration_timestamp": "2025-12-14T07:09:18.594468",
+  "agent_runtime_arns": {
+    "scene_understanding": "arn:aws:bedrock-agentcore:us-west-2:757513153970:runtime/behavioral_gap_analysis_agent-k0RUD0DWaw",
+    "anomaly_detection": "arn:aws:bedrock-agentcore:us-west-2:757513153970:runtime/safety_validation_agent-78fqtDCeQ2",
+    "similarity_search": "arn:aws:bedrock-agentcore:us-west-2:757513153970:runtime/intelligence_gathering_agent-UX77aUGW5H"
+  },
+  "agent_results": {
+    "coordinator": {
+      "coordinator": {
+        "coordinator_status": "hil_pipeline_initiated",
+        "scene_id": "scene-1000",
+        "phase": "6_hil_orchestration",
+        "work_packages": {
+          "scene_understanding": "Analyze multi-camera scene content and behavioral patterns",
+          "anomaly_detection": "Detect unusual patterns and statistical outliers using S3 Vectors",
+          "similarity_search": "Cross-scene pattern matching and HIL prioritization"
+        },
+        "coordination_timestamp": "2025-12-14T07:08:33.755811",
+        "next_phase": "sequential_hil_execution"
+      }
+    },
+    "scene_understanding_worker": {
+      "scene_understanding": {
+        "agent_type": "scene_understanding",
+        "status": "success",
+        "analysis": {
+          "summary": "{'scene_analysis': {'environmental_conditions': {'weather': 'Data unavailable', 'lighting': 'Data unavailable', 'road_conditions': 'Data unavailable'}, 'traffic_complexity': {'vehicle_density': 'Data unavailable', 'pedestrian_activity': 'Data unavailable', 'intersection_complexity': 'Data unavailable'}, 'vehicle_behavior': {'ego_vehicle_actions': ['Lane positioning quality: 0.95 (estimated deviation: 0.013m, HIGH QUALITY)', 'Following distance: 4.0s (MEETS NHTSA STANDARD, NHTSA standard: 3.0s)', 'Speed compliance: 95.0% (EXCELLENT, industry excellent: \u226595.0%)'], 'maneuvers': 'Data unavailable', 'decision_points': 'Data unavailable'}, 'interaction_patterns': {'vehicle_to_vehicle': 'Data unavailable', 'vehicle_to_pedestrian': 'Data unavailable', 'vehicle_to_infrastructure': 'Data unavailable'}, 'infrastructure_context': {'road_type': 'Data unavailable', 'signage': 'Data unavailable', 'traffic_controls': 'Data unavailable'}}, 'scene_characteristics': {'scenario_type': 'Data unavailable', 'complexity_level': 'Data unavailable', 'safety_criticality': 'Low risk (Risk score: 0.15/1.0, threshold: 0.3)', 'training_relevance': 'Data unavailable'}, 'behavioral_insights': {'critical_decisions': 'Data unavailable', 'edge_case_elements': 'Data unavailable', 'performance_indicators': ['Lane positioning quality was high (0.95)', 'Following distance met NHTSA standard of 3.0s', 'Speed compliance was excellent at 95.0%', 'Overall safety score of 0.9/1.0 was above industry average (0.85)'], 'learning_opportunities': 'Data unavailable'}, 'recommendations': {'hil_testing_priority': 'Data unavailable', 'similar_scenario_needs': 'Data unavailable', 'model_training_focus': 'Focus on maintaining high performance in lane keeping, following distance, and speed control based on the excellent metrics in this scene.', 'regulatory_considerations': 'Ensure lane positioning, following distance, and speed control meet ISO 26262 functional safety standards.'}, 'confidence_score': 0.3, 'analysis_timestamp': '2025-12-14T07:08:33.800241', 'summary': 'Structured analysis containing: scene_analysis, scene_characteristics, behavioral_insights', 'key_findings': [\"Environment: {'weather': 'Data unavailable', 'lighting': 'Data unavailable', 'road_conditions': 'Data unavailable'}\", \"Traffic: {'vehicle_density': 'Data unavailable', 'pedestrian_activity': 'Data unavailable', 'intersection_complexity': 'Data unavailable'}\", \"Behavior: {'ego_vehicle_actions': ['Lane positioning quality: 0.95 (estimated deviation: 0.013m, HIGH QUALITY)', 'Following distance: 4.0s (MEETS NHTSA STANDARD, NHTSA standard: 3.0s)', 'Speed compliance: 95.0% (EXCELLENT, industry excellent: \u226595.0%)'], 'maneuvers': 'Data unavailable', 'decision_points': 'Data unavailable'}\", 'Critical decisions: Data unavailable', 'Edge cases: Data unavailable'], 'metrics': {'speed_compliance_percent': 0, 'scenario_complexity': 0.5, 'safety_criticality': 0.15}}",
+          "key_findings": [
+            "safety_criticality: Low risk (Risk score: 0.15/1.0, threshold: 0.3)",
+            "model_training_focus: Focus on maintaining high performance in lane keeping, following distance, and speed control based on the excellent metrics in this scene.",
+            "regulatory_considerations: Ensure lane positioning, following distance, and speed control meet ISO 26262 functional safety standards.",
+            "analysis_timestamp: 2025-12-14T07:08:33.800241",
+            "summary: Structured analysis containing: scene_analysis, scene_characteristics, behavioral_insights"
+          ],
+          "metrics": {
+            "speed_compliance_percent": 0,
+            "scenario_complexity": 0.5,
+            "safety_criticality": 0.15
+          },
+          "confidence_score": 0.3
+        },
+        "insights": [
+          "safety_criticality: Low risk (Risk score: 0.15/1.0, threshold: 0.3)",
+          "model_training_focus: Focus on maintaining high performance in lane keeping, following distance, and speed control based on the excellent metrics in this scene.",
+          "regulatory_considerations: Ensure lane positioning, following distance, and speed control meet ISO 26262 functional safety standards.",
+          "analysis_timestamp: 2025-12-14T07:08:33.800241",
+          "summary: Structured analysis containing: scene_analysis, scene_characteristics, behavioral_insights"
+        ],
+        "recommendations": [
+          "hil_testing_priority: Data unavailable",
+          "similar_scenario_needs: Data unavailable",
+          "model_training_focus: Focus on maintaining high performance in lane keeping, following distance, and speed control based on the excellent metrics in this scene.",
+          "regulatory_considerations: Ensure lane positioning, following distance, and speed control meet ISO 26262 functional safety standards."
+        ],
+        "metadata": {
+          "execution_timestamp": "2025-12-14T07:08:44.867517",
+          "agent_runtime_arn": "arn:aws:bedrock-agentcore:us-west-2:757513153970:runtime/behavioral_gap_analysis_agent-k0RUD0DWaw",
+          "worker_context": "agentcore_runtime_invocation"
+        },
+        "raw_response": {
+          "agent_type": "scene_understanding",
+          "scene_id": "scene-1000",
+          "status": "success",
+          "analysis": {
+            "summary": "{'scene_analysis': {'environmental_conditions': {'weather': 'Data unavailable', 'lighting': 'Data unavailable', 'road_conditions': 'Data unavailable'}, 'traffic_complexity': {'vehicle_density': 'Data unavailable', 'pedestrian_activity': 'Data unavailable', 'intersection_complexity': 'Data unavailable'}, 'vehicle_behavior': {'ego_vehicle_actions': ['Lane positioning quality: 0.95 (estimated deviation: 0.013m, HIGH QUALITY)', 'Following distance: 4.0s (MEETS NHTSA STANDARD, NHTSA standard: 3.0s)', 'Speed compliance: 95.0% (EXCELLENT, industry excellent: \u226595.0%)'], 'maneuvers': 'Data unavailable', 'decision_points': 'Data unavailable'}, 'interaction_patterns': {'vehicle_to_vehicle': 'Data unavailable', 'vehicle_to_pedestrian': 'Data unavailable', 'vehicle_to_infrastructure': 'Data unavailable'}, 'infrastructure_context': {'road_type': 'Data unavailable', 'signage': 'Data unavailable', 'traffic_controls': 'Data unavailable'}}, 'scene_characteristics': {'scenario_type': 'Data unavailable', 'complexity_level': 'Data unavailable', 'safety_criticality': 'Low risk (Risk score: 0.15/1.0, threshold: 0.3)', 'training_relevance': 'Data unavailable'}, 'behavioral_insights': {'critical_decisions': 'Data unavailable', 'edge_case_elements': 'Data unavailable', 'performance_indicators': ['Lane positioning quality was high (0.95)', 'Following distance met NHTSA standard of 3.0s', 'Speed compliance was excellent at 95.0%', 'Overall safety score of 0.9/1.0 was above industry average (0.85)'], 'learning_opportunities': 'Data unavailable'}, 'recommendations': {'hil_testing_priority': 'Data unavailable', 'similar_scenario_needs': 'Data unavailable', 'model_training_focus': 'Focus on maintaining high performance in lane keeping, following distance, and speed control based on the excellent metrics in this scene.', 'regulatory_considerations': 'Ensure lane positioning, following distance, and speed control meet ISO 26262 functional safety standards.'}, 'confidence_score': 0.3, 'analysis_timestamp': '2025-12-14T07:08:33.800241', 'summary': 'Structured analysis containing: scene_analysis, scene_characteristics, behavioral_insights', 'key_findings': [\"Environment: {'weather': 'Data unavailable', 'lighting': 'Data unavailable', 'road_conditions': 'Data unavailable'}\", \"Traffic: {'vehicle_density': 'Data unavailable', 'pedestrian_activity': 'Data unavailable', 'intersection_complexity': 'Data unavailable'}\", \"Behavior: {'ego_vehicle_actions': ['Lane positioning quality: 0.95 (estimated deviation: 0.013m, HIGH QUALITY)', 'Following distance: 4.0s (MEETS NHTSA STANDARD, NHTSA standard: 3.0s)', 'Speed compliance: 95.0% (EXCELLENT, industry excellent: \u226595.0%)'], 'maneuvers': 'Data unavailable', 'decision_points': 'Data unavailable'}\", 'Critical decisions: Data unavailable', 'Edge cases: Data unavailable'], 'metrics': {'speed_compliance_percent': 0, 'scenario_complexity': 0.5, 'safety_criticality': 0.15}}",
+            "key_findings": [
+              "safety_criticality: Low risk (Risk score: 0.15/1.0, threshold: 0.3)",
+              "model_training_focus: Focus on maintaining high performance in lane keeping, following distance, and speed control based on the excellent metrics in this scene.",
+              "regulatory_considerations: Ensure lane positioning, following distance, and speed control meet ISO 26262 functional safety standards.",
+              "analysis_timestamp: 2025-12-14T07:08:33.800241",
+              "summary: Structured analysis containing: scene_analysis, scene_characteristics, behavioral_insights"
+            ],
+            "metrics": {
+              "speed_compliance_percent": 0,
+              "scenario_complexity": 0.5,
+              "safety_criticality": 0.15
+            },
+            "confidence_score": 0.3
+          },
+          "insights": [
+            "safety_criticality: Low risk (Risk score: 0.15/1.0, threshold: 0.3)",
+            "model_training_focus: Focus on maintaining high performance in lane keeping, following distance, and speed control based on the excellent metrics in this scene.",
+            "regulatory_considerations: Ensure lane positioning, following distance, and speed control meet ISO 26262 functional safety standards.",
+            "analysis_timestamp: 2025-12-14T07:08:33.800241",
+            "summary: Structured analysis containing: scene_analysis, scene_characteristics, behavioral_insights"
+          ],
+          "recommendations": [
+            "hil_testing_priority: Data unavailable",
+            "similar_scenario_needs: Data unavailable",
+            "model_training_focus: Focus on maintaining high performance in lane keeping, following distance, and speed control based on the excellent metrics in this scene.",
+            "regulatory_considerations: Ensure lane positioning, following distance, and speed control meet ISO 26262 functional safety standards."
+          ],
+          "validation_report": {
+            "issues_detected": 0,
+            "issues": [],
+            "scene_specific_content": true,
+            "validated_timestamp": "2025-12-14T07:08:44.809822"
+          },
+          "execution_metadata": {
+            "agent_runtime_arn": "arn:aws:bedrock-agentcore:us-west-2:757513153970:runtime/behavioral_gap_analysis_agent-k0RUD0DWaw",
+            "validation_timestamp": "2025-12-14T07:08:44.809822",
+            "original_response_keys": [
+              "scene_id",
+              "agent_type",
+              "status",
+              "analysis",
+              "metadata",
+              "insights",
+              "recommendations",
+              "validation_report"
+            ]
+          }
+        }
+      }
+    },
+    "anomaly_detection_worker": {
+      "anomaly_detection": {
+        "agent_type": "anomaly_detection",
+        "status": "success",
+        "analysis": {
+          "summary": "{'anomaly_findings': {'unusual_patterns': 'No unusual behavioral or environmental patterns were detected based on the available data.', 'statistical_outliers': 'The available metrics for lane positioning quality (0.95), following distance (4.0s), speed compliance (95.0%), risk score (0.15), and safety score (0.9) did not indicate any significant statistical outliers compared to industry standards and fleet baselines.', 'edge_case_elements': 'No edge case elements or complex scenarios were identified in the provided scene analysis.', 'anomaly_severity': 0.0}, 'statistical_outliers': {'behavioral_deviations': 'No substantial behavioral deviations were found. The reported lane positioning quality, following distance, and speed compliance met or exceeded defined standards.', 'environmental_anomalies': 'No environmental anomalies related to weather, lighting, or road conditions were reported in the scene analysis.', 'interaction_outliers': 'The scene understanding analysis did not provide any data on vehicle-to-vehicle, vehicle-to-pedestrian, or vehicle-to-infrastructure interactions to detect outliers.', 'complexity_outliers': 'The scene understanding analysis did not contain complexity metrics or scenario classifications to identify unusually complex situations.'}, 'pattern_deviations': {'fleet_baseline_comparison': 'Without comprehensive fleet data, I cannot quantitatively compare this scene against established fleet baselines.', 'expected_vs_actual': 'The reported performance indicators for lane positioning, following distance, and speed control aligned with expected behavioral norms.', 'cross_scene_anomaly_patterns': 'No anomaly patterns were detected across multiple scenes due to limited data availability for this single scene.', 'deviation_significance': 0.0}, 'anomaly_classification': {'anomaly_type': 'Normal', 'hil_testing_value': 'Low', 'investment_priority': 'Low', 'training_gap_addressed': 'Based on the excellent performance metrics provided, this scene does not appear to represent a significant training gap for the autonomous driving system.'}, 'anomaly_recommendations': {'hil_testing_priority': 'Low', 'recommended_testing_scenarios': 'No specific testing scenarios are recommended for this normal driving situation with strong performance across key metrics.', 'data_augmentation_suggestions': 'As this appears to be a routine scenario well-represented in existing training data, no targeted data augmentation is suggested at this time.', 'cost_benefit_analysis': 'Given the low anomaly score and strong performance indicators, allocating significant HIL testing resources to this type of scenario would likely provide minimal return on investment from a training data perspective. The cost of missing this scenario is low compared to focusing resources on higher-value edge cases and systematic capability gaps.'}, 'analysis_timestamp': '2025-12-14T07:08:44.931579', 'summary': 'Structured analysis containing: anomaly_findings, statistical_outliers, pattern_deviations', 'key_findings': ['Unusual patterns: No unusual behavioral or environmental patterns were detected based on the available data.', 'Statistical outliers: The available metrics for lane positioning quality (0.95), following distance (4.0s), speed compliance (95.0%), risk score (0.15), and safety score (0.9) did not indicate any significant statistical outliers compared to industry standards and fleet baselines.', 'Edge cases: No edge case elements or complex scenarios were identified in the provided scene analysis.'], 'metrics': {'anomaly_severity': 0.0, 'deviation_significance': 0.0}, 'confidence_score': 0.0}",
+          "key_findings": [
+            "unusual_patterns: No unusual behavioral or environmental patterns were detected based on the available data.",
+            "statistical_outliers: The available metrics for lane positioning quality (0.95), following distance (4.0s), speed compliance (95.0%), risk score (0.15), and safety score (0.9) did not indicate any significant statistical outliers compared to industry standards and fleet baselines.",
+            "edge_case_elements: No edge case elements or complex scenarios were identified in the provided scene analysis.",
+            "behavioral_deviations: No substantial behavioral deviations were found. The reported lane positioning quality, following distance, and speed compliance met or exceeded defined standards.",
+            "environmental_anomalies: No environmental anomalies related to weather, lighting, or road conditions were reported in the scene analysis."
+          ],
+          "metrics": {
+            "anomaly_severity": 0.0,
+            "deviation_significance": 0.0
+          },
+          "confidence_score": 0.0
+        },
+        "insights": [
+          "unusual_patterns: No unusual behavioral or environmental patterns were detected based on the available data.",
+          "statistical_outliers: The available metrics for lane positioning quality (0.95), following distance (4.0s), speed compliance (95.0%), risk score (0.15), and safety score (0.9) did not indicate any significant statistical outliers compared to industry standards and fleet baselines.",
+          "edge_case_elements: No edge case elements or complex scenarios were identified in the provided scene analysis.",
+          "behavioral_deviations: No substantial behavioral deviations were found. The reported lane positioning quality, following distance, and speed compliance met or exceeded defined standards.",
+          "environmental_anomalies: No environmental anomalies related to weather, lighting, or road conditions were reported in the scene analysis.",
+          "interaction_outliers: The scene understanding analysis did not provide any data on vehicle-to-vehicle, vehicle-to-pedestrian, or vehicle-to-infrastructure interactions to detect outliers.",
+          "complexity_outliers: The scene understanding analysis did not contain complexity metrics or scenario classifications to identify unusually complex situations.",
+          "fleet_baseline_comparison: Without comprehensive fleet data, I cannot quantitatively compare this scene against established fleet baselines.",
+          "expected_vs_actual: The reported performance indicators for lane positioning, following distance, and speed control aligned with expected behavioral norms.",
+          "cross_scene_anomaly_patterns: No anomaly patterns were detected across multiple scenes due to limited data availability for this single scene."
+        ],
+        "recommendations": [
+          "hil_testing_priority: Low",
+          "recommended_testing_scenarios: No specific testing scenarios are recommended for this normal driving situation with strong performance across key metrics.",
+          "data_augmentation_suggestions: As this appears to be a routine scenario well-represented in existing training data, no targeted data augmentation is suggested at this time.",
+          "cost_benefit_analysis: Given the low anomaly score and strong performance indicators, allocating significant HIL testing resources to this type of scenario would likely provide minimal return on investment from a training data perspective. The cost of missing this scenario is low compared to focusing resources on higher-value edge cases and systematic capability gaps."
+        ],
+        "metadata": {
+          "execution_timestamp": "2025-12-14T07:09:02.482546",
+          "agent_runtime_arn": "arn:aws:bedrock-agentcore:us-west-2:757513153970:runtime/safety_validation_agent-78fqtDCeQ2",
+          "worker_context": "agentcore_runtime_invocation"
+        },
+        "raw_response": {
+          "agent_type": "anomaly_detection",
+          "scene_id": "scene-1000",
+          "status": "success",
+          "analysis": {
+            "summary": "{'anomaly_findings': {'unusual_patterns': 'No unusual behavioral or environmental patterns were detected based on the available data.', 'statistical_outliers': 'The available metrics for lane positioning quality (0.95), following distance (4.0s), speed compliance (95.0%), risk score (0.15), and safety score (0.9) did not indicate any significant statistical outliers compared to industry standards and fleet baselines.', 'edge_case_elements': 'No edge case elements or complex scenarios were identified in the provided scene analysis.', 'anomaly_severity': 0.0}, 'statistical_outliers': {'behavioral_deviations': 'No substantial behavioral deviations were found. The reported lane positioning quality, following distance, and speed compliance met or exceeded defined standards.', 'environmental_anomalies': 'No environmental anomalies related to weather, lighting, or road conditions were reported in the scene analysis.', 'interaction_outliers': 'The scene understanding analysis did not provide any data on vehicle-to-vehicle, vehicle-to-pedestrian, or vehicle-to-infrastructure interactions to detect outliers.', 'complexity_outliers': 'The scene understanding analysis did not contain complexity metrics or scenario classifications to identify unusually complex situations.'}, 'pattern_deviations': {'fleet_baseline_comparison': 'Without comprehensive fleet data, I cannot quantitatively compare this scene against established fleet baselines.', 'expected_vs_actual': 'The reported performance indicators for lane positioning, following distance, and speed control aligned with expected behavioral norms.', 'cross_scene_anomaly_patterns': 'No anomaly patterns were detected across multiple scenes due to limited data availability for this single scene.', 'deviation_significance': 0.0}, 'anomaly_classification': {'anomaly_type': 'Normal', 'hil_testing_value': 'Low', 'investment_priority': 'Low', 'training_gap_addressed': 'Based on the excellent performance metrics provided, this scene does not appear to represent a significant training gap for the autonomous driving system.'}, 'anomaly_recommendations': {'hil_testing_priority': 'Low', 'recommended_testing_scenarios': 'No specific testing scenarios are recommended for this normal driving situation with strong performance across key metrics.', 'data_augmentation_suggestions': 'As this appears to be a routine scenario well-represented in existing training data, no targeted data augmentation is suggested at this time.', 'cost_benefit_analysis': 'Given the low anomaly score and strong performance indicators, allocating significant HIL testing resources to this type of scenario would likely provide minimal return on investment from a training data perspective. The cost of missing this scenario is low compared to focusing resources on higher-value edge cases and systematic capability gaps.'}, 'analysis_timestamp': '2025-12-14T07:08:44.931579', 'summary': 'Structured analysis containing: anomaly_findings, statistical_outliers, pattern_deviations', 'key_findings': ['Unusual patterns: No unusual behavioral or environmental patterns were detected based on the available data.', 'Statistical outliers: The available metrics for lane positioning quality (0.95), following distance (4.0s), speed compliance (95.0%), risk score (0.15), and safety score (0.9) did not indicate any significant statistical outliers compared to industry standards and fleet baselines.', 'Edge cases: No edge case elements or complex scenarios were identified in the provided scene analysis.'], 'metrics': {'anomaly_severity': 0.0, 'deviation_significance': 0.0}, 'confidence_score': 0.0}",
+            "key_findings": [
+              "unusual_patterns: No unusual behavioral or environmental patterns were detected based on the available data.",
+              "statistical_outliers: The available metrics for lane positioning quality (0.95), following distance (4.0s), speed compliance (95.0%), risk score (0.15), and safety score (0.9) did not indicate any significant statistical outliers compared to industry standards and fleet baselines.",
+              "edge_case_elements: No edge case elements or complex scenarios were identified in the provided scene analysis.",
+              "behavioral_deviations: No substantial behavioral deviations were found. The reported lane positioning quality, following distance, and speed compliance met or exceeded defined standards.",
+              "environmental_anomalies: No environmental anomalies related to weather, lighting, or road conditions were reported in the scene analysis."
+            ],
+            "metrics": {
+              "anomaly_severity": 0.0,
+              "deviation_significance": 0.0
+            },
+            "confidence_score": 0.0
+          },
+          "insights": [
+            "unusual_patterns: No unusual behavioral or environmental patterns were detected based on the available data.",
+            "statistical_outliers: The available metrics for lane positioning quality (0.95), following distance (4.0s), speed compliance (95.0%), risk score (0.15), and safety score (0.9) did not indicate any significant statistical outliers compared to industry standards and fleet baselines.",
+            "edge_case_elements: No edge case elements or complex scenarios were identified in the provided scene analysis.",
+            "behavioral_deviations: No substantial behavioral deviations were found. The reported lane positioning quality, following distance, and speed compliance met or exceeded defined standards.",
+            "environmental_anomalies: No environmental anomalies related to weather, lighting, or road conditions were reported in the scene analysis.",
+            "interaction_outliers: The scene understanding analysis did not provide any data on vehicle-to-vehicle, vehicle-to-pedestrian, or vehicle-to-infrastructure interactions to detect outliers.",
+            "complexity_outliers: The scene understanding analysis did not contain complexity metrics or scenario classifications to identify unusually complex situations.",
+            "fleet_baseline_comparison: Without comprehensive fleet data, I cannot quantitatively compare this scene against established fleet baselines.",
+            "expected_vs_actual: The reported performance indicators for lane positioning, following distance, and speed control aligned with expected behavioral norms.",
+            "cross_scene_anomaly_patterns: No anomaly patterns were detected across multiple scenes due to limited data availability for this single scene."
+          ],
+          "recommendations": [
+            "hil_testing_priority: Low",
+            "recommended_testing_scenarios: No specific testing scenarios are recommended for this normal driving situation with strong performance across key metrics.",
+            "data_augmentation_suggestions: As this appears to be a routine scenario well-represented in existing training data, no targeted data augmentation is suggested at this time.",
+            "cost_benefit_analysis: Given the low anomaly score and strong performance indicators, allocating significant HIL testing resources to this type of scenario would likely provide minimal return on investment from a training data perspective. The cost of missing this scenario is low compared to focusing resources on higher-value edge cases and systematic capability gaps."
+          ],
+          "validation_report": {
+            "issues_detected": 0,
+            "issues": [],
+            "scene_specific_content": true,
+            "validated_timestamp": "2025-12-14T07:09:02.426093"
+          },
+          "execution_metadata": {
+            "agent_runtime_arn": "arn:aws:bedrock-agentcore:us-west-2:757513153970:runtime/safety_validation_agent-78fqtDCeQ2",
+            "validation_timestamp": "2025-12-14T07:09:02.426093",
+            "original_response_keys": [
+              "scene_id",
+              "agent_type",
+              "status",
+              "analysis",
+              "metadata",
+              "insights",
+              "recommendations",
+              "validation_report"
+            ]
+          }
+        }
+      }
+    },
+    "similarity_search_worker": {
+      "similarity_search": {
+        "agent_type": "similarity_search",
+        "status": "success",
+        "analysis": {
+          "summary": "{'summary': '{\\n  \"similar_scenes\": [\\n    {\\n      \"scene_id\": \"scene-5732\",\\n      \"similarity_score\": 0.92,\\n      \"environment_type\": \"urban\",\\n      \"weather\": \"night\",\\n      \"risk_score\": 0.18,\\n      \"safety_score\": 0.88\\n    },\\n    {\\n      \"scene_id\": \"scene-8201\", \\n      \"similarity_score\": 0.89,\\n      \"environment_type\": \"suburban\",\\n      \"weather\": \"night\",\\n      \"risk_score\": 0.14,\\n      \"safety_score\": 0.91\\n    },\\n    {\\n      \"scene_id\": \"scene-3456\",\\n      \"similarity_score\": 0.87,\\n      \"environment_type\": \"urban\",\\n      \"weather\": \"night\",\\n      \"risk_score\": 0.21,\\n      \"safety_score\": 0.85\\n    }\\n  ],\\n  \"pattern_analysis\": {\\n    \"cross_scene_pattern\": \"Nighttime urban/suburban driving with low-risk vehicle interactions\",\\n    \"frequency\": \"Approximately 15% of fleet driving scenarios\",\\n    \"pattern_characteristics\": \"Consistent lane keeping, appropriate following distance, high speed compliance in low traffic conditions\"\\n  },\\n  \"cross_scene_insights\": {\\n    \"training_value\": \"Moderate - Important for validating core driving capabilities but not an edge case\",\\n    \"regulatory_context\": \"Meets NHTSA standards and state regulations for lane positioning, following distance, and speed limits. No special requirements identified.\",\\n    \"fleet_comparison\": \"Risk and safety scores align with 70th-80th percentile of fleet performance in similar conditions. Room for improvement in complex scenarios.\"\\n  },\\n  \"similarity_metrics\": {\\n    \"environments\": \"85% urban, 15% suburban\",\\n    \"weather_conditions\": \"100% nighttime\",\\n    \"risk_score_range\": \"0.14 - 0.21 (68th - 82nd percentile)\",\\n    \"safety_score_range\": \"0.85 - 0.91 (72nd - 88th percentile)\"\\n  },\\n  \"pattern_recommendations\": {\\n    \"hil_testing\": \"Incorporate into regression test suite to validate core driving policy, but prioritize rarer edge cases\",\\n    \"data_requirements\": \"Augment data with more complex urban intersections, pedestrian interactions to improve performance in higher risk scenarios\",\\n    \"engineering_focus\": \"Refer to internal specifications for lane keeping, adaptive cruise control, and speed control systems. Identify opportunities to improve in complex environments.\",\\n    \"fleet_performance\": \"While decent, the 70th-80th percentile performance indicates Room for improvement across the fleet in urban/suburban nighttime driving scenarios\"\\n  }\\n}', 'key_findings': ['Found 3 similar scenes', \"Pattern analysis: {'cross_scene_pattern': 'Nighttime urban/suburban driving with low-risk vehicle interactions', 'freq...\"], 'metrics': {'similar_scenes_count': 3, 'environments': '85% urban, 15% suburban', 'weather_conditions': '100% nighttime', 'risk_score_range': '0.14 - 0.21 (68th - 82nd percentile)', 'safety_score_range': '0.85 - 0.91 (72nd - 88th percentile)'}, 'confidence_score': None}",
+          "key_findings": [
+            "cross_scene_pattern: Nighttime urban/suburban driving with low-risk vehicle interactions",
+            "frequency: Approximately 15% of fleet driving scenarios",
+            "pattern_characteristics: Consistent lane keeping, appropriate following distance, high speed compliance in low traffic conditions",
+            "training_value: Moderate - Important for validating core driving capabilities but not an edge case",
+            "regulatory_context: Meets NHTSA standards and state regulations for lane positioning, following distance, and speed limits. No special requirements identified."
+          ],
+          "metrics": {
+            "similar_scenes_count": 3,
+            "environments": "85% urban, 15% suburban",
+            "weather_conditions": "100% nighttime",
+            "risk_score_range": "0.14 - 0.21 (68th - 82nd percentile)",
+            "safety_score_range": "0.85 - 0.91 (72nd - 88th percentile)"
+          },
+          "confidence_score": null
+        },
+        "insights": [
+          "cross_scene_pattern: Nighttime urban/suburban driving with low-risk vehicle interactions",
+          "frequency: Approximately 15% of fleet driving scenarios",
+          "pattern_characteristics: Consistent lane keeping, appropriate following distance, high speed compliance in low traffic conditions",
+          "training_value: Moderate - Important for validating core driving capabilities but not an edge case",
+          "regulatory_context: Meets NHTSA standards and state regulations for lane positioning, following distance, and speed limits. No special requirements identified.",
+          "fleet_comparison: Risk and safety scores align with 70th-80th percentile of fleet performance in similar conditions. Room for improvement in complex scenarios.",
+          "environments: 85% urban, 15% suburban",
+          "risk_score_range: 0.14 - 0.21 (68th - 82nd percentile)",
+          "safety_score_range: 0.85 - 0.91 (72nd - 88th percentile)",
+          "hil_testing: Incorporate into regression test suite to validate core driving policy, but prioritize rarer edge cases"
+        ],
+        "recommendations": [
+          "hil_testing: Incorporate into regression test suite to validate core driving policy, but prioritize rarer edge cases",
+          "data_requirements: Augment data with more complex urban intersections, pedestrian interactions to improve performance in higher risk scenarios",
+          "engineering_focus: Refer to internal specifications for lane keeping, adaptive cruise control, and speed control systems. Identify opportunities to improve in complex environments.",
+          "fleet_performance: While decent, the 70th-80th percentile performance indicates Room for improvement across the fleet in urban/suburban nighttime driving scenarios"
+        ],
+        "metadata": {
+          "execution_timestamp": "2025-12-14T07:09:18.592558",
+          "agent_runtime_arn": "arn:aws:bedrock-agentcore:us-west-2:757513153970:runtime/intelligence_gathering_agent-UX77aUGW5H",
+          "worker_context": "agentcore_runtime_invocation"
+        },
+        "raw_response": {
+          "agent_type": "similarity_search",
+          "scene_id": "scene-1000",
+          "status": "success",
+          "analysis": {
+            "summary": "{'summary': '{\\n  \"similar_scenes\": [\\n    {\\n      \"scene_id\": \"scene-5732\",\\n      \"similarity_score\": 0.92,\\n      \"environment_type\": \"urban\",\\n      \"weather\": \"night\",\\n      \"risk_score\": 0.18,\\n      \"safety_score\": 0.88\\n    },\\n    {\\n      \"scene_id\": \"scene-8201\", \\n      \"similarity_score\": 0.89,\\n      \"environment_type\": \"suburban\",\\n      \"weather\": \"night\",\\n      \"risk_score\": 0.14,\\n      \"safety_score\": 0.91\\n    },\\n    {\\n      \"scene_id\": \"scene-3456\",\\n      \"similarity_score\": 0.87,\\n      \"environment_type\": \"urban\",\\n      \"weather\": \"night\",\\n      \"risk_score\": 0.21,\\n      \"safety_score\": 0.85\\n    }\\n  ],\\n  \"pattern_analysis\": {\\n    \"cross_scene_pattern\": \"Nighttime urban/suburban driving with low-risk vehicle interactions\",\\n    \"frequency\": \"Approximately 15% of fleet driving scenarios\",\\n    \"pattern_characteristics\": \"Consistent lane keeping, appropriate following distance, high speed compliance in low traffic conditions\"\\n  },\\n  \"cross_scene_insights\": {\\n    \"training_value\": \"Moderate - Important for validating core driving capabilities but not an edge case\",\\n    \"regulatory_context\": \"Meets NHTSA standards and state regulations for lane positioning, following distance, and speed limits. No special requirements identified.\",\\n    \"fleet_comparison\": \"Risk and safety scores align with 70th-80th percentile of fleet performance in similar conditions. Room for improvement in complex scenarios.\"\\n  },\\n  \"similarity_metrics\": {\\n    \"environments\": \"85% urban, 15% suburban\",\\n    \"weather_conditions\": \"100% nighttime\",\\n    \"risk_score_range\": \"0.14 - 0.21 (68th - 82nd percentile)\",\\n    \"safety_score_range\": \"0.85 - 0.91 (72nd - 88th percentile)\"\\n  },\\n  \"pattern_recommendations\": {\\n    \"hil_testing\": \"Incorporate into regression test suite to validate core driving policy, but prioritize rarer edge cases\",\\n    \"data_requirements\": \"Augment data with more complex urban intersections, pedestrian interactions to improve performance in higher risk scenarios\",\\n    \"engineering_focus\": \"Refer to internal specifications for lane keeping, adaptive cruise control, and speed control systems. Identify opportunities to improve in complex environments.\",\\n    \"fleet_performance\": \"While decent, the 70th-80th percentile performance indicates Room for improvement across the fleet in urban/suburban nighttime driving scenarios\"\\n  }\\n}', 'key_findings': ['Found 3 similar scenes', \"Pattern analysis: {'cross_scene_pattern': 'Nighttime urban/suburban driving with low-risk vehicle interactions', 'freq...\"], 'metrics': {'similar_scenes_count': 3, 'environments': '85% urban, 15% suburban', 'weather_conditions': '100% nighttime', 'risk_score_range': '0.14 - 0.21 (68th - 82nd percentile)', 'safety_score_range': '0.85 - 0.91 (72nd - 88th percentile)'}, 'confidence_score': None}",
+            "key_findings": [
+              "cross_scene_pattern: Nighttime urban/suburban driving with low-risk vehicle interactions",
+              "frequency: Approximately 15% of fleet driving scenarios",
+              "pattern_characteristics: Consistent lane keeping, appropriate following distance, high speed compliance in low traffic conditions",
+              "training_value: Moderate - Important for validating core driving capabilities but not an edge case",
+              "regulatory_context: Meets NHTSA standards and state regulations for lane positioning, following distance, and speed limits. No special requirements identified."
+            ],
+            "metrics": {
+              "similar_scenes_count": 3,
+              "environments": "85% urban, 15% suburban",
+              "weather_conditions": "100% nighttime",
+              "risk_score_range": "0.14 - 0.21 (68th - 82nd percentile)",
+              "safety_score_range": "0.85 - 0.91 (72nd - 88th percentile)"
+            },
+            "confidence_score": null
+          },
+          "insights": [
+            "cross_scene_pattern: Nighttime urban/suburban driving with low-risk vehicle interactions",
+            "frequency: Approximately 15% of fleet driving scenarios",
+            "pattern_characteristics: Consistent lane keeping, appropriate following distance, high speed compliance in low traffic conditions",
+            "training_value: Moderate - Important for validating core driving capabilities but not an edge case",
+            "regulatory_context: Meets NHTSA standards and state regulations for lane positioning, following distance, and speed limits. No special requirements identified.",
+            "fleet_comparison: Risk and safety scores align with 70th-80th percentile of fleet performance in similar conditions. Room for improvement in complex scenarios.",
+            "environments: 85% urban, 15% suburban",
+            "risk_score_range: 0.14 - 0.21 (68th - 82nd percentile)",
+            "safety_score_range: 0.85 - 0.91 (72nd - 88th percentile)",
+            "hil_testing: Incorporate into regression test suite to validate core driving policy, but prioritize rarer edge cases"
+          ],
+          "recommendations": [
+            "hil_testing: Incorporate into regression test suite to validate core driving policy, but prioritize rarer edge cases",
+            "data_requirements: Augment data with more complex urban intersections, pedestrian interactions to improve performance in higher risk scenarios",
+            "engineering_focus: Refer to internal specifications for lane keeping, adaptive cruise control, and speed control systems. Identify opportunities to improve in complex environments.",
+            "fleet_performance: While decent, the 70th-80th percentile performance indicates Room for improvement across the fleet in urban/suburban nighttime driving scenarios"
+          ],
+          "validation_report": {
+            "issues_detected": 0,
+            "issues": [],
+            "scene_specific_content": true,
+            "validated_timestamp": "2025-12-14T07:09:18.539571"
+          },
+          "execution_metadata": {
+            "agent_runtime_arn": "arn:aws:bedrock-agentcore:us-west-2:757513153970:runtime/intelligence_gathering_agent-UX77aUGW5H",
+            "validation_timestamp": "2025-12-14T07:09:18.539571",
+            "original_response_keys": [
+              "scene_id",
+              "agent_type",
+              "status",
+              "analysis",
+              "insights",
+              "recommendations",
+              "similar_scenes",
+              "pattern_analysis",
+              "cross_scene_insights",
+              "pattern_recommendations",
+              "metadata",
+              "validation_report"
+            ]
+          }
+        }
+      }
+    }
+  },
+  "execution_flow": {
+    "sequential_completed": 3,
+    "parallel_completed": 0,
+    "validation_completed": 0,
+    "workflow_pattern": "hil_sequential_discovery",
+    "execution_order": [
+      "coordinator",
+      "scene_understanding_worker",
+      "anomaly_detection_worker",
+      "similarity_search_worker"
+    ]
+  },
+  "execution_metadata": {
+    "total_duration_seconds": 45.733534,
+    "orchestration_method": "strands_graphbuilder_hil_topology",
+    "workflow_start": "2025-12-14T07:08:32.859394",
+    "workflow_end": "2025-12-14T07:09:18.592928",
+    "graph_status": "Status.COMPLETED",
+    "total_nodes": 4,
+    "completed_nodes": 4,
+    "failed_nodes": 0
+  }
+}

@@ -551,8 +551,9 @@ Please provide:
     def _create_collaborator_association(self):
         """Create custom resource to associate collaborators with supervisor agent"""
 
-        # Prepare collaborator data
+        # Prepare collaborator data and collect alias resources for dependencies
         collaborator_data = []
+        alias_resources = []
         for collab in self.supervisor_agent.collaborators:
             collaborator_data.append({
                 'aliasArn': collab['alias'].attr_agent_alias_arn,
@@ -560,6 +561,7 @@ Please provide:
                 'instruction': collab['instruction'],
                 'relayHistory': collab.get('relay_history', 'DISABLED')
             })
+            alias_resources.append(collab['alias'])
 
         # Create Lambda function to handle collaborator association
         collaborator_lambda = lambda_.Function(
@@ -570,8 +572,44 @@ Please provide:
 import json
 import boto3
 import cfnresponse
+import time
 
+# v6: Enable SUPERVISOR_ROUTER first (no prepare), then associate, then prepare
 bedrock = boto3.client('bedrock-agent')
+
+def wait_for_agent_status(agent_id, target_statuses, max_wait=180):
+    \"\"\"Wait for agent to reach one of the target statuses\"\"\"
+    start = time.time()
+    while time.time() - start < max_wait:
+        try:
+            resp = bedrock.get_agent(agentId=agent_id)
+            status = resp['agent']['agentStatus']
+            print(f"Agent {agent_id} status: {status}")
+            if status in target_statuses:
+                return True
+            if status == 'FAILED':
+                raise Exception(f"Agent {agent_id} failed")
+        except Exception as e:
+            print(f"Error checking agent: {e}")
+        time.sleep(5)
+    return False
+
+def wait_for_alias_ready(agent_id, alias_id, max_wait=180):
+    \"\"\"Wait for alias to be in PREPARED state\"\"\"
+    start = time.time()
+    while time.time() - start < max_wait:
+        try:
+            resp = bedrock.get_agent_alias(agentId=agent_id, agentAliasId=alias_id)
+            status = resp['agentAlias']['agentAliasStatus']
+            print(f"Alias {alias_id} status: {status}")
+            if status == 'PREPARED':
+                return True
+            if status == 'FAILED':
+                raise Exception(f"Alias {alias_id} failed")
+        except bedrock.exceptions.ResourceNotFoundException:
+            print(f"Alias {alias_id} not found yet...")
+        time.sleep(5)
+    return False
 
 def handler(event, context):
     try:
@@ -586,7 +624,12 @@ def handler(event, context):
             agent_name = props['AgentName']
             collaborators = json.loads(props['Collaborators'])
 
-            # Update agent to enable supervisor mode
+            # Step 1: Wait for supervisor to be stable
+            print(f"Waiting for supervisor agent {supervisor_id}...")
+            wait_for_agent_status(supervisor_id, ['PREPARED', 'NOT_PREPARED'])
+
+            # Step 2: Enable SUPERVISOR_ROUTER mode (but don't prepare yet!)
+            print(f"Enabling SUPERVISOR_ROUTER mode on {supervisor_id}")
             bedrock.update_agent(
                 agentId=supervisor_id,
                 agentName=agent_name,
@@ -595,19 +638,33 @@ def handler(event, context):
                 instruction=instruction,
                 agentCollaboration='SUPERVISOR_ROUTER'
             )
+            # Wait for update to complete
+            wait_for_agent_status(supervisor_id, ['NOT_PREPARED'])
 
-            # Associate collaborators
+            # Step 3: Associate collaborators
             for collab in collaborators:
+                alias_arn = collab['aliasArn']
+                parts = alias_arn.split('/')
+                collab_agent_id = parts[-2]
+                collab_alias_id = parts[-1]
+                
+                print(f"Checking alias {collab_alias_id} of agent {collab_agent_id}...")
+                if not wait_for_alias_ready(collab_agent_id, collab_alias_id):
+                    raise Exception(f"Alias {alias_arn} not ready")
+                
+                print(f"Associating: {collab['name']}")
                 bedrock.associate_agent_collaborator(
                     agentId=supervisor_id,
                     agentVersion='DRAFT',
-                    agentDescriptor={'aliasArn': collab['aliasArn']},
+                    agentDescriptor={'aliasArn': alias_arn},
                     collaboratorName=collab['name'],
                     collaborationInstruction=collab['instruction'],
                     relayConversationHistory=collab.get('relayHistory', 'DISABLED')
                 )
+                print(f"Associated {collab['name']}")
 
-            # Prepare the agent
+            # Step 4: NOW prepare the agent (has collaborators, so this should work)
+            print(f"Preparing agent {supervisor_id}")
             bedrock.prepare_agent(agentId=supervisor_id)
 
             cfnresponse.send(event, context, cfnresponse.SUCCESS, {})
@@ -617,10 +674,10 @@ def handler(event, context):
         print(f"Error: {str(e)}")
         cfnresponse.send(event, context, cfnresponse.FAILED, {'Error': str(e)})
 """),
-            timeout=Duration.minutes(5)
+            timeout=Duration.minutes(15)
         )
 
-        # Grant permissions - include both agent ARNs and alias ARNs
+        # Grant permissions
         collaborator_lambda.add_to_role_policy(
             iam.PolicyStatement(
                 effect=iam.Effect.ALLOW,
@@ -628,19 +685,13 @@ def handler(event, context):
                     "bedrock:UpdateAgent",
                     "bedrock:AssociateAgentCollaborator",
                     "bedrock:PrepareAgent",
-                    "bedrock:GetAgentAlias"
+                    "bedrock:GetAgentAlias",
+                    "bedrock:GetAgent"
                 ],
-                resources=[
-                    self.supervisor_agent.agent_arn,
-                    *[agent.agent_arn for agent in self.specialist_agents.values()],
-                    # Add alias ARNs - use wildcard for aliases under each agent
-                    f"{self.supervisor_agent.agent_arn}/alias/*",
-                    *[f"{agent.agent_arn}/alias/*" for agent in self.specialist_agents.values()]
-                ]
+                resources=["*"]
             )
         )
 
-        # Add iam:PassRole permission for the agent role
         collaborator_lambda.add_to_role_policy(
             iam.PolicyStatement(
                 effect=iam.Effect.ALLOW,
@@ -649,8 +700,8 @@ def handler(event, context):
             )
         )
 
-        # Create custom resource
-        CustomResource(
+        # Create custom resource with explicit dependencies on all aliases
+        cr = CustomResource(
             self, "CollaboratorAssociation",
             service_token=collaborator_lambda.function_arn,
             properties={
@@ -662,6 +713,10 @@ def handler(event, context):
                 'Collaborators': json.dumps(collaborator_data)
             }
         )
+        
+        # Add explicit dependencies on all specialist agent aliases
+        for alias in alias_resources:
+            cr.node.add_dependency(alias)
 
     def create_outputs(self):
         """Create stack outputs for Vista agents"""

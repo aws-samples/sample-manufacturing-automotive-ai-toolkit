@@ -1,0 +1,31 @@
+{
+  "agents": [
+    {
+      "id": "Vehicle_Data_Discovery",
+      "name": "Vehicle Data Discovery",
+      "version": "1.0.0",
+      "description": "Reduce data processing costs and accelerate time-tscenarios and edge cases without predefined rules.",
+      "type": "other",
+      "metadata": {
+        "authors": [
+          {
+            "name": "agweber",
+            "organization": "AWS"
+          },
+          {
+            "name": "pamrith",
+            "organization": "AWS"
+          }
+        ],
+        "created_date": "2025-12-22",
+        "last_updated": "2025-12-22",
+        "maturity": "development"
+      }
+    }
+  ],
+  "infrastructure": {
+    "cdk": true,
+    "stack_class": "TeslaFleetDiscoveryCdkStack",
+    "stack_path": "repo/tesla_fleet_discovery_cdk_stack.py"
+  }
+}

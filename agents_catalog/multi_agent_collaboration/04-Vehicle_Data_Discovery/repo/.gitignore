@@ -1,0 +1,200 @@
+# Tesla Fleet Discovery Platform - GitIgnore
+
+# ===========================================
+# SENSITIVE FILES - NEVER COMMIT
+# ===========================================
+
+# Environment Variables & Secrets
+*.env
+*.env.*
+.env.local
+
+# Local deployment files (keep local, don't push to GitLab)
+deploy_backfill_ec2_smart.sh
+EXECUTE_BACKFILL.md
+.env.production
+.env.development
+*credentials*
+*secret*
+*key.json
+*keys*
+*.pem
+*.p12
+*.pfx
+
+# AWS & Cloud Configuration
+aws-exports.js
+amplify-meta.json
+.aws/
+*.aws
+
+# ===========================================
+# BUILD ARTIFACTS & GENERATED FILES
+# ===========================================
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+share/python-wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+
+# Virtual Environments
+venv/
+env/
+ENV/
+env.bak/
+venv.bak/
+*-env/
+cdk-env/
+dashboard-api-env/
+demo-env/
+
+# CDK Build Outputs
+cdk.out/
+*.out/
+cloudfront-cdk-out/
+web-cdk.out/
+cdk-outputs.json
+cdk-outputs-*.json
+*.context.json
+
+# ===========================================
+# NEXT.JS & NODE.JS
+# ===========================================
+
+# Dependencies
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.pnpm-debug.log*
+
+# Next.js Build Output
+.next/
+out/
+.vercel
+.turbo
+
+# Package Managers
+package-lock.json
+yarn.lock
+pnpm-lock.yaml
+
+# ===========================================
+# DOCKER & CONTAINERS
+# ===========================================
+
+# Docker
+.dockerignore
+docker-compose.override.yml
+
+# ===========================================
+# PROCESSING DATA & OUTPUTS
+# ===========================================
+
+# Large Dataset Files
+*.bag
+*.rosbag
+*.mp4
+*.avi
+*.mov
+*.mkv
+*.png
+!"Fleet Discovery Platform - Architecture Diagram.png"
+*.jpg
+*.jpeg
+*.gif
+
+# Processing Outputs (Keep structure, ignore large files)
+output/*/phase2/*.mp4
+output/*/phase1/*.json
+temp_*/
+*.zip
+*.tar.gz
+
+# ===========================================
+# IDE & EDITOR FILES
+# ===========================================
+
+# VS Code
+.vscode/
+*.code-workspace
+
+# PyCharm
+.idea/
+
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+Icon
+._*
+.Spotlight-V100
+.Trashes
+
+# Windows
+Thumbs.db
+Thumbs.db:encryptable
+ehthumbs.db
+ehthumbs_vista.db
+Desktop.ini
+
+# ===========================================
+# LOGS & DEBUGGING
+# ===========================================
+
+# Logs
+*.log
+logs/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Testing
+coverage/
+*.cover
+.hypothesis/
+.pytest_cache/
+.coverage
+
+# ===========================================
+# TEMPORARY FILES
+# ===========================================
+
+# Temporary directories
+tmp/
+temp/
+.tmp/
+.temp/
+
+# Backup files
+*.bak
+*.backup
+*~
+*.orig
+
+# ===========================================
+# AGENT BUILDS (Deployment Artifacts)
+# ===========================================
+
+temp_agent_builds/
+temp_hil_build/
+*.bedrock_agentcore/
