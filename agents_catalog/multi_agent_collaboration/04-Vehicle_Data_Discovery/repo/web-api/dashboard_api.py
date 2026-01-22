@@ -19,6 +19,9 @@ from botocore.config import Config
 from botocore.exceptions import UnknownServiceError
 import threading
 
+# AWS region from environment (module-level for all functions)
+aws_region = os.environ.get('AWS_REGION', os.environ.get('AWS_DEFAULT_REGION', 'us-west-2'))
+
 # Helper functions for camera-specific ID processing (self-contained)
 def extract_scene_from_id(camera_id: str) -> str:
     """
@@ -511,7 +514,7 @@ def generate_embedding(text: str, engine_type: str) -> List[float]:
     try:
         # PATH A: Cohere (via Bedrock)
         if config["source"] == "bedrock":
-            bedrock = boto3.client('bedrock-runtime', region_name='us-west-2')
+            bedrock = boto3.client('bedrock-runtime', region_name=aws_region)
             response = bedrock.invoke_model(
                 modelId=config["embedding_model"],
                 contentType="application/json",
@@ -532,7 +535,7 @@ def generate_embedding(text: str, engine_type: str) -> List[float]:
                 logger.warning("Cosmos SageMaker endpoint not configured - skipping visual search")
                 return []
                 
-            sagemaker = boto3.client('sagemaker-runtime', region_name='us-west-2')
+            sagemaker = boto3.client('sagemaker-runtime', region_name=aws_region)
             # Cosmos-Embed1 Text Payload - must be array format
             response = sagemaker.invoke_endpoint(
                 EndpointName=endpoint_name,
@@ -754,7 +757,7 @@ def debug_s3_connectivity():
 
     # TEST 1: Who am I? (Verifies IAM Role)
     try:
-        sts = boto3.client('sts', region_name='us-west-2')
+        sts = boto3.client('sts', region_name=aws_region)
         identity = sts.get_caller_identity()
         results["1_identity"] = {
             "arn": identity.get("Arn"),
@@ -1193,7 +1196,7 @@ def get_scene_detail(scene_id: str):
         if USE_CLOUDFRONT_VIDEOS:
             # Generate presigned URL for S3 Transfer Acceleration endpoint
             s3_accelerate = boto3.client('s3',
-                region_name='us-west-2',
+                region_name=aws_region,
                 config=Config(s3={'use_accelerate_endpoint': True})
             )
             video_url = s3_accelerate.generate_presigned_url(
@@ -1217,7 +1220,7 @@ def get_scene_detail(scene_id: str):
                 if USE_CLOUDFRONT_VIDEOS:
                     # Generate presigned URL for S3 Transfer Acceleration endpoint
                     s3_accelerate = boto3.client('s3',
-                        region_name='us-west-2',
+                        region_name=aws_region,
                         config=Config(s3={'use_accelerate_endpoint': True})
                     )
                     cam_url = s3_accelerate.generate_presigned_url(
@@ -1533,7 +1536,7 @@ def get_scene_video(scene_id: str):
         if USE_CLOUDFRONT_VIDEOS:
             # Generate presigned URL for S3 Transfer Acceleration endpoint
             s3_accelerate = boto3.client('s3',
-                region_name='us-west-2',
+                region_name=aws_region,
                 config=Config(s3={'use_accelerate_endpoint': True})
             )
             video_url = s3_accelerate.generate_presigned_url(
@@ -1568,7 +1571,7 @@ def get_scene_thumbnail(scene_id: str):
         if USE_CLOUDFRONT_VIDEOS:
             # Generate presigned URL for S3 Transfer Acceleration endpoint
             s3_accelerate = boto3.client('s3',
-                region_name='us-west-2',
+                region_name=aws_region,
                 config=Config(s3={'use_accelerate_endpoint': True})
             )
             video_url = s3_accelerate.generate_presigned_url(
@@ -2010,7 +2013,7 @@ class UploadRequest(BaseModel):
     supported: bool
 
 @api_app.post("/upload/authorize")
-def authorize_upload(filename: str, file_type: str, data_format: Optional[str] = "tesla_ros", request: Request = None):
+def authorize_upload(filename: str, file_type: str, data_format: Optional[str] = "fleet_ros", request: Request = None):
     """
     Generates a Presigned URL so the frontend can upload directly to S3.
     Now supports multiple data formats with metadata tracking.
@@ -2032,8 +2035,8 @@ def authorize_upload(filename: str, file_type: str, data_format: Optional[str] =
                 pass  # Fallback to basic upload if JSON parsing fails
 
         # Store in format-specific folder structure for future extensibility
-        if data_format == "tesla_ros":
-            key = f"raw-data/tesla-pipeline/{filename}"  # Existing Tesla path
+        if data_format == "fleet_ros":
+            key = f"raw-data/fleet-pipeline/{filename}"  # Existing Fleet path
         else:
             # Future formats get their own folders
             key = f"raw-data/{data_format}/{filename}"
@@ -2114,16 +2117,19 @@ def get_pipeline_status():
                 return {"current_phase": None, "phase_number": None}
 
         executions = []
+        aws_region = os.environ.get('AWS_REGION', os.environ.get('AWS_DEFAULT_REGION', 'us-west-2'))
+        account_id = boto3.client('sts').get_caller_identity()['Account']
+        
         for exc in response.get('executions', []):
-            # Extract scene_id from execution name like "tesla-fleet-scene-0125-1764462224"
+            # Extract scene_id from execution name like "fleet-scene-0125-1764462224"
             scene_id = "Unknown"
-            if 'tesla-fleet-scene-' in exc['name']:
+            if 'fleet-scene-' in exc['name']:
                 parts = exc['name'].split('-')
                 if len(parts) >= 4:
                     scene_id = f"scene-{parts[3]}"
 
             # Get current phase for running executions
-            execution_arn = f"arn:aws:states:us-west-2:757513153970:execution:tesla-fleet-6phase-pipeline:{exc['name']}"
+            execution_arn = f"arn:aws:states:{aws_region}:{account_id}:execution:fleet-6phase-pipeline:{exc['name']}"
             phase_info = get_current_phase(execution_arn, exc['status'])
 
             executions.append({
@@ -2147,7 +2153,7 @@ def get_pipeline_status():
         return {
             "executions": [
                 {
-                    "execution_id": "tesla-fleet-scene-0125-1764462224",
+                    "execution_id": "fleet-scene-0125-1764462224",
                     "status": "SUCCEEDED",
                     "start_date": "2024-11-29T10:15:00Z",
                     "scene_id": "scene-0125",
@@ -4696,10 +4702,43 @@ app = FastAPI(lifespan=lifespan)
 # Mount the API app under "/api" - this strips "/api" from incoming requests
 app.mount("/api", api_app)
 
-# Health check on root app for App Runner
-@app.get("/")
-def health_check():
-    return {"status": "Fleet Discovery API Online", "version": "1.0.0"}
+# Serve static frontend if it exists
+import os
+from fastapi.staticfiles import StaticFiles
+from fastapi.responses import FileResponse
+
+static_dir = os.path.join(os.path.dirname(__file__), "static")
+if os.path.exists(static_dir):
+    app.mount("/static", StaticFiles(directory=static_dir), name="static")
+    
+    @app.get("/health")
+    def health_check():
+        return {"status": "healthy"}
+    
+    @app.get("/{path:path}")
+    async def serve_frontend(path: str):
+        # Try exact file match first
+        file_path = os.path.join(static_dir, path)
+        if os.path.isfile(file_path):
+            return FileResponse(file_path)
+        # Try with .html extension
+        html_path = os.path.join(static_dir, f"{path}.html")
+        if os.path.isfile(html_path):
+            return FileResponse(html_path)
+        # Fallback to index.html for SPA routing
+        index_path = os.path.join(static_dir, "index.html")
+        if os.path.isfile(index_path):
+            return FileResponse(index_path)
+        return {"error": "Not found"}, 404
+else:
+    # No frontend - API only mode
+    @app.get("/")
+    def root():
+        return {"status": "Fleet Discovery API Online", "version": "1.0.0"}
+
+    @app.get("/health")
+    def health_check():
+        return {"status": "healthy"}
 
 # AWS Lambda handler (uses the root app)
 handler = Mangum(app)

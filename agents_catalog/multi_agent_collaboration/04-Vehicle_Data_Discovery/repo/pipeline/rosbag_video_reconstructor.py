@@ -405,7 +405,7 @@ class ROSBagVideoReconstructor:
         print("=" * 50)
 
         # Create output directory
-        output_base = f"/tmp/tesla_scene_{scene_id}"
+        output_base = f"/tmp/fleet_scene_{scene_id}"
         os.makedirs(output_base, exist_ok=True)
 
         try:

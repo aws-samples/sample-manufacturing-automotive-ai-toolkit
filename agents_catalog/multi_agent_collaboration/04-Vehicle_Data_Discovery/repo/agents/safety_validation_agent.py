@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Tesla Safety Validation Agent - AgentCore Runtime Version
+Fleet Safety Validation Agent - AgentCore Runtime Version
 
 CHANGES FROM ECS VERSION:
 1. Uses BedrockAgentCoreApp instead of FastAPI
@@ -46,7 +46,7 @@ def initialize_anomaly_detection_agent():
     """Initialize the Strands agent for anomaly detection analysis"""
     global anomaly_detection_agent
 
-    system_prompt = """You are Tesla's expert Anomaly Detection Agent in the HIL (Hardware-in-the-Loop) multi-agent system, specifically designed to DISCOVER HIGH-VALUE EDGE CASES and unusual patterns that traditional rule-based systems miss. Your mission is to be SENSITIVE to detecting anomalies rather than proving scenes are normal.
+    system_prompt = """You are Fleet's expert Anomaly Detection Agent in the HIL (Hardware-in-the-Loop) multi-agent system, specifically designed to DISCOVER HIGH-VALUE EDGE CASES and unusual patterns that traditional rule-based systems miss. Your mission is to be SENSITIVE to detecting anomalies rather than proving scenes are normal.
 
 CRITICAL BUSINESS OBJECTIVE: The customer pays significant DTO costs for data transfer and wants to identify scenarios like "a pedestrian hesitating at a crosswalk in an unusual way" that doesn't trigger existing rules but represents potential edge cases for model training. Your job is to find reasons WHY scenes might be valuable, not to dismiss them as normal.
 

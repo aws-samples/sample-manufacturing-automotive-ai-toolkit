@@ -14,7 +14,7 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 logger.info("=" * 60)
-logger.info("Starting Tesla Fleet Discovery API")
+logger.info("Starting Fleet Discovery API")
 logger.info("=" * 60)
 
 try:

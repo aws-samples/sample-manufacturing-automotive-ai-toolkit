@@ -1,4 +1,4 @@
-# Tesla Fleet Pipeline - GPU (x86_64) Image
+# Fleet Pipeline - GPU (x86_64) Image
 # For Phase 3: InternVideo2.5 + Cosmos embeddings
 FROM nvidia/cuda:12.1.0-runtime-ubuntu22.04
 

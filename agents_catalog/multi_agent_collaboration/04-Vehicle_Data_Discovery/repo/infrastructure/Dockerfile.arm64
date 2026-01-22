@@ -1,4 +1,4 @@
-# Tesla Fleet Pipeline - ARM64 (Graviton) Image
+# Fleet Pipeline - ARM64 (Graviton) Image
 # For Phases 1, 2, 4-5, 6
 FROM public.ecr.aws/docker/library/python:3.11-slim
 

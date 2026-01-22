@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Tesla Fleet Discovery Studio - S3 Vectors Backfill Script
+Fleet Discovery Studio - S3 Vectors Backfill Script
 Populate S3 Vectors with 480 new scenes using trigger-based pipeline
 
 Key Features:
@@ -29,14 +29,15 @@ logger = logging.getLogger(__name__)
 
 class S3VectorsBackfillOrchestrator:
     def __init__(self):
-        self.s3_client = boto3.client('s3', region_name='us-west-2')
-        self.s3vectors_client = boto3.client('s3vectors', region_name='us-west-2')
-        self.stepfunctions_client = boto3.client('stepfunctions', region_name='us-west-2')
+        region = os.environ.get('AWS_REGION', os.environ.get('AWS_DEFAULT_REGION', 'us-west-2'))
+        self.s3_client = boto3.client('s3', region_name=region)
+        self.s3vectors_client = boto3.client('s3vectors', region_name=region)
+        self.stepfunctions_client = boto3.client('stepfunctions', region_name=region)
 
         # Configuration (UPDATED FOR COHERE/COSMOS ARCHITECTURE)
         self.s3_bucket = os.getenv('S3_BUCKET', '')
         self.ros_bag_prefix = "raw-data/ros-bags/nuscenes-oliver/compressed/"
-        self.trigger_location = "raw-data/tesla-pipeline/"
+        self.trigger_location = "raw-data/fleet-pipeline/"
         self.vector_bucket = os.getenv('VECTOR_BUCKET_NAME', '')
         self.state_machine_arn = os.getenv('STATE_MACHINE_ARN', '')
 
@@ -358,7 +359,7 @@ class S3VectorsBackfillOrchestrator:
     def process_single_scene(self, scene_id: str) -> bool:
         """
         Process single scene by copying ROS bag to trigger location
-        Uses your tesla-s3-trigger-us-west-2 Lambda → Step Functions pipeline
+        Uses your fleet-s3-trigger-us-west-2 Lambda → Step Functions pipeline
         """
         logger.info(f"START: Processing for {scene_id}")
 
@@ -367,7 +368,7 @@ class S3VectorsBackfillOrchestrator:
             scene_number = scene_id.replace('scene-', '').zfill(4)  # scene-1 → 0001
             source_key = f"{self.ros_bag_prefix}{scene_number}/compressed-NuScenes-v1.0-trainval-{scene_id}.bag"
 
-            # Target trigger location (activates tesla-s3-trigger-us-west-2 Lambda)
+            # Target trigger location (activates fleet-s3-trigger-us-west-2 Lambda)
             target_key = f"{self.trigger_location}compressed-NuScenes-v1.0-trainval-{scene_id}.bag"
 
             # Check if source ROS bag exists

@@ -1,0 +1,34 @@
+# Fleet Discovery - Combined API + Frontend
+# Build from repo root: docker build -f Dockerfile.webapp -t fleet-webapp .
+
+# Stage 1: Build Next.js frontend
+FROM node:20-slim AS frontend
+WORKDIR /frontend
+COPY frontend/fleet-discovery-studio/package*.json ./
+RUN npm ci
+COPY frontend/fleet-discovery-studio/ ./
+ENV NEXT_PUBLIC_API_URL=/api
+RUN npm run build
+
+# Stage 2: Python API + static files
+FROM python:3.9-slim
+ENV PYTHONUNBUFFERED=1
+
+RUN apt-get update && apt-get install -y \
+    build-essential gcc g++ python3-dev \
+    && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /app
+
+# Install Python dependencies
+COPY web-api/requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
+
+# Copy API code
+COPY web-api/*.py ./
+
+# Copy built frontend
+COPY --from=frontend /frontend/out ./static
+
+EXPOSE 8000
+CMD ["uvicorn", "dashboard_api:app", "--host", "0.0.0.0", "--port", "8000"]

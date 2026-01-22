@@ -74,20 +74,13 @@ sfn_client = boto3.client('stepfunctions')
 bedrock_agentcore_client = boto3.client('bedrock-agentcore')
 bedrock_runtime_client = boto3.client('bedrock-runtime')  # For business objective interpretation
 
-# Global AgentCore Runtime ARNs (replacing HTTP endpoints)
-# 3-Agent HIL-Focused Architecture - "Body Snatching" existing infrastructure
-# Mapping existing ARNs to new logical agent roles for HIL cost optimization
+# Global AgentCore Runtime ARNs - loaded from environment variables
+# 3-Agent HIL-Focused Architecture
+# Set these via SSM parameters or environment variables during deployment
 AGENT_RUNTIME_ARNS = {
-    # 1. Scene Understanding Agent (formerly Behavioral Gap Analysis) - UPDATED DEPLOYED VERSION
-    "scene_understanding": "arn:aws:bedrock-agentcore:us-west-2:757513153970:runtime/behavioral_gap_analysis_agent-k0RUD0DWaw",
-
-    # 2. Anomaly Detection Agent (formerly Safety Validation) - UPDATED DEPLOYED VERSION
-    "anomaly_detection": "arn:aws:bedrock-agentcore:us-west-2:757513153970:runtime/safety_validation_agent-78fqtDCeQ2",
-
-    # 3. Similarity Search Agent (formerly Intelligence Gathering) - UPDATED DEPLOYED VERSION
-    "similarity_search": "arn:aws:bedrock-agentcore:us-west-2:757513153970:runtime/intelligence_gathering_agent-UX77aUGW5H"
-
-    # Fleet Optimization Agent: REMOVED (functionality distributed to other agents)
+    "scene_understanding": os.environ.get("SCENE_UNDERSTANDING_AGENT_ARN", ""),
+    "anomaly_detection": os.environ.get("ANOMALY_DETECTION_AGENT_ARN", ""),
+    "similarity_search": os.environ.get("SIMILARITY_SEARCH_AGENT_ARN", "")
 }
 
 # Structured Output Schemas for Quality Assurance
@@ -377,7 +370,7 @@ async def orchestrate_coordinator_workers_aggregator_async(
     Coordinator → Scene Understanding → Anomaly Detection → Similarity Search
     """
     # Generate session ID inside the function
-    session_id = f"tesla-fleet-{scene_id}-{uuid.uuid4().hex}"
+    session_id = f"fleet-{scene_id}-{uuid.uuid4().hex}"
     logger.info(f" Generated Session ID: {session_id} (length: {len(session_id)})")
 
     logger.info(f"Building sequential HIL agent graph for scene: {scene_id}")
@@ -1661,7 +1654,7 @@ class MicroserviceWorkerNode(MultiAgentBase):
 
     def _validate_and_sanitize_output(self, result: dict, scene_id: str) -> dict:
         """
-        Anti-hallucination validation: Prevent fabricated Tesla URLs and ensure scene-specific content
+        Anti-hallucination validation: Prevent fabricated Fleet URLs and ensure scene-specific content
         """
         validation_issues = []
         sanitized_result = result.copy()
@@ -1677,15 +1670,15 @@ class MicroserviceWorkerNode(MultiAgentBase):
             corporate_tool_pattern = r'https?://[a-zA-Z0-9-]+\.(jira|confluence|wiki|internal)\.[a-zA-Z0-9.-]+/?[^\s]*'
             corporate_matches = re.findall(corporate_tool_pattern, text, re.IGNORECASE)
 
-            # Pattern 2: Tesla-specific internal domains (tesla.eng, tesla-internal, etc.)
-            tesla_internal_pattern = r'https?://[a-zA-Z0-9-]*(?:tesla\.eng|tesla-internal|teslafleet|corp-internal|company-internal)[a-zA-Z0-9.-]*/?[^\s]*'
-            tesla_matches = re.findall(tesla_internal_pattern, text, re.IGNORECASE)
+            # Pattern 2: Fleet-specific internal domains (corp.eng, fleet-internal, etc.)
+            fleet_internal_pattern = r'https?://[a-zA-Z0-9-]*(?:fleet\.eng|fleet-internal|fleet|corp-internal|company-internal)[a-zA-Z0-9.-]*/?[^\s]*'
+            internal_matches = re.findall(fleet_internal_pattern, text, re.IGNORECASE)
 
             # Pattern 3: Corporate-style naming URLs (broader pattern)
             corporate_naming_pattern = r'https?://[a-zA-Z0-9]*(?:corp|internal|eng|dev|staging)[a-zA-Z0-9]*\.[a-zA-Z0-9.-]+/?[^\s]*'
             naming_matches = re.findall(corporate_naming_pattern, text, re.IGNORECASE)
 
-            # Pattern 4: Ticket reference patterns - Enhanced to catch Tesla-style tickets
+            # Pattern 4: Ticket reference patterns - Enhanced to catch Fleet-style tickets
             # Matches: JIRA-1234, KI-1234, QA-123, PROJ-COMP-123 (but exclude legitimate standards)
             ticket_pattern = r'\b(?!FMVSS|ISO|UN-ECE)(?:JIRA|KI|QA|[A-Z]{2,4})-(?:[A-Z0-9]+-)*\d+\b'
             ticket_matches = re.findall(ticket_pattern, text)
@@ -1696,13 +1689,13 @@ class MicroserviceWorkerNode(MultiAgentBase):
             doc_matches = re.findall(fake_doc_pattern, text, re.IGNORECASE)
 
             # FIX: Only report actual suspicious patterns, not false positives
-            total_suspicious_patterns = len(corporate_matches) + len(tesla_matches) + len(naming_matches) + len(ticket_matches) + len(doc_matches)
+            total_suspicious_patterns = len(corporate_matches) + len(internal_matches) + len(naming_matches) + len(ticket_matches) + len(doc_matches)
             if total_suspicious_patterns > 0:
                 # Create one entry per actual pattern type found
                 if corporate_matches:
                     issues.append(f"Detected {len(corporate_matches)} suspicious corporate tool URLs")
-                if tesla_matches:
-                    issues.append(f"Detected {len(tesla_matches)} suspicious Tesla internal URLs")
+                if internal_matches:
+                    issues.append(f"Detected {len(internal_matches)} suspicious Fleet internal URLs")
                 if naming_matches:
                     issues.append(f"Detected {len(naming_matches)} suspicious corporate naming URLs")
                 if ticket_matches:
@@ -1727,15 +1720,15 @@ class MicroserviceWorkerNode(MultiAgentBase):
                 text_content = re.sub(r'https?://[a-zA-Z0-9-]+\.(jira|confluence|wiki|internal)\.[a-zA-Z0-9.-]+/?[^\s]*',
                                     "[SUSPICIOUS_CORPORATE_URL_REMOVED]", text_content, flags=re.IGNORECASE)
 
-                # Replace Tesla-specific internal URLs
-                text_content = re.sub(r'https?://[a-zA-Z0-9-]*(?:tesla\.eng|tesla-internal|teslafleet|corp-internal|company-internal)[a-zA-Z0-9.-]*/?[^\s]*',
-                                    "[SUSPICIOUS_TESLA_URL_REMOVED]", text_content, flags=re.IGNORECASE)
+                # Replace Fleet-specific internal URLs
+                text_content = re.sub(r'https?://[a-zA-Z0-9-]*(?:fleet\.eng|fleet-internal|fleet|corp-internal|company-internal)[a-zA-Z0-9.-]*/?[^\s]*',
+                                    "[SUSPICIOUS_INTERNAL_URL_REMOVED]", text_content, flags=re.IGNORECASE)
 
                 # Replace corporate naming URLs
                 text_content = re.sub(r'https?://[a-zA-Z0-9]*(?:corp|internal|eng|dev|staging)[a-zA-Z0-9]*\.[a-zA-Z0-9.-]+/?[^\s]*',
                                     "[SUSPICIOUS_INTERNAL_URL_REMOVED]", text_content, flags=re.IGNORECASE)
 
-                # Replace Tesla-style ticket references (JIRA-1234, KI-1234, QA-123, etc.)
+                # Replace Fleet-style ticket references (JIRA-1234, KI-1234, QA-123, etc.)
                 text_content = re.sub(r'\b(?!FMVSS|ISO|UN-ECE)(?:JIRA|KI|QA|[A-Z]{2,4})-(?:[A-Z0-9]+-)*\d+\b',
                                     "[SUSPICIOUS_TICKET_ID_REMOVED]", text_content)
 
@@ -1983,7 +1976,7 @@ COLLABORATION ROLE: Cross-scene pattern matcher for {scene_id}
             logger.info(f" Invoking AgentCore runtime: {self.agent_arn}")
 
             # Get session_id from invocation_state (shared state)
-            session_id = invocation_state.get('session_id', f"tesla-{uuid.uuid4().hex}")
+            session_id = invocation_state.get('session_id', f"fleet-{uuid.uuid4().hex}")
 
             # Option A (SDK Integration) expects direct payload, NO "input" wrapper
             # Our agents use @app.entrypoint (Option A) → expects direct payload access
@@ -2419,7 +2412,7 @@ COLLABORATION ROLE: Cross-scene pattern matcher for {scene_id}
             "workflow_params": invocation_state.get("workflow_params", {}) if invocation_state else {},  #  Add business objective context
 
             # Provides Intelligence Agent with believable metadata
-            # to prevent "Unknown" outputs. Based on NuScenes dataset characteristics, not fabricated Tesla data.
+            # to prevent "Unknown" outputs. Based on NuScenes dataset characteristics, not fabricated Fleet data.
             "fleet_context": synthetic_fleet_context,
 
             # ENHANCED: Clear metrics presentation for agent consumption
@@ -2444,7 +2437,7 @@ COLLABORATION ROLE: Cross-scene pattern matcher for {scene_id}
 
 3. EVIDENCE-BASED ANALYSIS: Base all insights on the actual quantified data provided, not generic knowledge.
 
-4. NO FABRICATION: Do NOT create Tesla internal URLs, tickets, or unverified references.
+4. NO FABRICATION: Do NOT create Fleet internal URLs, tickets, or unverified references.
 
 5. PRESERVE PROVIDED METADATA: Use the exact fleet_context metadata as provided. DO NOT override or change software_version, vehicle_model, or other context fields. If provided with "Research Dataset v1.0", use it exactly - do NOT substitute with fabricated firmware versions like "2025.42.6".
 
@@ -2580,7 +2573,7 @@ COLLABORATION ROLE: Cross-scene pattern matcher for {scene_id}
             },
 
             # Provides Intelligence Agent with believable metadata
-            # to prevent "Unknown" outputs. Based on NuScenes dataset characteristics, not fabricated Tesla data.
+            # to prevent "Unknown" outputs. Based on NuScenes dataset characteristics, not fabricated Fleet data.
             "fleet_context": synthetic_fleet_context,
 
             "timestamp": datetime.utcnow().isoformat()
@@ -2744,7 +2737,7 @@ COLLABORATION ROLE: Cross-scene pattern matcher for {scene_id}
 
 7. CRITICAL COMPLIANCE RULES - ZERO TOLERANCE:
 
-   a) DO NOT INVENT METADATA: Use the provided fleet_context EXACTLY. If provided "Research Dataset v1.0", output "Research Dataset v1.0". Do NOT "correct" it to a real Tesla version like "2025.42.6".
+   a) DO NOT INVENT METADATA: Use the provided fleet_context EXACTLY. If provided "Research Dataset v1.0", output "Research Dataset v1.0". Do NOT "correct" it to a real Fleet version like "2025.42.6".
 
    b) NO FAKE STATISTICS: You do not have access to live fleet statistics. For any statistical query (e.g., "% of miles", "prevalence", "percentage of fleet data"), output "Data unavailable". DO NOT estimate or invent percentages like "28%", "15%", or "22%".
 
@@ -2799,7 +2792,7 @@ COLLABORATION ROLE: Cross-scene pattern matcher for {scene_id}
         believable metadata that matches the actual data source (NuScenes dataset).
 
         ANTI-FABRICATION: All values are based on publicly known NuScenes characteristics,
-        not invented Tesla-specific internal data.
+        not invented Fleet-specific internal data.
         """
         # Extract scene number for context generation
         scene_number = scene_id.replace('scene-', '') if scene_id.startswith('scene-') else '0000'
@@ -3091,7 +3084,7 @@ COLLABORATION ROLE: Cross-scene pattern matcher for {scene_id}
         if primary_camera_id in per_camera_embeddings:
             cosmos_embedding = per_camera_embeddings[primary_camera_id].get("embedding")
         else:
-            # Fallback: use any available camera embedding (Tesla priority order)
+            # Fallback: use any available camera embedding (Fleet priority order)
             camera_priority = ["CAM_FRONT_LEFT", "CAM_FRONT_RIGHT", "CAM_BACK", "CAM_BACK_LEFT", "CAM_BACK_RIGHT"]
             for camera in camera_priority:
                 fallback_camera_id = f"{scene_id}_{camera}"
@@ -3431,7 +3424,7 @@ async def query_cosmos_video_similarity_for_scene(phase3_data: dict, scene_id: s
     if primary_camera_id in per_camera_embeddings:
         cosmos_embedding = per_camera_embeddings[primary_camera_id].get("embedding")
     else:
-        # Fallback: use any available camera embedding (Tesla priority order)
+        # Fallback: use any available camera embedding (Fleet priority order)
         camera_priority = ["CAM_FRONT_LEFT", "CAM_FRONT_RIGHT", "CAM_BACK", "CAM_BACK_LEFT", "CAM_BACK_RIGHT"]
         for camera in camera_priority:
             fallback_camera_id = f"{scene_id}_{camera}"

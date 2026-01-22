@@ -45,9 +45,10 @@ except ImportError as e:
     logger.warning(f"Cosmos-Embed1 dependencies not available: {e}")
 
 # Global AWS clients for performance
+_aws_region = os.environ.get('AWS_REGION', os.environ.get('AWS_DEFAULT_REGION', 'us-west-2'))
 s3_client = boto3.client('s3')
 sfn_client = boto3.client('stepfunctions')
-bedrock_client = boto3.client('bedrock-runtime', region_name='us-west-2')
+bedrock_client = boto3.client('bedrock-runtime', region_name=_aws_region)
 
 # Global Cosmos-Embed1 model (loaded after InternVideo2.5 unloaded for memory management)
 COSMOS_MODEL = None
@@ -288,13 +289,13 @@ def cosmos_embed_video(video_path: str) -> Optional[torch.Tensor]:
 
 def get_primary_camera_uri(video_s3_uris: List[str]) -> Optional[str]:
     """
-    Get primary camera URI with Tesla camera prioritization (CAM_FRONT preferred).
+    Get primary camera URI with Fleet camera prioritization (CAM_FRONT preferred).
     Handles exact matching to avoid 'CAM_FRONT' matching 'CAM_FRONT_LEFT'.
     """
     if not video_s3_uris:
         return None
 
-    # Tesla camera priority: Front center is most important for scene embeddings
+    # Fleet camera priority: Front center is most important for scene embeddings
     camera_priority = [
         "CAM_FRONT",
         "CAM_FRONT_LEFT", "CAM_FRONT_RIGHT",
@@ -310,7 +311,7 @@ def get_primary_camera_uri(video_s3_uris: List[str]) -> Optional[str]:
                 return uri
 
     # Fallback: use first available if no standard names found
-    logger.warning(f"No standard Tesla camera names found in {len(video_s3_uris)} videos, using first available")
+    logger.warning(f"No standard Fleet camera names found in {len(video_s3_uris)} videos, using first available")
     return video_s3_uris[0]
 
 def extract_camera_name_from_uri(uri: str) -> str:
@@ -820,7 +821,7 @@ def extract_quantified_metrics_from_scene_description(scene_description: str) ->
     try:
         # Smart LLM Prompt - Ask for evidence-grounded metrics extraction AND business intelligence
         metrics_extraction_prompt = f"""
-        You are a Tesla behavioral analysis expert. Extract quantified driving metrics AND structured business intelligence from this multi-camera scene description.
+        You are a Fleet behavioral analysis expert. Extract quantified driving metrics AND structured business intelligence from this multi-camera scene description.
 
         SCENE DESCRIPTION:
         {scene_description}

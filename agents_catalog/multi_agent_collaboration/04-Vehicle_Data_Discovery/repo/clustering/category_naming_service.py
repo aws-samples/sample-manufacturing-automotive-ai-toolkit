@@ -23,7 +23,8 @@ class CategoryNamingService:
     def __init__(self, bedrock_client=None):
         """Initialize with optional Bedrock client (allows dependency injection)"""
         try:
-            self.bedrock_client = bedrock_client or boto3.client('bedrock-runtime', region_name='us-west-2')
+            region = os.environ.get('AWS_REGION', os.environ.get('AWS_DEFAULT_REGION', 'us-west-2'))
+            self.bedrock_client = bedrock_client or boto3.client('bedrock-runtime', region_name=region)
             self.bedrock_available = True
         except Exception as e:
             logger.error(f"Failed to initialize Bedrock client: {str(e)}")

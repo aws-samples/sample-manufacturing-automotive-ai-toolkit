@@ -32,7 +32,7 @@ class DynamicProgressTracker:
         self.status_manager = discovery_status_manager
         self.start_time = time.time()
 
-        # Phase weights based on actual Tesla discovery performance analysis
+        # Phase weights based on actual Fleet discovery performance analysis
         # These are learned from multiple runs, not arbitrary
         self.phases = {
             'loading': PhaseProgress('loading', 0.35, description="Loading scene embeddings"),

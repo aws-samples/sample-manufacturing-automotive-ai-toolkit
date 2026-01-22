@@ -262,8 +262,8 @@ def process_camera_message(topic: str, msg, timestamp) -> Dict[str, Any]:
             "format": getattr(msg, 'format', 'jpeg'),
             "data_size": getattr(msg, 'data_size', 0),
             "encoding": "compressed",
-            "width": 1600,  # Default Tesla camera resolution
-            "height": 900   # Default Tesla camera resolution
+            "width": 1600,  # Default Fleet camera resolution
+            "height": 900   # Default Fleet camera resolution
         }
     else:
         # Regular image message - extract standard attributes

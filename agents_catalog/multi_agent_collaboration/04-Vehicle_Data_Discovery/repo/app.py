@@ -1,18 +1,20 @@
 #!/usr/bin/env python3
 import os
 import aws_cdk as cdk
-from tesla_fleet_discovery_cdk_stack import TeslaFleetDiscoveryCdkStack
+from aws_cdk import Stack
+from fleet_discovery_cdk_stack import FleetDiscoveryCdkStack
+
+class StandaloneFleetDiscoveryStack(Stack):
+    """Wrapper stack for standalone deployment of Fleet Discovery"""
+    def __init__(self, scope, construct_id, **kwargs):
+        super().__init__(scope, construct_id, **kwargs)
+        FleetDiscoveryCdkStack(self, "FleetDiscovery", shared_resources={})
 
 app = cdk.App()
-
-# --- Tesla Fleet Discovery Stack ---
-# When run standalone, uses CDK_DEFAULT_ACCOUNT/REGION from environment
-# When deployed via main stack, runs as a NestedStack
-TeslaFleetDiscoveryCdkStack(app, "TeslaFleetDiscoveryStack",
+StandaloneFleetDiscoveryStack(app, "FleetDiscoveryStack",
     env=cdk.Environment(
         account=os.getenv('CDK_DEFAULT_ACCOUNT'),
         region=os.getenv('CDK_DEFAULT_REGION', 'us-west-2')
     ),
 )
-
 app.synth()

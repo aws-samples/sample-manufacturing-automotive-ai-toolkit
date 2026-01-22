@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Tesla Fleet Discovery Studio - S3 Vectors Dual Index Creation
+Fleet Discovery Studio - S3 Vectors Dual Index Creation
 Creates the two new indices required for Cosmos + Cohere architecture:
 1. video-similarity-index (Cosmos 768-dim)
 2. behavioral-metadata-index (Cohere 1536-dim)
@@ -11,6 +11,7 @@ Follows the same direct API pattern as the S3 Vectors multi-index architecture.
 import boto3
 import time
 import logging
+import os
 from typing import Dict, Any
 
 # Configure logging
@@ -19,7 +20,8 @@ logger = logging.getLogger(__name__)
 
 class S3VectorsDualIndexCreator:
     def __init__(self):
-        self.s3vectors_client = boto3.client('s3vectors', region_name='us-west-2')
+        region = os.environ.get('AWS_REGION', os.environ.get('AWS_DEFAULT_REGION', 'us-west-2'))
+        self.s3vectors_client = boto3.client('s3vectors', region_name=region)
         self.vector_bucket = os.getenv('VECTOR_BUCKET_NAME', '')
 
         # New index configurations

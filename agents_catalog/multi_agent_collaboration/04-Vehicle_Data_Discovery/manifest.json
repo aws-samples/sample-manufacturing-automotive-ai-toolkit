@@ -1,31 +1,46 @@
 {
+  "group": ["Vehicle Data Discovery"],
   "agents": [
     {
-      "id": "Vehicle_Data_Discovery",
-      "name": "Vehicle Data Discovery",
+      "id": "intelligence_gathering_agent",
+      "name": "Fleet Discovery - Intelligence Gathering",
       "version": "1.0.0",
-      "description": "Reduce data processing costs and accelerate time-tscenarios and edge cases without predefined rules.",
-      "type": "other",
+      "description": "Multi-agent HIL system for vehicle fleet data discovery using S3 Vectors similarity search.",
+      "type": "agentcore",
+      "role": "supervisor",
+      "entrypoint": "repo/agents/intelligence_gathering_agent.py",
       "metadata": {
         "authors": [
-          {
-            "name": "agweber",
-            "organization": "AWS"
-          },
-          {
-            "name": "pamrith",
-            "organization": "AWS"
-          }
+          {"name": "agweber", "organization": "AWS"},
+          {"name": "pamrith", "organization": "AWS"}
         ],
         "created_date": "2025-12-22",
-        "last_updated": "2025-12-22",
+        "last_updated": "2025-01-22",
         "maturity": "development"
       }
+    },
+    {
+      "id": "safety_validation_agent",
+      "name": "Fleet Discovery - Safety Validation",
+      "version": "1.0.0",
+      "description": "Validates safety patterns and anomaly detection in fleet driving scenarios.",
+      "type": "agentcore",
+      "role": "specialist",
+      "entrypoint": "repo/agents/safety_validation_agent.py"
+    },
+    {
+      "id": "behavioral_gap_analysis_agent",
+      "name": "Fleet Discovery - Behavioral Analysis",
+      "version": "1.0.0",
+      "description": "Analyzes behavioral gaps and scene understanding for HIL testing optimization.",
+      "type": "agentcore",
+      "role": "specialist",
+      "entrypoint": "repo/agents/behavioral_gap_analysis_agent.py"
     }
   ],
   "infrastructure": {
     "cdk": true,
-    "stack_class": "TeslaFleetDiscoveryCdkStack",
-    "stack_path": "repo/tesla_fleet_discovery_cdk_stack.py"
+    "stack_class": "FleetDiscoveryCdkStack",
+    "stack_path": "repo/fleet_discovery_cdk_stack.py"
   }
 }

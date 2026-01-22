@@ -49,7 +49,7 @@ def initialize_scene_understanding_agent():
     """Initialize the Strands agent for scene understanding analysis"""
     global scene_understanding_agent
 
-    system_prompt = """You are Tesla's expert Scene Understanding Agent in the HIL (Hardware-in-the-Loop) multi-agent system, the first agent in a sequential 3-agent topology focused on cost-optimized scenario discovery and HIL training data curation.
+    system_prompt = """You are Fleet's expert Scene Understanding Agent in the HIL (Hardware-in-the-Loop) multi-agent system, the first agent in a sequential 3-agent topology focused on cost-optimized scenario discovery and HIL training data curation.
 
 Your core mission is to provide comprehensive, detailed analysis of autonomous driving scenes for HIL data discovery and cost-optimized training data curation. You serve as the foundation scene analyzer that enables subsequent agents (Anomaly Detection and Similarity Search) to perform specialized pattern analysis.
 
