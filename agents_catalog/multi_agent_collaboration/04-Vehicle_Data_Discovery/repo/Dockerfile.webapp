@@ -5,7 +5,7 @@
 FROM node:20-slim AS frontend
 WORKDIR /frontend
 COPY frontend/fleet-discovery-studio/package*.json ./
-RUN npm ci
+RUN npm install
 COPY frontend/fleet-discovery-studio/ ./
 ENV NEXT_PUBLIC_API_URL=/api
 RUN npm run build

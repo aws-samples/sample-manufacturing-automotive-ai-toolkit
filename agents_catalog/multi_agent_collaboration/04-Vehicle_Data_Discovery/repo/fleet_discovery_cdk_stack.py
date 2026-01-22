@@ -1252,7 +1252,7 @@ def lambda_handler(event, context):
                 }
             }),
             environment_variables={"ECR_REPO_URI": codebuild.BuildEnvironmentVariable(value=self.ecr_repo.repository_uri)},
-            timeout=Duration.minutes(60),
+            timeout=Duration.minutes(15),
         )
         self.arm64_build_project.node.add_dependency(source_deployment)
 
@@ -1280,7 +1280,7 @@ def lambda_handler(event, context):
                 }
             }),
             environment_variables={"ECR_REPO_URI": codebuild.BuildEnvironmentVariable(value=self.ecr_repo.repository_uri)},
-            timeout=Duration.minutes(60),
+            timeout=Duration.minutes(15),
         )
         self.gpu_build_project.node.add_dependency(source_deployment)
 
@@ -1353,7 +1353,7 @@ def handler(event, context):
                 time.sleep(30)
     return {"PhysicalResourceId": event.get("PhysicalResourceId", "build-trigger")}
 '''),
-            timeout=Duration.minutes(60),
+            timeout=Duration.minutes(15),
         )
         trigger_fn.add_to_role_policy(iam.PolicyStatement(
             actions=["codebuild:StartBuild", "codebuild:BatchGetBuilds"],
