@@ -1360,7 +1360,8 @@ def handler(event, context):
             resources=[self.arm64_build_project.project_arn, self.gpu_build_project.project_arn, self.webapi_build_project.project_arn]
         ))
 
-        # Custom resource provider and trigger
+        # Custom resource provider and trigger - only build webapp for initial deploy
+        # ARM64 and GPU builds can be triggered manually later for pipeline use
         provider = cr.Provider(self, "FleetBuildProvider", on_event_handler=trigger_fn)
         build_trigger = CustomResource(
             self, "FleetBuildTriggerResource",

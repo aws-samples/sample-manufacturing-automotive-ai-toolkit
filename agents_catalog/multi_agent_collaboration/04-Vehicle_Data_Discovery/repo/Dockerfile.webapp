@@ -2,7 +2,7 @@
 # Build from repo root: docker build -f Dockerfile.webapp -t fleet-webapp .
 
 # Stage 1: Build Next.js frontend
-FROM node:20-slim AS frontend
+FROM public.ecr.aws/docker/library/node:20-slim AS frontend
 WORKDIR /frontend
 COPY frontend/fleet-discovery-studio/package*.json ./
 RUN npm install
@@ -11,7 +11,7 @@ ENV NEXT_PUBLIC_API_URL=/api
 RUN npm run build
 
 # Stage 2: Python API + static files
-FROM python:3.9-slim
+FROM public.ecr.aws/docker/library/python:3.9-slim
 ENV PYTHONUNBUFFERED=1
 
 RUN apt-get update && apt-get install -y \

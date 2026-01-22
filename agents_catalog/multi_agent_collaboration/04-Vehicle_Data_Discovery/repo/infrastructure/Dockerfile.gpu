@@ -1,21 +1,20 @@
 # Fleet Pipeline - GPU (x86_64) Image
 # For Phase 3: InternVideo2.5 + Cosmos embeddings
-FROM public.ecr.aws/nvidia/cuda:12.1.0-runtime-ubuntu22.04
+FROM public.ecr.aws/docker/library/python:3.11-slim
 
 ENV DEBIAN_FRONTEND=noninteractive
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    python3.11 python3-pip python3.11-dev ffmpeg libsm6 libxext6 git curl && \
-    ln -sf /usr/bin/python3.11 /usr/bin/python3 && \
+    ffmpeg libsm6 libxext6 git curl && \
     rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
 RUN pip install --no-cache-dir --upgrade pip && \
     pip install --no-cache-dir \
-    torch torchvision --index-url https://download.pytorch.org/whl/cu121 && \
+    torch torchvision --index-url https://download.pytorch.org/whl/cpu && \
     pip install --no-cache-dir \
     transformers==4.40.1 accelerate timm opencv-python-headless \
     sentence-transformers pillow numpy einops decord boto3 botocore \
-    sentencepiece protobuf requests bitsandbytes
+    sentencepiece protobuf requests
 
 COPY pipeline/*.py /app/
 
