@@ -6,7 +6,8 @@ import ast
 import logging
 from contextlib import asynccontextmanager
 from fastapi import FastAPI, HTTPException, Request, Response
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, FileResponse
+from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from typing import List, Optional
@@ -4703,10 +4704,6 @@ app = FastAPI(lifespan=lifespan)
 app.mount("/api", api_app)
 
 # Serve static frontend if it exists
-import os
-from fastapi.staticfiles import StaticFiles
-from fastapi.responses import FileResponse
-
 static_dir = os.path.join(os.path.dirname(__file__), "static")
 if os.path.exists(static_dir):
     app.mount("/static", StaticFiles(directory=static_dir), name="static")
