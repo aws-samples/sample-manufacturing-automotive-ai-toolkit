@@ -4703,39 +4703,23 @@ app = FastAPI(lifespan=lifespan)
 # Mount the API app under "/api" - this strips "/api" from incoming requests
 app.mount("/api", api_app)
 
-# Serve static frontend if it exists
-static_dir = os.path.join(os.path.dirname(__file__), "static")
-if os.path.exists(static_dir):
-    app.mount("/static", StaticFiles(directory=static_dir), name="static")
+@app.get("/health")
+def health_check():
+    return {"status": "healthy"}
+
+# Serve static frontend if available
+import pathlib
+static_dir = pathlib.Path(__file__).parent / "static"
+if static_dir.exists():
+    @app.get("/")
+    def serve_index():
+        return FileResponse(static_dir / "index.html")
     
-    @app.get("/health")
-    def health_check():
-        return {"status": "healthy"}
-    
-    @app.get("/{path:path}")
-    async def serve_frontend(path: str):
-        # Try exact file match first
-        file_path = os.path.join(static_dir, path)
-        if os.path.isfile(file_path):
-            return FileResponse(file_path)
-        # Try with .html extension
-        html_path = os.path.join(static_dir, f"{path}.html")
-        if os.path.isfile(html_path):
-            return FileResponse(html_path)
-        # Fallback to index.html for SPA routing
-        index_path = os.path.join(static_dir, "index.html")
-        if os.path.isfile(index_path):
-            return FileResponse(index_path)
-        return {"error": "Not found"}, 404
+    app.mount("/", StaticFiles(directory=str(static_dir), html=True), name="static")
 else:
-    # No frontend - API only mode
     @app.get("/")
     def root():
         return {"status": "Fleet Discovery API Online", "version": "1.0.0"}
-
-    @app.get("/health")
-    def health_check():
-        return {"status": "healthy"}
 
 # AWS Lambda handler (uses the root app)
 handler = Mangum(app)

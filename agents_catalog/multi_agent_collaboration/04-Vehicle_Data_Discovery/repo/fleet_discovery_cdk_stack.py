@@ -62,8 +62,8 @@ class FleetDiscoveryCdkStack(NestedStack):
         self.vpc = ec2.Vpc(
             self, "FleetDiscoveryVPC",
             vpc_name="fleet-discovery-vpc",
-            max_azs=3,
-            cidr="10.0.0.0/16",
+            availability_zones=["us-west-2c", "us-west-2d"],
+            ip_addresses=ec2.IpAddresses.cidr("10.0.0.0/16"),
             nat_gateways=1,
             subnet_configuration=[
                 ec2.SubnetConfiguration(
@@ -154,7 +154,6 @@ class FleetDiscoveryCdkStack(NestedStack):
         self.gpu_launch_template = ec2.LaunchTemplate(
             self, "FleetGPULaunchTemplate",
             launch_template_name=f"fleet-gpu-lt-{unique_id}",
-            instance_type=ec2.InstanceType("g5.4xlarge"),
             machine_image=ecs.EcsOptimizedImage.amazon_linux2(
                 hardware_type=ecs.AmiHardwareType.GPU
             ),
@@ -172,7 +171,7 @@ class FleetDiscoveryCdkStack(NestedStack):
             ]
         )
 
-        # GPU AUTO SCALING GROUP with notifications
+        # GPU AUTO SCALING GROUP with mixed instance types for better availability
         self.gpu_auto_scaling_group = autoscaling.AutoScalingGroup(
             self, "FleetGPUASG",
             auto_scaling_group_name=f"fleet-gpu-asg-{unique_id}",
@@ -180,13 +179,23 @@ class FleetDiscoveryCdkStack(NestedStack):
             vpc_subnets=ec2.SubnetSelection(
                 subnet_type=ec2.SubnetType.PRIVATE_WITH_EGRESS
             ),
-            launch_template=self.gpu_launch_template,
+            mixed_instances_policy=autoscaling.MixedInstancesPolicy(
+                launch_template=self.gpu_launch_template,
+                launch_template_overrides=[
+                    autoscaling.LaunchTemplateOverrides(instance_type=ec2.InstanceType("g5.2xlarge")),
+                    autoscaling.LaunchTemplateOverrides(instance_type=ec2.InstanceType("g5.4xlarge")),
+                    autoscaling.LaunchTemplateOverrides(instance_type=ec2.InstanceType("g4dn.4xlarge")),
+                ],
+                instances_distribution=autoscaling.InstancesDistribution(
+                    on_demand_percentage_above_base_capacity=100,
+                )
+            ),
             min_capacity=1,
             max_capacity=3,
             health_checks=autoscaling.HealthChecks.ec2(),
             update_policy=autoscaling.UpdatePolicy.rolling_update(
                 max_batch_size=1,
-                min_instances_in_service=1
+                min_instances_in_service=0
             ),
             notifications=[autoscaling.NotificationConfiguration(
                 topic=self.asg_notification_topic,
@@ -370,7 +379,7 @@ class FleetDiscoveryCdkStack(NestedStack):
 
         CfnOutput(self, "GPUCapacityProviderName",
             value=self.gpu_capacity_provider.capacity_provider_name,
-            description="Fleet GPU ECS Capacity Provider (g5.4xlarge)"
+            description="Fleet GPU ECS Capacity Provider (g5.2xlarge/g5.4xlarge/g4dn.4xlarge)"
         )
 
         CfnOutput(self, "S3BucketName",
@@ -1284,13 +1293,13 @@ def lambda_handler(event, context):
         )
         self.gpu_build_project.node.add_dependency(source_deployment)
 
-        # Web API build project (for App Runner)
+        # Web API build project (for App Runner) - must be x86_64 for App Runner
         self.webapi_build_project = codebuild.Project(
             self, "FleetWebApiBuild",
             project_name=f"fleet-webapi-build-{unique_id}",
             role=codebuild_role,
             environment=codebuild.BuildEnvironment(
-                build_image=codebuild.LinuxArmBuildImage.AMAZON_LINUX_2_STANDARD_3_0,
+                build_image=codebuild.LinuxBuildImage.AMAZON_LINUX_2_5,
                 compute_type=codebuild.ComputeType.SMALL,
                 privileged=True,
             ),
