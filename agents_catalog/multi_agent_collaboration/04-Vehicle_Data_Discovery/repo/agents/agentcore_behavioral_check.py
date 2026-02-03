@@ -167,7 +167,7 @@ Always structure your response as comprehensive JSON with all required fields po
         scene_understanding_agent = Agent(
             name="scene_understanding_analyzer",
             system_prompt=system_prompt,
-            model="anthropic.claude-3-sonnet-20240229-v1:0",
+            model="us.anthropic.claude-sonnet-4-20250514-v1:0",
             tools=[http_request]
         )
         logger.info("Scene Understanding agent initialized successfully")
@@ -220,7 +220,7 @@ async def invoke(payload: Dict[str, Any]) -> Dict[str, Any]:
             "metadata": {
                 "analysis_timestamp": datetime.utcnow().isoformat(),
                 "agent_version": "1.0.0",
-                "model_used": "anthropic.claude-3-sonnet-20240229-v1:0",
+                "model_used": "us.anthropic.claude-sonnet-4-20250514-v1:0",
                 "deployment_type": "agentcore_runtime"
             }
         }

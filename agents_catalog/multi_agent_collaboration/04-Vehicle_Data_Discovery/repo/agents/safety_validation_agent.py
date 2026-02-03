@@ -206,7 +206,7 @@ WARNING: CRITICAL: ANTI-HALLUCINATION PROTOCOL WARNING
         import boto3
         from strands import Agent
         from strands_tools import http_request
-        from s3_vectors_tools import (
+        from .s3_vectors_tools import (
             query_fleet_statistics_tool,
             detect_statistical_anomaly_tool
         )
@@ -214,7 +214,7 @@ WARNING: CRITICAL: ANTI-HALLUCINATION PROTOCOL WARNING
         anomaly_detection_agent = Agent(
             name="anomaly_detector",
             system_prompt=system_prompt,
-            model="anthropic.claude-3-sonnet-20240229-v1:0",
+            model="us.anthropic.claude-sonnet-4-20250514-v1:0",
             tools=[
                 http_request,
                 query_fleet_statistics_tool,
@@ -230,7 +230,7 @@ WARNING: CRITICAL: ANTI-HALLUCINATION PROTOCOL WARNING
 # Agent will be initialized lazily on first invoke (30s timeout fix)
 
 @app.entrypoint
-async def invoke(payload: Dict[str, Any]) -> Dict[str, Any]:
+def invoke(payload: Dict[str, Any]) -> Dict[str, Any]:
     """
     Main AgentCore entrypoint - performs safety validation using real GenAI
     """
@@ -261,7 +261,7 @@ async def invoke(payload: Dict[str, Any]) -> Dict[str, Any]:
         validation_context = prepare_safety_context(payload)
 
         # Perform anomaly detection analysis using Strands agent (REAL GenAI)
-        validation_result = await perform_anomaly_detection_analysis(validation_context)
+        validation_result = asyncio.run(perform_anomaly_detection_analysis(validation_context))
 
         # Return dict response (same format as before for Phase 6 compatibility)
         response = {
@@ -279,7 +279,7 @@ async def invoke(payload: Dict[str, Any]) -> Dict[str, Any]:
             "metadata": {
                 "validation_timestamp": datetime.utcnow().isoformat(),
                 "agent_version": "1.0.0",
-                "model_used": "anthropic.claude-3-sonnet-20240229-v1:0",
+                "model_used": "us.anthropic.claude-sonnet-4-20250514-v1:0",
                 "behavioral_analysis_consumed": bool(behavioral_analysis),
                 "intelligence_analysis_consumed": bool(intelligence_analysis),
                 "fleet_optimization_consumed": bool(fleet_optimization),

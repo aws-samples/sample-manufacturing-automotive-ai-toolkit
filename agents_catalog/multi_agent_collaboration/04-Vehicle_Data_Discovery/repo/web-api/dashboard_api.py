@@ -247,9 +247,10 @@ async def lifespan(app: FastAPI):
         logger.info("Creating boto3 S3 client...")
         config = Config(
             signature_version='s3v4',
+            s3={'addressing_style': 'virtual'},
             max_pool_connections=50  # Increase from default 10 to handle concurrent fleet overview processing
         )
-        s3 = boto3.client('s3', region_name=aws_region, config=config)
+        s3 = boto3.client('s3', region_name=aws_region, config=config, endpoint_url=f'https://s3.{aws_region}.amazonaws.com')
         logger.info("S3 client created successfully")
 
         # Test the S3 client immediately to verify it works
@@ -2064,6 +2065,9 @@ def authorize_upload(filename: str, file_type: str, data_format: Optional[str] =
             ],
             ExpiresIn=3600
         )
+
+        # Fix URL to use regional endpoint for CORS compatibility
+        presigned_post['url'] = f"https://{BUCKET}.s3.{aws_region}.amazonaws.com/"
 
         # Log the format selection for monitoring
         logger.debug(f" Upload authorized: {filename} as {data_format} ({format_metadata.get('format_name', 'Unknown')})")

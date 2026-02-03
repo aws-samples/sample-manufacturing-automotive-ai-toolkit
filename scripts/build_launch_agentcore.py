@@ -43,9 +43,12 @@ def find_agentcore_agents(base_dir="agents_catalog"):
     Scan the agents_catalog directory for agents with type 'agentcore' in their manifest
     
     Returns:
-        List of tuples (agent_path, agent_id, agent_name, entrypoint)
+        Tuple of (agents_list, ssm_mappings_dict)
+        - agents_list: List of tuples (agent_path, agent_id, agent_name, entrypoint)
+        - ssm_mappings_dict: Dict mapping agent_id to SSM parameter name
     """
     agents = []
+    ssm_mappings = {}
     
     # Walk through the agents_catalog directory
     for root, dirs, files in os.walk(base_dir):
@@ -54,6 +57,10 @@ def find_agentcore_agents(base_dir="agents_catalog"):
             try:
                 with open(manifest_path, 'r', encoding='utf-8') as f:
                     manifest = json.load(f)
+                
+                # Get SSM parameter mapping if defined
+                manifest_ssm_mapping = manifest.get("ssm_parameter_mapping", {})
+                ssm_mappings.update(manifest_ssm_mapping)
                 
                 # Check if any agent in the manifest is of type 'agentcore'
                 for agent in manifest.get("agents", []):
@@ -78,7 +85,37 @@ def find_agentcore_agents(base_dir="agents_catalog"):
             except Exception as e:
                 logger.error(f"Error processing manifest at {manifest_path}: {e}")
     
-    return agents
+    return agents, ssm_mappings
+
+
+def update_ssm_parameters(results, ssm_mappings, region):
+    """
+    Update SSM parameters with deployed agent ARNs based on manifest mappings.
+    """
+    if not ssm_mappings:
+        return
+    
+    ssm = boto3.client('ssm', region_name=region)
+    
+    for result in results:
+        if 'error' in result:
+            continue
+        
+        manifest_agent_id = result.get('manifest_agent_id')
+        agent_arn = result.get('agent_arn')
+        
+        if manifest_agent_id in ssm_mappings and agent_arn:
+            param_name = ssm_mappings[manifest_agent_id]
+            try:
+                ssm.put_parameter(
+                    Name=param_name,
+                    Value=agent_arn,
+                    Type='String',
+                    Overwrite=True
+                )
+                logger.info(f"Updated SSM parameter {param_name} with ARN for {manifest_agent_id}")
+            except Exception as e:
+                logger.error(f"Failed to update SSM parameter {param_name}: {e}")
 
 def deploy_agentcore_agent(agent_path, agent_id, agent_name, entrypoint, region, execution_role_arn):
     """
@@ -116,8 +153,9 @@ def deploy_agentcore_agent(agent_path, agent_id, agent_name, entrypoint, region,
         os.chdir(agent_path)
         
         try:
-            # Import the configure function
-            from bedrock_agentcore_starter_toolkit.operations.runtime.configure import configure_bedrock_agentcore
+            # Find requirements.txt in current directory
+            requirements_file = "requirements.txt" if Path("requirements.txt").exists() else None
+            print(f"DEBUG: cwd={os.getcwd()}, requirements_file={requirements_file}", flush=True)
             
             # Configure the agent
             logger.info(f"Configuring agent {agent_id}")
@@ -129,7 +167,8 @@ def deploy_agentcore_agent(agent_path, agent_id, agent_name, entrypoint, region,
                 enable_observability=True,
                 region=region,
                 container_runtime="docker",
-                verbose=True
+                verbose=True,
+                requirements_file=requirements_file
             )
             
             # Override the platform to linux/amd64 for AWS compatibility
@@ -162,6 +201,7 @@ def deploy_agentcore_agent(agent_path, agent_id, agent_name, entrypoint, region,
             deployment_info = {
                 "agent_arn": result.agent_arn,
                 "agent_id": result.agent_id,
+                "manifest_agent_id": agent_id,  # Original ID from manifest for SSM mapping
                 "ecr_uri": result.ecr_uri,
                 "agent_name": agent_name
             }
@@ -194,12 +234,15 @@ def main():
     
     args = parser.parse_args()
     
-    # Find AgentCore agents
-    agents = find_agentcore_agents()
+    # Find AgentCore agents and SSM mappings
+    agents, ssm_mappings = find_agentcore_agents()
     
     if not agents:
         logger.info("No AgentCore agents found")
         return
+    
+    if ssm_mappings:
+        logger.info(f"Found SSM parameter mappings for {len(ssm_mappings)} agents")
     
     # Deploy each agent
     results = []
@@ -213,6 +256,11 @@ def main():
             args.execution_role_arn
         )
         results.append(result)
+    
+    # Update SSM parameters with deployed agent ARNs
+    if ssm_mappings:
+        logger.info("Updating SSM parameters with deployed agent ARNs...")
+        update_ssm_parameters(results, ssm_mappings, args.region)
     
     # Save all deployment results to the output file
     with open(args.output_file, 'w', encoding='utf-8') as f:

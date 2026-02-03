@@ -1,5 +1,11 @@
 # Fleet Discovery - API + Frontend
 FROM public.ecr.aws/docker/library/node:20-slim AS frontend-build
+ARG COGNITO_USER_POOL_ID
+ARG COGNITO_CLIENT_ID
+ARG AWS_REGION=us-west-2
+ENV NEXT_PUBLIC_COGNITO_USER_POOL_ID=$COGNITO_USER_POOL_ID
+ENV NEXT_PUBLIC_COGNITO_CLIENT_ID=$COGNITO_CLIENT_ID
+ENV NEXT_PUBLIC_AWS_REGION=$AWS_REGION
 WORKDIR /frontend
 COPY frontend/fleet-discovery-studio/package*.json ./
 RUN npm install

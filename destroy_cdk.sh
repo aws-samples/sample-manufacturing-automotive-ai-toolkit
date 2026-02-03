@@ -25,48 +25,55 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 
-# Check if this is a Quality Inspection destroy
-if [ "$STACK_NAME" = "QualityInspectionStack" ]; then
-  # Force us-east-1 for Quality Inspection
-  REGION="us-east-1"
-  
-  echo "Quality Inspection stack detected. Redirecting to specialized destroy script..."
-  echo "  Stack Name: $STACK_NAME"
-  echo "  Region: $REGION (forced to us-east-1)"
-  
-  # Set environment variables for the quality inspection script
-  export AWS_REGION="$REGION"
-  
-  # Pass AWS_PROFILE if set, otherwise use default
-  if [ -z "$AWS_PROFILE" ]; then
-    export AWS_PROFILE="default"
-  fi
-  
-  # Run the quality inspection destroy script with --force flag
-  exec bash "./agents_catalog/multi_agent_collaboration/03-quality-inspection/deploy/destroy_full_stack_quality_inspection.sh" --force
-fi
-
-echo "Checking for Quality Inspection stack..."
-
-# Check if Quality Inspection stack exists
-QI_STACK_NAME="AgenticQualityInspectionStack"
-if aws cloudformation describe-stacks --stack-name "$QI_STACK_NAME" --region "$REGION" &>/dev/null; then
-    echo "Found Quality Inspection stack: $QI_STACK_NAME"
-    echo "Destroying Quality Inspection stack..."
-    
-    # Change to quality inspection CDK directory and destroy
-    cd agents_catalog/multi_agent_collaboration/03-quality-inspection/cdk
-    cdk destroy "$QI_STACK_NAME" --force --region "$REGION"
-    
-    # Return to root directory
-    cd ../../../..
-    
-    echo "Quality Inspection stack destroyed"
-else
-    echo "No Quality Inspection stack found"
-fi
-
 echo "Cleaning up external resources before CDK destroy..."
+
+# Delete AgentCore agents created by this toolkit
+echo "Deleting AgentCore agents..."
+delete_agentcore_agents() {
+  # Find all manifest.json files and extract agentcore agent IDs
+  for manifest in $(find agents_catalog -name "manifest.json" 2>/dev/null); do
+    # Extract agent IDs where type is "agentcore"
+    agent_ids=$(python3 -c "
+import json
+try:
+    with open('$manifest') as f:
+        data = json.load(f)
+    for agent in data.get('agents', []):
+        if agent.get('type') == 'agentcore':
+            print(agent.get('id', ''))
+except:
+    pass
+" 2>/dev/null)
+
+    for agent_id in $agent_ids; do
+      if [ -n "$agent_id" ]; then
+        echo "Looking for AgentCore runtime: $agent_id"
+        # Get the runtime ARN for this agent
+        runtime_info=$(aws bedrock-agentcore-control list-agent-runtimes \
+          --region "$REGION" \
+          --query "agentRuntimes[?contains(agentRuntimeName, '$agent_id')].{arn:agentRuntimeArn,id:agentRuntimeId}" \
+          --output json \
+          --no-cli-pager 2>/dev/null)
+
+        # Extract runtime ID and delete if found
+        runtime_id=$(echo "$runtime_info" | python3 -c "import sys,json; data=json.load(sys.stdin); print(data[0]['id'] if data else '')" 2>/dev/null)
+
+        if [ -n "$runtime_id" ]; then
+          echo "Deleting AgentCore runtime: $agent_id ($runtime_id)"
+          aws bedrock-agentcore-control delete-agent-runtime \
+            --agent-runtime-id "$runtime_id" \
+            --region "$REGION" \
+            --no-cli-pager 2>/dev/null && echo "  Deleted: $agent_id" || echo "  Failed to delete: $agent_id"
+        else
+          echo "  Not found: $agent_id"
+        fi
+      fi
+    done
+  done
+}
+
+delete_agentcore_agents
+echo "AgentCore cleanup complete"
 
 # Delete App Runner service
 echo "Deleting App Runner service..."

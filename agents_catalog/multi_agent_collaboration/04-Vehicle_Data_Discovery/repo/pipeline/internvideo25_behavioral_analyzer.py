@@ -989,6 +989,15 @@ def main():
         if not task_token:
             raise ValueError("STEP_FUNCTIONS_TASK_TOKEN environment variable is required")
 
+        # Validate token is still valid before starting work
+        sfn_client = boto3.client('stepfunctions')
+        try:
+            sfn_client.send_task_heartbeat(taskToken=task_token)
+            logger.info("Task token validated successfully")
+        except Exception as e:
+            logger.error(f"Task token invalid or expired: {e}")
+            raise ValueError(f"Task token invalid - execution may have been aborted: {e}")
+
         # IDENTICAL environment variable handling
         scene_id = os.getenv('SCENE_ID')
         input_s3_key = os.getenv('INPUT_S3_KEY')  # Points to Phase 2 video_output.json

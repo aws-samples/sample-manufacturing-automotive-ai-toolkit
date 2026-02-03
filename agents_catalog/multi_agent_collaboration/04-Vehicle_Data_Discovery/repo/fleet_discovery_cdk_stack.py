@@ -182,9 +182,9 @@ class FleetDiscoveryCdkStack(NestedStack):
             mixed_instances_policy=autoscaling.MixedInstancesPolicy(
                 launch_template=self.gpu_launch_template,
                 launch_template_overrides=[
-                    autoscaling.LaunchTemplateOverrides(instance_type=ec2.InstanceType("g5.2xlarge")),
                     autoscaling.LaunchTemplateOverrides(instance_type=ec2.InstanceType("g5.4xlarge")),
                     autoscaling.LaunchTemplateOverrides(instance_type=ec2.InstanceType("g4dn.4xlarge")),
+                    autoscaling.LaunchTemplateOverrides(instance_type=ec2.InstanceType("g5.8xlarge")),
                 ],
                 instances_distribution=autoscaling.InstancesDistribution(
                     on_demand_percentage_above_base_capacity=100,
@@ -256,6 +256,7 @@ class FleetDiscoveryCdkStack(NestedStack):
         )
 
         # S3 BUCKET - Create new bucket for this deployment
+        # CORS will be added after App Runner is created via custom resource
         self.discovery_bucket = s3.Bucket(
             self, "FleetDiscoveryBucket",
             bucket_name=f"fleet-discovery-{unique_id}",
@@ -426,21 +427,22 @@ class FleetDiscoveryCdkStack(NestedStack):
             string_value=self.region
         )
         
-        # SSM Parameters for AgentCore ARNs (populated after agent deployment)
-        # These are placeholder values - update after deploying agents via AgentCore CLI
+        # SSM Parameters for AgentCore ARNs (populated automatically by build_launch_agentcore.py)
+        # Uses fixed prefix "/fleet/vehicle-data-discovery" for predictable manifest mapping
+        ssm_prefix = "/fleet/vehicle-data-discovery/agent-arns"
         self.ssm_scene_understanding_arn = ssm.StringParameter(
             self, "FleetSceneUnderstandingArnParam",
-            parameter_name=f"/fleet/{unique_id}/agent-arns/scene-understanding",
+            parameter_name=f"{ssm_prefix}/scene-understanding",
             string_value="PLACEHOLDER_UPDATE_AFTER_AGENT_DEPLOYMENT"
         )
         self.ssm_anomaly_detection_arn = ssm.StringParameter(
             self, "FleetAnomalyDetectionArnParam",
-            parameter_name=f"/fleet/{unique_id}/agent-arns/anomaly-detection",
+            parameter_name=f"{ssm_prefix}/anomaly-detection",
             string_value="PLACEHOLDER_UPDATE_AFTER_AGENT_DEPLOYMENT"
         )
         self.ssm_similarity_search_arn = ssm.StringParameter(
             self, "FleetSimilaritySearchArnParam",
-            parameter_name=f"/fleet/{unique_id}/agent-arns/similarity-search",
+            parameter_name=f"{ssm_prefix}/similarity-search",
             string_value="PLACEHOLDER_UPDATE_AFTER_AGENT_DEPLOYMENT"
         )
 
@@ -514,7 +516,7 @@ class FleetDiscoveryCdkStack(NestedStack):
         self.ssm_bedrock_model = ssm.StringParameter(
             self, "FleetBedrockModelParam",
             parameter_name=f"/fleet/{unique_id}/bedrock-model",
-            string_value="anthropic.claude-3-sonnet-20240229-v1:0"
+            string_value="us.anthropic.claude-sonnet-4-20250514-v1:0"
         )
         self.ssm_vector_index = ssm.StringParameter(
             self, "FleetVectorIndexParam",
@@ -532,7 +534,7 @@ class FleetDiscoveryCdkStack(NestedStack):
             task_role=self.ecs_task_role,
             network_mode=ecs.NetworkMode.BRIDGE,
             placement_constraints=[
-                ecs.PlacementConstraint.member_of("attribute:ecs.instance-type =~ g5.*")
+                ecs.PlacementConstraint.member_of("attribute:ecs.instance-type =~ g5.* or attribute:ecs.instance-type =~ g4dn.*")
             ]
         )
 
@@ -746,6 +748,7 @@ class FleetDiscoveryCdkStack(NestedStack):
             cluster=self.ecs_cluster,
             task_definition=self.phase3_task_def,
             launch_target=tasks.EcsEc2LaunchTarget(),
+            heartbeat=Duration.minutes(10),
             container_overrides=[
                 tasks.ContainerOverride(
                     container_definition=self.phase3_task_def.default_container,
@@ -1096,6 +1099,56 @@ class FleetDiscoveryCdkStack(NestedStack):
             description="Fleet Discovery Web API URL (auto-generated HTTPS)"
         )
 
+        # Custom resource to set S3 CORS with exact App Runner URL
+        cors_lambda = lambda_.Function(
+            self, "FleetCorsConfigLambda",
+            runtime=lambda_.Runtime.PYTHON_3_11,
+            handler="index.handler",
+            timeout=Duration.seconds(30),
+            code=lambda_.Code.from_inline('''
+import boto3
+import json
+import cfnresponse
+
+def handler(event, context):
+    try:
+        if event["RequestType"] in ["Create", "Update"]:
+            s3 = boto3.client("s3")
+            bucket = event["ResourceProperties"]["BucketName"]
+            origin = event["ResourceProperties"]["AllowedOrigin"]
+            s3.put_bucket_cors(
+                Bucket=bucket,
+                CORSConfiguration={
+                    "CORSRules": [{
+                        "AllowedHeaders": ["*"],
+                        "AllowedMethods": ["GET", "PUT", "POST", "HEAD", "DELETE"],
+                        "AllowedOrigins": [origin],
+                        "ExposeHeaders": ["ETag"],
+                        "MaxAgeSeconds": 3000
+                    }]
+                }
+            )
+        cfnresponse.send(event, context, cfnresponse.SUCCESS, {})
+    except Exception as e:
+        print(f"Error: {e}")
+        cfnresponse.send(event, context, cfnresponse.FAILED, {"Error": str(e)})
+'''),
+        )
+        self.discovery_bucket.grant_put_acl(cors_lambda)
+        cors_lambda.add_to_role_policy(iam.PolicyStatement(
+            actions=["s3:PutBucketCORS"],
+            resources=[self.discovery_bucket.bucket_arn]
+        ))
+
+        CustomResource(
+            self, "FleetCorsConfig",
+            service_token=cors_lambda.function_arn,
+            properties={
+                "BucketName": self.discovery_bucket.bucket_name,
+                "AllowedOrigin": f"https://{self.apprunner_service.attr_service_url}"
+            }
+        )
+
     def _apply_nag_suppressions(self) -> None:
         """Apply CDK-Nag suppressions for patterns that cannot be fixed"""
         NagSuppressions.add_stack_suppressions(self, [
@@ -1312,12 +1365,16 @@ def lambda_handler(event, context):
                         "aws ecr get-login-password --region $AWS_DEFAULT_REGION | docker login --username AWS --password-stdin $ECR_REPO_URI"
                     ]},
                     "build": {"commands": [
-                        "docker build -f Dockerfile.webapp -t $ECR_REPO_URI:web-api-latest .",
+                        "docker build -f Dockerfile.webapp --build-arg COGNITO_USER_POOL_ID=$COGNITO_USER_POOL_ID --build-arg COGNITO_CLIENT_ID=$COGNITO_CLIENT_ID --build-arg AWS_REGION=$AWS_DEFAULT_REGION -t $ECR_REPO_URI:web-api-latest .",
                         "docker push $ECR_REPO_URI:web-api-latest"
                     ]}
                 }
             }),
-            environment_variables={"ECR_REPO_URI": codebuild.BuildEnvironmentVariable(value=self.ecr_repo.repository_uri)},
+            environment_variables={
+                "ECR_REPO_URI": codebuild.BuildEnvironmentVariable(value=self.ecr_repo.repository_uri),
+                "COGNITO_USER_POOL_ID": codebuild.BuildEnvironmentVariable(value=self.user_pool.user_pool_id),
+                "COGNITO_CLIENT_ID": codebuild.BuildEnvironmentVariable(value=self.user_pool_client.user_pool_client_id),
+            },
             timeout=Duration.minutes(30),
         )
         self.webapi_build_project.node.add_dependency(source_deployment)
@@ -1372,10 +1429,30 @@ def handler(event, context):
         # Custom resource provider and trigger - only build webapp for initial deploy
         # ARM64 and GPU builds can be triggered manually later for pipeline use
         provider = cr.Provider(self, "FleetBuildProvider", on_event_handler=trigger_fn)
+        
+        # Generate a hash of key source files to force rebuild when code changes
+        def get_source_hash(directory):
+            import hashlib
+            h = hashlib.md5()
+            for root, dirs, files in os.walk(directory):
+                dirs[:] = [d for d in dirs if d not in ['__pycache__', '.git', 'cdk.out', '.venv']]
+                for f in sorted(files):
+                    if f.endswith('.py'):
+                        filepath = os.path.join(root, f)
+                        h.update(filepath.encode())
+                        with open(filepath, 'rb') as fh:
+                            h.update(fh.read())
+            return h.hexdigest()[:12]
+        
+        source_hash = get_source_hash(repo_dir_str)
+        
         build_trigger = CustomResource(
             self, "FleetBuildTriggerResource",
             service_token=provider.service_token,
-            properties={"Projects": [self.arm64_build_project.project_name, self.gpu_build_project.project_name, self.webapi_build_project.project_name]}
+            properties={
+                "Projects": [self.arm64_build_project.project_name, self.gpu_build_project.project_name, self.webapi_build_project.project_name],
+                "SourceHash": source_hash  # Forces update when source changes
+            }
         )
 
         # Make App Runner depend on builds completing

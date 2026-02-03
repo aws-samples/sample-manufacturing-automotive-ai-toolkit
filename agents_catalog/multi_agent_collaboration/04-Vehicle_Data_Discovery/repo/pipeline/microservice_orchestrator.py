@@ -3676,7 +3676,7 @@ Focus on HIL data discovery, scene understanding, anomaly detection, and cross-s
             logger.info(f" Calling Claude 3 Sonnet (attempt {attempt + 1}/{max_retries})")
 
             response = bedrock_runtime_client.invoke_model(
-                modelId="anthropic.claude-3-sonnet-20240229-v1:0",
+                modelId="us.anthropic.claude-sonnet-4-20250514-v1:0",
                 body=json.dumps({
                     "anthropic_version": "bedrock-2023-05-31",
                     "max_tokens": 1000,

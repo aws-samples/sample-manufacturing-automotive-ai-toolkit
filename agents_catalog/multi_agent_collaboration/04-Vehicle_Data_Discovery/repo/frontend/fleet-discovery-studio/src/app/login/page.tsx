@@ -2,6 +2,7 @@
 
 import { useState } from 'react'
 import { motion } from 'framer-motion'
+import '@/lib/auth-config' // Must be imported before any auth calls
 import { signIn, signUp, resetPassword, confirmResetPassword, confirmSignUp } from 'aws-amplify/auth'
 import { Eye, EyeOff, Lock, Mail, Zap, AlertCircle, Sparkles, ArrowLeft, UserPlus, KeyRound, CheckCircle } from 'lucide-react'
 import { Button } from '@/components/ui/button'
@@ -33,8 +34,15 @@ export default function LoginPage() {
     clearMessages()
 
     try {
-      await signIn({ username: email, password })
-      window.location.href = '/'
+      const { isSignedIn, nextStep } = await signIn({ username: email, password })
+      console.log('Sign in result:', { isSignedIn, nextStep })
+      
+      if (isSignedIn) {
+        window.location.href = '/'
+      } else {
+        console.log('Additional step required:', nextStep)
+        setError('Additional authentication step required')
+      }
     } catch (err: any) {
       console.error('Sign in error:', err)
       const errorMessage = err.message || 'Authentication failed'

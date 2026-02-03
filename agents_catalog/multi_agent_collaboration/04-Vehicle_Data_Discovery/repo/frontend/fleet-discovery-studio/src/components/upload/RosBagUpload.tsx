@@ -147,7 +147,12 @@ export default function RosBagUpload() {
   }
 
   const uploadToS3 = async (presignedData: any, file: File) => {
-    console.log('Starting S3 upload to:', presignedData.url)
+    // Fix: Use regional S3 endpoint for CORS compatibility
+    let uploadUrl = presignedData.url
+    if (uploadUrl.includes('.s3.amazonaws.com')) {
+      uploadUrl = uploadUrl.replace('.s3.amazonaws.com', '.s3.us-west-2.amazonaws.com')
+    }
+    console.log('Starting S3 upload to:', uploadUrl)
 
     const formData = new FormData()
 
@@ -189,8 +194,8 @@ export default function RosBagUpload() {
         reject(new Error(`Upload failed - XHR error. Status: ${xhr.status}, Response: ${xhr.responseText}`))
       })
 
-      console.log(' Opening POST request to:', presignedData.url)
-      xhr.open('POST', presignedData.url)
+      console.log(' Opening POST request to:', uploadUrl)
+      xhr.open('POST', uploadUrl)
       xhr.send(formData)
     })
   }

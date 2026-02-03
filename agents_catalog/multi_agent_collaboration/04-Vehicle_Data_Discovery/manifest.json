@@ -38,6 +38,11 @@
       "entrypoint": "repo/agents/behavioral_gap_analysis_agent.py"
     }
   ],
+  "ssm_parameter_mapping": {
+    "behavioral_gap_analysis_agent": "/fleet/vehicle-data-discovery/agent-arns/scene-understanding",
+    "safety_validation_agent": "/fleet/vehicle-data-discovery/agent-arns/anomaly-detection",
+    "intelligence_gathering_agent": "/fleet/vehicle-data-discovery/agent-arns/similarity-search"
+  },
   "infrastructure": {
     "cdk": true,
     "stack_class": "FleetDiscoveryCdkStack",

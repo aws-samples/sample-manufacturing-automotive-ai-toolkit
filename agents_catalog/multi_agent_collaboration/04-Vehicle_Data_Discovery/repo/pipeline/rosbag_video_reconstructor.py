@@ -24,7 +24,9 @@ class ROSBagVideoReconstructor:
 
     def download_rosbag(self, scene_id: str) -> str:
         """Download ROS bag from S3 to local temporary file"""
-        s3_key = f'raw-data/ros-bags/nuscenes-oliver/compressed/{scene_id.zfill(4)}/compressed-NuScenes-v1.0-trainval-scene-{scene_id.zfill(4)}.bag'
+        s3_key = os.getenv('INPUT_ROSBAG_KEY')
+        if not s3_key:
+            raise ValueError("INPUT_ROSBAG_KEY environment variable is required")
 
         print(f"Downloading ROS bag: {s3_key}")
 

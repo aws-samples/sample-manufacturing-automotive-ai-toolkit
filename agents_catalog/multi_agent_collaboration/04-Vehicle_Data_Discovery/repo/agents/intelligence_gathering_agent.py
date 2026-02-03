@@ -209,7 +209,7 @@ IMPORTANT: Do NOT wrap your response in JSON markdown blocks or return it as a s
         import boto3
         from strands import Agent
         from strands_tools import http_request
-        from s3_vectors_tools import (
+        from .s3_vectors_tools import (
             query_similar_behavioral_patterns_tool,
             query_fleet_statistics_tool
         )
@@ -217,7 +217,7 @@ IMPORTANT: Do NOT wrap your response in JSON markdown blocks or return it as a s
         similarity_search_agent = Agent(
             name="intelligence_researcher",
             system_prompt=system_prompt,
-            model="anthropic.claude-3-sonnet-20240229-v1:0",  # Same as working safety agent
+            model="us.anthropic.claude-sonnet-4-20250514-v1:0",
             tools=[
                 http_request,
                 query_similar_behavioral_patterns_tool,
@@ -233,7 +233,7 @@ IMPORTANT: Do NOT wrap your response in JSON markdown blocks or return it as a s
 # Agent will be initialized lazily on first invoke (30s timeout fix)
 
 @app.entrypoint
-async def invoke(payload: Dict[str, Any]) -> Dict[str, Any]:
+def invoke(payload: Dict[str, Any]) -> Dict[str, Any]:
     """
     Main AgentCore entrypoint - performs intelligence gathering and contextual research
     """
@@ -285,7 +285,7 @@ async def invoke(payload: Dict[str, Any]) -> Dict[str, Any]:
             research_context = prepare_direct_context(payload)
 
         # Perform similarity search using Strands agent (SAME LOGIC)
-        similarity_result = await perform_similarity_search_analysis(research_context)
+        similarity_result = asyncio.run(perform_similarity_search_analysis(research_context))
 
         # Return dict response instead of typed model
         response = {
@@ -307,7 +307,7 @@ async def invoke(payload: Dict[str, Any]) -> Dict[str, Any]:
             "metadata": {
                 "search_timestamp": datetime.utcnow().isoformat(),
                 "agent_version": "1.0.0",
-                "model_used": "anthropic.claude-3-sonnet-20240229-v1:0",
+                "model_used": "us.anthropic.claude-sonnet-4-20250514-v1:0",
                 "behavioral_analysis_consumed": bool(behavioral_analysis),
                 "task_context": task_context,
                 "search_depth": "comprehensive",

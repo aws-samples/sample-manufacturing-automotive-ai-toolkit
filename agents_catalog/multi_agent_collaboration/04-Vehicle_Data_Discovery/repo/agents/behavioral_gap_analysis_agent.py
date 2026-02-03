@@ -150,7 +150,7 @@ WARNING: CRITICAL: ANTI-HALLUCINATION PROTOCOL WARNING
         scene_understanding_agent = Agent(
             name="scene_understanding_analyzer",
             system_prompt=system_prompt,
-            model="anthropic.claude-3-sonnet-20240229-v1:0",
+            model="us.anthropic.claude-sonnet-4-20250514-v1:0",
             tools=[http_request]
         )
         logger.info("Scene Understanding agent initialized successfully")
@@ -162,7 +162,7 @@ WARNING: CRITICAL: ANTI-HALLUCINATION PROTOCOL WARNING
 # Agent will be initialized lazily on first invoke (30s timeout fix)
 
 @app.entrypoint
-async def invoke(payload: Dict[str, Any]) -> Dict[str, Any]:
+def invoke(payload: Dict[str, Any]) -> Dict[str, Any]:
     """
     Main AgentCore entrypoint - performs scene understanding analysis using real GenAI
     """
@@ -191,7 +191,7 @@ async def invoke(payload: Dict[str, Any]) -> Dict[str, Any]:
         analysis_context = prepare_scene_understanding_context(payload)
 
         # Perform scene understanding analysis using Strands agent (REAL GenAI)
-        analysis_result = await perform_scene_understanding_analysis(analysis_context)
+        analysis_result = asyncio.run(perform_scene_understanding_analysis(analysis_context))
 
         # Return dict response (same format as before for Phase 6 compatibility)
         response = {
@@ -209,7 +209,7 @@ async def invoke(payload: Dict[str, Any]) -> Dict[str, Any]:
             "metadata": {
                 "analysis_timestamp": datetime.utcnow().isoformat(),
                 "agent_version": "1.0.0",
-                "model_used": "anthropic.claude-3-sonnet-20240229-v1:0",
+                "model_used": "us.anthropic.claude-sonnet-4-20250514-v1:0",
                 "deployment_type": "agentcore_runtime"
             }
         }
