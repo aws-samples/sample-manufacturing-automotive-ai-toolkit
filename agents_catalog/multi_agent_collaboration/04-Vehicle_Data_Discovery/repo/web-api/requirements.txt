@@ -7,4 +7,3 @@ scikit-learn==1.3.2
 hdbscan==0.8.40
 numpy==1.24.4
 pandas==2.1.4
-aiofiles==23.2.1

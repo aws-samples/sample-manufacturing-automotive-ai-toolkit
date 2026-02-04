@@ -27,7 +27,7 @@
                     const data = await response.json();
                     console.log("📊 Data:", data);
                     statusDiv.textContent = "✅ Fetch successful!";
-                    resultDiv.innerHTML = `<pre>${JSON.stringify(data, null, 2)}</pre>`;
+                    resultDiv.textContent = JSON.stringify(data, null, 2);
                 } else {
                     console.log("❌ Fetch failed:", response.status);
                     statusDiv.textContent = `❌ Fetch failed: ${response.status}`;

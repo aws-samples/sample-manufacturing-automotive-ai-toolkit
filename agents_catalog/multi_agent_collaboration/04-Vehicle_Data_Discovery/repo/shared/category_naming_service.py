@@ -2,7 +2,6 @@
 import boto3
 import json
 import logging
-import os
 from typing import List, Optional
 from datetime import datetime
 
@@ -11,8 +10,8 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 # Import cluster data structures
-from odd_discovery_service import DiscoveredCluster
-from embedding_retrieval import SceneEmbeddings
+from .odd_discovery_service import DiscoveredCluster
+from .embedding_retrieval import SceneEmbeddings
 
 class CategoryNamingService:
     """
@@ -24,8 +23,7 @@ class CategoryNamingService:
     def __init__(self, bedrock_client=None):
         """Initialize with optional Bedrock client (allows dependency injection)"""
         try:
-            region = os.environ.get('AWS_REGION', os.environ.get('AWS_DEFAULT_REGION', 'us-west-2'))
-            self.bedrock_client = bedrock_client or boto3.client('bedrock-runtime', region_name=region)
+            self.bedrock_client = bedrock_client or boto3.client('bedrock-runtime', region_name='us-west-2')
             self.bedrock_available = True
         except Exception as e:
             logger.error(f"Failed to initialize Bedrock client: {str(e)}")
@@ -435,7 +433,7 @@ Category name:"""
                 named_clusters.append(cluster)
 
                 # Rate limiting: Wait 500ms between Claude calls to prevent throttling
-                time.sleep(0.5)
+                time.sleep(0.5)  # nosemgrep: arbitrary-sleep - intentional rate limiting for API calls
 
                 # Progress logging for large numbers of clusters
                 if (i + 1) % 5 == 0:

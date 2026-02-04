@@ -670,9 +670,7 @@ export default function AnalyticsPage() {
                     <span className="font-medium">{item.actual_scenes || item.current || 0}</span>
                   </div>
                   <div className="flex justify-between text-sm">
-                    <span className="text-[var(--slate-grey)]">
-                      {item.type === 'discovered' ? 'Target:' : 'Target:'}
-                    </span>
+                    <span className="text-[var(--slate-grey)]">Target:</span>
                     <div className="flex items-center gap-1">
                       <span className="font-medium">{item.risk_adaptive_target || item.target || 0}</span>
                       {item.risk_adaptive_target && (

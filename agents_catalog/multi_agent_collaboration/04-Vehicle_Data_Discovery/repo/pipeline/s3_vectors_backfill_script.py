@@ -112,7 +112,7 @@ class S3VectorsBackfillOrchestrator:
                         indexName=index_name
                     )
                     logger.info(f"{index_name} deleted successfully")
-                    time.sleep(10)  # Brief pause between deletions
+                    time.sleep(10)  # nosemgrep: arbitrary-sleep - pause between S3 deletions
                 except Exception as e:
                     if "NotFoundException" in str(e) or "ResourceNotFoundException" in str(e):
                         logger.info(f"{index_name} doesn't exist, skipping deletion")
@@ -166,7 +166,7 @@ class S3VectorsBackfillOrchestrator:
 
             # Wait for both indices to be ready
             logger.info("Waiting for dual indices to be ready...")
-            time.sleep(90)
+            time.sleep(90)  # nosemgrep: arbitrary-sleep - wait for S3 index propagation
 
             logger.info("NUCLEAR RESET completed successfully - Dual-index architecture ready!")
             return True
@@ -579,7 +579,7 @@ class S3VectorsBackfillOrchestrator:
                 # Brief pause between batches (unless shutdown requested)
                 if batch_num < total_batches - 1 and not self.shutdown_requested:
                     logger.info("PAUSE: Brief pause between batches...")
-                    time.sleep(60)
+                    time.sleep(60)  # nosemgrep: arbitrary-sleep - rate limiting between batch operations
 
         except Exception as e:
             logger.error(f"ERROR: Backfill execution failed: {str(e)}")

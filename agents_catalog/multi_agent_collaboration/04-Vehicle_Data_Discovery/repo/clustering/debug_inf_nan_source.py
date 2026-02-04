@@ -8,7 +8,7 @@ import numpy as np
 import logging
 from sklearn.preprocessing import StandardScaler
 from sklearn.decomposition import PCA
-from embedding_retrieval import load_all_embeddings
+from shared.embedding_retrieval import load_all_embeddings
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)

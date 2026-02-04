@@ -33,7 +33,7 @@ class ROSBagVideoReconstructor:
         # Create temporary file
         temp_file = tempfile.NamedTemporaryFile(delete=False, suffix='.bag')
         temp_path = temp_file.name
-        temp_file.close()
+        temp_file.close()  # nosemgrep: tempfile-without-flush - file is closed before using temp_path
 
         # Download from S3
         try:
@@ -311,6 +311,7 @@ class ROSBagVideoReconstructor:
             ]
 
             print(f"   Running FFmpeg H.264 encoding...")
+            # nosemgrep: dangerous-subprocess-use-audit - ffmpeg_cmd is constructed from validated paths, not user input
             result = subprocess.run(ffmpeg_cmd, capture_output=True, text=True, timeout=300)
 
             if result.returncode == 0:

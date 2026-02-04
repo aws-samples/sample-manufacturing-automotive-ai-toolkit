@@ -22,7 +22,7 @@ except ImportError as e:
     clustering_available = False
 
 # Import our embedding retrieval service
-from embedding_retrieval import SceneEmbeddings, load_all_embeddings
+from .embedding_retrieval import SceneEmbeddings, load_all_embeddings
 
 @dataclass
 class DiscoveredCluster:
@@ -133,7 +133,7 @@ class OddDiscoveryService:
             # FIXED: Convert numpy types to Python native types for JSON serialization
             global_cluster = DiscoveredCluster(
                 cluster_id=0,
-                category_name="General Fleet Behavior",  # Will be refined by Claude naming
+                category_name="General fleet Behavior",  # Will be refined by Claude naming
                 scenes=embeddings_data,
                 scene_count=scene_count,  # Dynamic
                 average_risk_score=float(avg_risk),  # Convert numpy.float64 to float
@@ -411,7 +411,7 @@ class OddDiscoveryService:
         Useful for health checks and debugging
         """
         try:
-            from embedding_retrieval import get_current_dataset_size
+            from .embedding_retrieval import get_current_dataset_size
 
             return {
                 "clustering_available": self.clustering_available,

@@ -9,19 +9,17 @@ from fastapi import FastAPI, HTTPException, Request, Response
 from fastapi.responses import JSONResponse, FileResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.cors import CORSMiddleware
-from pydantic import BaseModel
+from pydantic import BaseModel, field_validator
 from typing import List, Optional
+import re
 import time
 from datetime import datetime, timezone
 from concurrent.futures import ThreadPoolExecutor, as_completed
 import asyncio
 from mangum import Mangum
 from botocore.config import Config
-from botocore.exceptions import UnknownServiceError
+from botocore.exceptions import UnknownServiceError, ClientError
 import threading
-
-# AWS region from environment (module-level for all functions)
-aws_region = os.environ.get('AWS_REGION', os.environ.get('AWS_DEFAULT_REGION', 'us-west-2'))
 
 # Helper functions for camera-specific ID processing (self-contained)
 def extract_scene_from_id(camera_id: str) -> str:
@@ -200,21 +198,16 @@ try:
     # Get the project root directory (parent of web-api directory)
     current_file_dir = os.path.dirname(os.path.abspath(__file__))  # web-api directory
     project_root = os.path.dirname(current_file_dir)  # project root
-    clustering_path = os.path.join(project_root, 'clustering')
 
-    # Verify clustering directory exists before adding to path
-    if os.path.exists(clustering_path) and os.path.isdir(clustering_path):
-        if clustering_path not in sys.path:
-            sys.path.append(clustering_path)
+    # Add project root to sys.path so 'from shared.xxx' imports work
+    if project_root not in sys.path:
+        sys.path.insert(0, project_root)
 
-        from odd_discovery_service import discover_odd_categories, OddDiscoveryService
-        from category_naming_service import name_discovered_clusters, CategoryNamingService
-        from discovery_status_manager import discovery_status_manager
-        clustering_services_available = True
-        logger.info(f"Clustering services loaded successfully from {clustering_path}")
-    else:
-        logger.warning(f"Clustering directory not found at {clustering_path}")
-        clustering_services_available = False
+    from shared.odd_discovery_service import discover_odd_categories, OddDiscoveryService
+    from shared.category_naming_service import name_discovered_clusters, CategoryNamingService
+    # Note: discovery_status_manager is imported locally in endpoints (web-api directory)
+    clustering_services_available = True
+    logger.info(f"Clustering services loaded successfully from {project_root}/lib")
 
 except ImportError as e:
     logger.warning(f"Clustering services not available: {e}")
@@ -230,13 +223,118 @@ sfn = None
 s3vectors_available = False
 initialization_error = None  # Store initialization error for debugging
 
+# ============================================================================
+# S3-Backed Metrics Cache - Hybrid "Cached Truth" Model
+# ============================================================================
+
+class S3BackedMetricsCache:
+    """
+    Hybrid cache for DTO metrics: Fast local reads + S3 persistence.
+    Solves Trust Bug between landing page (fast) and analytics page (accurate).
+    """
+
+    def __init__(self):
+        self.s3_key = "config/latest_dto_metrics.json"
+        self.local_cache = {
+            "naive_cost_usd": 0,
+            "intelligent_cost_usd": 0,
+            "estimated_savings_usd": 0,
+            "efficiency_gain_percent": 27.6,  # Hardcoded fallback
+            "last_updated": None,
+            "analysis_method": "hardcoded_fallback",
+            "source": "default"
+        }
+        self.lock = threading.Lock()
+
+    def load_from_s3_on_startup(self):
+        """Load latest metrics from S3 on API startup (recovery path)"""
+        try:
+            if s3 is None:
+                logger.warning("S3 client not initialized - using hardcoded DTO fallback")
+                return
+
+            logger.info("Loading latest DTO metrics from S3 on startup...")
+            obj = s3.get_object(Bucket=BUCKET, Key=self.s3_key)
+            s3_metrics = json.loads(obj['Body'].read())
+
+            with self.lock:
+                self.local_cache.update(s3_metrics)
+                self.local_cache["source"] = "s3_recovery"
+
+            logger.info(f"Loaded DTO metrics from S3: ${self.local_cache['estimated_savings_usd']} "
+                       f"({self.local_cache['efficiency_gain_percent']:.1f}% efficiency)")
+
+        except ClientError as e:
+            if e.response['Error']['Code'] == 'NoSuchKey':
+                logger.info("No cached DTO metrics found in S3 - using defaults")
+            else:
+                logger.warning(f"Failed to load DTO metrics from S3: {e}")
+        except Exception as e:
+            logger.error(f"Unexpected error loading DTO metrics from S3: {e}")
+
+    def get_metrics(self):
+        """Get current DTO metrics (sub-millisecond local read)"""
+        with self.lock:
+            return self.local_cache.copy()
+
+    def update_metrics(self, naive_cost: int, intelligent_cost: int,
+                      estimated_savings: int, efficiency_percent: float,
+                      analysis_method: str = "vector_analysis"):
+        """Update DTO metrics from analytics analysis (write-through pattern)"""
+
+        new_metrics = {
+            "naive_cost_usd": naive_cost,
+            "intelligent_cost_usd": intelligent_cost,
+            "estimated_savings_usd": estimated_savings,
+            "efficiency_gain_percent": efficiency_percent,
+            "last_updated": datetime.utcnow().isoformat(),
+            "analysis_method": analysis_method,
+            "source": "live_analysis"
+        }
+
+        # Step 1: Update local cache immediately (fast path)
+        with self.lock:
+            self.local_cache.update(new_metrics)
+
+        logger.info(f"Updated local DTO cache: ${estimated_savings} savings ({efficiency_percent:.1f}% efficiency)")
+
+        # Step 2: Write to S3 asynchronously (persistence path)
+        self._write_to_s3_async(new_metrics)
+
+    def _write_to_s3_async(self, metrics_data):
+        """Write metrics to S3 in background thread (don't block API response)"""
+        def s3_write_task():
+            try:
+                if s3 is None:
+                    logger.warning("S3 client not available - DTO metrics not persisted")
+                    return
+
+                s3.put_object(
+                    Bucket=BUCKET,
+                    Key=self.s3_key,
+                    Body=json.dumps(metrics_data, indent=2),
+                    ContentType='application/json'
+                )
+                logger.info(f"Persisted DTO metrics to S3: {self.s3_key}")
+
+            except Exception as e:
+                logger.error(f"Failed to persist DTO metrics to S3: {e}")
+                # Don't raise - this is a background operation
+
+        # Start background thread (don't block API response)
+        thread = threading.Thread(target=s3_write_task, daemon=True)
+        thread.start()
+
+# Global metrics cache instance
+metrics_cache = S3BackedMetricsCache()
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     # --- STARTUP LOGIC ---
     global s3, s3vectors, sfn, s3vectors_available, initialization_error
 
     logger.info("=" * 50)
-    logger.info("Fleet Discovery API Initializing...")
+    logger.info("fleet Discovery API Initializing...")
 
     # Initialize AWS Clients HERE, not at the top level
     try:
@@ -247,7 +345,6 @@ async def lifespan(app: FastAPI):
         logger.info("Creating boto3 S3 client...")
         config = Config(
             signature_version='s3v4',
-            s3={'addressing_style': 'virtual'},
             max_pool_connections=50  # Increase from default 10 to handle concurrent fleet overview processing
         )
         s3 = boto3.client('s3', region_name=aws_region, config=config, endpoint_url=f'https://s3.{aws_region}.amazonaws.com')
@@ -282,6 +379,10 @@ async def lifespan(app: FastAPI):
         initialization_error = str(e)  # Store error for debug endpoint
         # We don't raise here so the app can still start and return 500s (easier to debug)
 
+    # Load cached DTO metrics from S3 (recovery path after App Runner restarts)
+    logger.info("Loading cached DTO metrics from S3...")
+    metrics_cache.load_from_s3_on_startup()
+
     logger.info(f"Listening on port 8000")
     logger.info("=" * 50)
 
@@ -290,20 +391,53 @@ async def lifespan(app: FastAPI):
     # --- SHUTDOWN LOGIC ---
     logger.info("Shutting down...")
 
+# Simple in-memory rate limiter
+class RateLimiter:
+    def __init__(self, requests_per_minute: int = 60):
+        self.requests_per_minute = requests_per_minute
+        self.requests = {}
+        self.lock = threading.Lock()
+
+    def is_allowed(self, client_ip: str) -> bool:
+        now = time.time()
+        with self.lock:
+            # Clean old entries
+            self.requests = {k: v for k, v in self.requests.items() if now - v[-1] < 60}
+            # Check rate
+            if client_ip in self.requests:
+                recent = [t for t in self.requests[client_ip] if now - t < 60]
+                if len(recent) >= self.requests_per_minute:
+                    return False
+                self.requests[client_ip] = recent + [now]
+            else:
+                self.requests[client_ip] = [now]
+            return True
+
+rate_limiter = RateLimiter(requests_per_minute=int(os.getenv("RATE_LIMIT_PER_MINUTE", "60")))
+
 # Create the API app with lifespan manager (this will be mounted under /api)
-api_app = FastAPI(title="Fleet Discovery API", lifespan=lifespan)
+api_app = FastAPI(title="fleet Discovery API", lifespan=lifespan)
+
+# Rate limiting middleware
+@api_app.middleware("http")
+async def rate_limit_middleware(request: Request, call_next):
+    client_ip = request.client.host if request.client else "unknown"
+    if not rate_limiter.is_allowed(client_ip):
+        return JSONResponse(status_code=429, content={"detail": "Rate limit exceeded"})
+    return await call_next(request)
 
 # Enable CORS for the API app
 api_app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=os.getenv("CORS_ALLOWED_ORIGINS", "*").split(","),
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
-BUCKET = os.getenv('S3_BUCKET', '')
-VECTOR_BUCKET = os.getenv('VECTOR_BUCKET_NAME', '')
-STATE_MACHINE_ARN = os.getenv('STATE_MACHINE_ARN', '')
+# Configuration from environment variables
+BUCKET = os.getenv("S3_BUCKET", "")
+VECTOR_BUCKET = os.getenv("VECTOR_BUCKET_NAME", "")
+STATE_MACHINE_ARN = os.getenv("STATE_MACHINE_ARN", "")
 
 # Twin Engine Configuration
 INDICES_CONFIG = {
@@ -332,6 +466,15 @@ DEFAULT_ANALYTICS_ENGINE = "behavioral"
 fleet_overview_cache = {}
 
 # --- DATA MODELS (The "Contract" with the UI) ---
+# Scene ID validation pattern
+SCENE_ID_PATTERN = re.compile(r'^scene[-_]\d{1,6}(_CAM_[A-Z_]+)?$')
+
+def validate_scene_id(scene_id: str) -> str:
+    """Validate scene_id format"""
+    if scene_id and not SCENE_ID_PATTERN.match(scene_id):
+        raise ValueError(f"Invalid scene_id format: {scene_id}")
+    return scene_id
+
 class SceneSummary(BaseModel):
     scene_id: str
     risk_score: float
@@ -342,6 +485,11 @@ class SceneSummary(BaseModel):
     confidence_score: Optional[float] = None
     timestamp: Optional[str] = None
     hil_qualification: Optional[dict] = None
+
+    @field_validator('scene_id')
+    @classmethod
+    def validate_scene_id_field(cls, v):
+        return validate_scene_id(v)
 
 class SearchRequest(BaseModel):
     query: Optional[str] = None      # Optional because visual search might use scene_id
@@ -355,6 +503,20 @@ class SearchRequest(BaseModel):
     type: Optional[str] = None        # Category type: 'industry' or 'discovered'
     uniqueness_quality: Optional[str] = None  # For ODD Discovery: 'excellent', 'good', etc.
     uniqueness_score: Optional[float] = None  # For ODD Discovery: numerical score
+
+    @field_validator('scene_id')
+    @classmethod
+    def validate_scene_id_field(cls, v):
+        if v is not None:
+            return validate_scene_id(v)
+        return v
+
+    @field_validator('limit')
+    @classmethod
+    def validate_limit(cls, v):
+        if v is not None and (v < 1 or v > 100):
+            raise ValueError("limit must be between 1 and 100")
+        return v
 
 class ConfigUpdate(BaseModel):
     business_objective: str
@@ -516,7 +678,7 @@ def generate_embedding(text: str, engine_type: str) -> List[float]:
     try:
         # PATH A: Cohere (via Bedrock)
         if config["source"] == "bedrock":
-            bedrock = boto3.client('bedrock-runtime', region_name=aws_region)
+            bedrock = boto3.client('bedrock-runtime', region_name='us-west-2')
             response = bedrock.invoke_model(
                 modelId=config["embedding_model"],
                 contentType="application/json",
@@ -537,7 +699,7 @@ def generate_embedding(text: str, engine_type: str) -> List[float]:
                 logger.warning("Cosmos SageMaker endpoint not configured - skipping visual search")
                 return []
                 
-            sagemaker = boto3.client('sagemaker-runtime', region_name=aws_region)
+            sagemaker = boto3.client('sagemaker-runtime', region_name='us-west-2')
             # Cosmos-Embed1 Text Payload - must be array format
             response = sagemaker.invoke_endpoint(
                 EndpointName=endpoint_name,
@@ -733,7 +895,7 @@ def apply_metadata_filter(scenes, filter_id):
 @api_app.get("/")
 def root():
     """API Health Check"""
-    return {"status": "Fleet Discovery API Online", "version": "1.0.0"}
+    return {"status": "fleet Discovery API Online", "version": "1.0.0"}
 
 @api_app.get("/debug/s3")
 def debug_s3_connectivity():
@@ -759,7 +921,7 @@ def debug_s3_connectivity():
 
     # TEST 1: Who am I? (Verifies IAM Role)
     try:
-        sts = boto3.client('sts', region_name=aws_region)
+        sts = boto3.client('sts', region_name='us-west-2')
         identity = sts.get_caller_identity()
         results["1_identity"] = {
             "arn": identity.get("Arn"),
@@ -796,6 +958,46 @@ def debug_s3_connectivity():
         results["3_prefix_check"] = f"FAILED: {str(e)}"
 
     return results
+
+def load_tcs_framework_from_s3():
+    """
+    Load Tiered Confidence Scoring framework from S3 configuration
+    Enables zero-downtime threshold calibration for automotive safety
+    """
+    try:
+        # Try to load TCS config from S3
+        config_key = "config/tcs_safety_thresholds.json"
+
+        logger.debug(f"Loading TCS framework from s3://{BUCKET}/{config_key}")
+
+        config_obj = s3.get_object(Bucket=BUCKET, Key=config_key)
+        tcs_config = json.loads(config_obj['Body'].read())
+
+        logger.info("TCS framework loaded successfully from S3 config")
+        return tcs_config
+
+    except ClientError as e:
+        error_code = e.response['Error']['Code']
+        if error_code == 'NoSuchKey':
+            logger.warning("TCS config not found in S3 - using hardcoded fallback")
+        else:
+            logger.error(f"Failed to load TCS config from S3: {error_code}")
+    except Exception as e:
+        logger.error(f"Unexpected error loading TCS config: {str(e)}")
+
+    # Fallback: Return hardcoded TCS framework
+    logger.info("Using hardcoded TCS framework fallback")
+    return {
+        "Highway Merging Scenarios": {"threshold": 0.60, "tier": 2, "priority": "High", "zone": "Precision"},
+        "Urban Intersection Navigation": {"threshold": 0.58, "tier": 2, "priority": "High", "zone": "Precision"},
+        "Adverse Weather Conditions": {"threshold": 0.52, "tier": 3, "priority": "Medium", "zone": "Nuance"},
+        "Construction Zone Navigation": {"threshold": 0.51, "tier": 3, "priority": "Medium", "zone": "Nuance"},
+        "Parking Lot Maneuvering": {"threshold": 0.58, "tier": 2, "priority": "High", "zone": "Precision"},
+        "Emergency Vehicle Response": {"threshold": 0.40, "tier": 4, "priority": "CRITICAL", "zone": "Discovery"},
+        "School Zone Safety": {"threshold": 0.45, "tier": 4, "priority": "CRITICAL", "zone": "Discovery"},
+        "Animal Crossing Events": {"threshold": 0.42, "tier": 4, "priority": "CRITICAL", "zone": "Discovery"},
+        "Wrong-Way Driver Detection": {"threshold": 0.40, "tier": 4, "priority": "CRITICAL", "zone": "Discovery"}
+    }
 
 @api_app.get("/fleet/overview")
 def get_fleet_overview(page: int = 1, limit: int = 50, filter: str = "all"):
@@ -1174,7 +1376,7 @@ def get_fleet_overview(page: int = 1, limit: int = 50, filter: str = "all"):
 
         displayed_scenes = len(response_data["scenes"])
         total_count = response_data["total_count"]
-        logger.info(f" Fleet overview: {displayed_scenes} scenes on page {page}, {total_count} total scenes, filter='{filter}'")
+        logger.info(f" fleet overview: {displayed_scenes} scenes on page {page}, {total_count} total scenes, filter='{filter}'")
 
         return response_data
 
@@ -1198,7 +1400,7 @@ def get_scene_detail(scene_id: str):
         if USE_CLOUDFRONT_VIDEOS:
             # Generate presigned URL for S3 Transfer Acceleration endpoint
             s3_accelerate = boto3.client('s3',
-                region_name=aws_region,
+                region_name='us-west-2',
                 config=Config(s3={'use_accelerate_endpoint': True})
             )
             video_url = s3_accelerate.generate_presigned_url(
@@ -1222,7 +1424,7 @@ def get_scene_detail(scene_id: str):
                 if USE_CLOUDFRONT_VIDEOS:
                     # Generate presigned URL for S3 Transfer Acceleration endpoint
                     s3_accelerate = boto3.client('s3',
-                        region_name=aws_region,
+                        region_name='us-west-2',
                         config=Config(s3={'use_accelerate_endpoint': True})
                     )
                     cam_url = s3_accelerate.generate_presigned_url(
@@ -1538,7 +1740,7 @@ def get_scene_video(scene_id: str):
         if USE_CLOUDFRONT_VIDEOS:
             # Generate presigned URL for S3 Transfer Acceleration endpoint
             s3_accelerate = boto3.client('s3',
-                region_name=aws_region,
+                region_name='us-west-2',
                 config=Config(s3={'use_accelerate_endpoint': True})
             )
             video_url = s3_accelerate.generate_presigned_url(
@@ -1573,7 +1775,7 @@ def get_scene_thumbnail(scene_id: str):
         if USE_CLOUDFRONT_VIDEOS:
             # Generate presigned URL for S3 Transfer Acceleration endpoint
             s3_accelerate = boto3.client('s3',
-                region_name=aws_region,
+                region_name='us-west-2',
                 config=Config(s3={'use_accelerate_endpoint': True})
             )
             video_url = s3_accelerate.generate_presigned_url(
@@ -1921,7 +2123,7 @@ def twin_engine_search(request: SearchRequest):
 
 @api_app.get("/stats/overview")
 def get_stats_overview():
-    """Fleet Statistics - Read ONLY from Phase 6 Pipeline Results"""
+    """fleet Statistics - Read ONLY from Phase 6 Pipeline Results"""
     try:
         # 1. Get all scene directories from pipeline-results folder
         paginator = s3.get_paginator('list_objects_v2')
@@ -1935,7 +2137,8 @@ def get_stats_overview():
         for s3_page in pages:
             for prefix in s3_page.get('CommonPrefixes', []):
                 scene_dir = prefix['Prefix'].rstrip('/').split('/')[-1]
-                if scene_dir.startswith('scene-'):
+                # Accept both "scene-XXXX" and "XXXX" (numeric) folder names
+                if scene_dir.startswith('scene-') or scene_dir.isdigit():
                     scene_dirs.append(scene_dir)
 
         total_scenes = len(scene_dirs)
@@ -1975,26 +2178,47 @@ def get_stats_overview():
             for future in as_completed(future_to_scene):
                 anomaly_count += future.result()
 
-        # Calculate DTO savings using intelligent ODD-based approach (realtime)
+        # Get DTO savings from shared cache (hybrid S3-backed approach)
         try:
-            # Simplified approach: use the proven efficiency ratio from our comprehensive analysis
-            # This matches the 27.6% efficiency gain shown in the full ODD analysis
-            naive_cost = total_scenes * 30  # Transfer all scenes at $30 each (realistic cost)
-            efficiency_ratio = 0.276  # 27.6% savings proven by vector uniqueness analysis
-            estimated_dto_savings = int(naive_cost * efficiency_ratio)
+            # Get latest metrics from cache (sub-millisecond read from local memory)
+            cached_metrics = metrics_cache.get_metrics()
+
+            # If we have cached analytics results, use them
+            if cached_metrics["source"] != "default":
+                estimated_dto_savings = cached_metrics["estimated_savings_usd"]
+                efficiency_ratio = cached_metrics["efficiency_gain_percent"] / 100.0
+                logger.debug(f"Using cached DTO metrics: ${estimated_dto_savings} ({cached_metrics['efficiency_gain_percent']:.1f}%) from {cached_metrics['source']}")
+            else:
+                # Fallback calculation if no cache available yet
+                naive_cost = total_scenes * 30
+                efficiency_ratio = 0.276  # Default fallback
+                estimated_dto_savings = int(naive_cost * efficiency_ratio)
+                logger.debug(f"Using fallback DTO calculation: ${estimated_dto_savings} (27.6%)")
 
         except Exception as e:
-            logger.warning(f"DTO calculation failed: {e}")
+            logger.error(f"DTO calculation failed unexpectedly: {str(e)}", exc_info=True)
             # Final fallback
-            estimated_dto_savings = int(total_scenes * 8)  # Conservative estimate ~$8 savings per scene
+            estimated_dto_savings = int(total_scenes * 8)  # Conservative estimate
+            efficiency_ratio = 0.276
 
-        return {
+        # HIGH-PERFORMANCE CACHE FIX: Add stale-while-revalidate headers
+        response_data = {
             "scenarios_processed": total_scenes,  # Real count from pipeline-results
             "dto_savings_usd": estimated_dto_savings,
             "dto_efficiency_percent": round(efficiency_ratio * 100, 1),  # Frontend expects this field
             "anomalies_detected": anomaly_count,  # Direct from Phase 6 agents
             "status": "active"
         }
+
+        response = Response(
+            content=json.dumps(response_data),
+            media_type="application/json",
+            headers={
+                "Cache-Control": "public, max-age=300, stale-while-revalidate=60",  # 5min cache + 1min SWR
+                "X-Cache-Info": "Enterprise-SWR-Enabled"
+            }
+        )
+        return response
 
     except Exception as e:
         logger.debug(f"Error in get_stats_overview: {e}")
@@ -2038,7 +2262,7 @@ def authorize_upload(filename: str, file_type: str, data_format: Optional[str] =
 
         # Store in format-specific folder structure for future extensibility
         if data_format == "fleet_ros":
-            key = f"raw-data/fleet-pipeline/{filename}"  # Existing Fleet path
+            key = f"raw-data/fleet-pipeline/{filename}"  # Existing fleet path
         else:
             # Future formats get their own folders
             key = f"raw-data/{data_format}/{filename}"
@@ -2065,9 +2289,6 @@ def authorize_upload(filename: str, file_type: str, data_format: Optional[str] =
             ],
             ExpiresIn=3600
         )
-
-        # Fix URL to use regional endpoint for CORS compatibility
-        presigned_post['url'] = f"https://{BUCKET}.s3.{aws_region}.amazonaws.com/"
 
         # Log the format selection for monitoring
         logger.debug(f" Upload authorized: {filename} as {data_format} ({format_metadata.get('format_name', 'Unknown')})")
@@ -2122,9 +2343,6 @@ def get_pipeline_status():
                 return {"current_phase": None, "phase_number": None}
 
         executions = []
-        aws_region = os.environ.get('AWS_REGION', os.environ.get('AWS_DEFAULT_REGION', 'us-west-2'))
-        account_id = boto3.client('sts').get_caller_identity()['Account']
-        
         for exc in response.get('executions', []):
             # Extract scene_id from execution name like "fleet-scene-0125-1764462224"
             scene_id = "Unknown"
@@ -2134,7 +2352,7 @@ def get_pipeline_status():
                     scene_id = f"scene-{parts[3]}"
 
             # Get current phase for running executions
-            execution_arn = f"arn:aws:states:{aws_region}:{account_id}:execution:fleet-6phase-pipeline:{exc['name']}"
+            execution_arn = exc.get('executionArn', '')
             phase_info = get_current_phase(execution_arn, exc['status'])
 
             executions.append({
@@ -2222,7 +2440,8 @@ def get_analytics_trends():
         total_scenes = len(scenes)
         dto_efficiency = (risk_distribution["Low"] / total_scenes * 100) if total_scenes > 0 else 0
 
-        return {
+        # HIGH-PERFORMANCE CACHE FIX: Add stale-while-revalidate headers
+        response_data = {
             "anomalies_by_type": anomaly_counts,
             "risk_timeline": risk_over_time,  # FULL DATASET - show all processed scenes
             "risk_distribution": risk_distribution,
@@ -2235,6 +2454,16 @@ def get_analytics_trends():
                 {"week": "Week 4", "scenes": total_scenes}
             ]
         }
+
+        response = Response(
+            content=json.dumps(response_data),
+            media_type="application/json",
+            headers={
+                "Cache-Control": "public, max-age=300, stale-while-revalidate=60",  # 5min cache + 1min SWR
+                "X-Cache-Info": "Enterprise-SWR-Enabled"
+            }
+        )
+        return response
     except Exception as e:
         logger.debug(f"Analytics Error: {e}")
         return {
@@ -2293,7 +2522,7 @@ def get_dataset_coverage():
                 logger.warning(f"Could not get fleet size, trying embedding service: {e}")
                 # Dynamic fallback: try to get current dataset size from embedding service
                 try:
-                    from embedding_retrieval import get_current_dataset_size
+                    from shared.embedding_retrieval import get_current_dataset_size
                     total_scenes_analyzed = get_current_dataset_size()
                     logger.info(f"Got dynamic dataset size from embedding service: {total_scenes_analyzed} scenes")
                 except Exception as e2:
@@ -2819,6 +3048,12 @@ def get_odd_uniqueness_analysis():
 
         # STEP 1: Check for cached discovery results (like Coverage Matrix does)
         try:
+            # Import discovery status manager from local web-api directory
+            import sys
+            import os
+            web_api_dir = os.path.dirname(os.path.abspath(__file__))
+            if web_api_dir not in sys.path:
+                sys.path.insert(0, web_api_dir)
             from discovery_status_manager import discovery_status_manager
 
             # Get most recent completed job
@@ -2934,6 +3169,16 @@ def get_odd_uniqueness_analysis():
         logger.info(f"True ODD uniqueness analysis complete: {len(uniqueness_results)} natural categories discovered")
         logger.info(f"DTO Savings: ${estimated_savings:.0f} (${naive_dto_cost:.0f} → ${intelligent_dto_cost:.0f})")
 
+        # Update shared metrics cache with latest analytics results (write-through pattern)
+        efficiency_percent = round((estimated_savings / naive_dto_cost * 100), 1) if naive_dto_cost > 0 else 0.0
+        metrics_cache.update_metrics(
+            naive_cost=int(naive_dto_cost),
+            intelligent_cost=int(intelligent_dto_cost),
+            estimated_savings=int(estimated_savings),
+            efficiency_percent=efficiency_percent,
+            analysis_method="hdbscan_clustering_uniqueness_analysis"
+        )
+
         return {
             "analysis_method": "hdbscan_clustering_uniqueness_analysis",
             "analysis_timestamp": datetime.utcnow().isoformat(),
@@ -3047,6 +3292,16 @@ def _legacy_odd_uniqueness_analysis():
         estimated_savings = naive_dto_cost - intelligent_dto_cost
 
         logger.info(f"Legacy ODD uniqueness analysis complete: {len(uniqueness_results)} predefined categories")
+
+        # Update shared metrics cache with legacy analysis results (write-through pattern)
+        efficiency_percent = round((estimated_savings / naive_dto_cost * 100), 1) if naive_dto_cost > 0 else 0.0
+        metrics_cache.update_metrics(
+            naive_cost=int(naive_dto_cost),
+            intelligent_cost=int(intelligent_dto_cost),
+            estimated_savings=int(estimated_savings),
+            efficiency_percent=efficiency_percent,
+            analysis_method="legacy_vector_similarity_uniqueness_analysis"
+        )
 
         return {
             "analysis_method": "legacy_vector_similarity_uniqueness_analysis",
@@ -3900,7 +4155,14 @@ async def trigger_odd_rediscovery():
     try:
         logger.info("Received request to trigger ODD rediscovery")
 
-        # Import clustering services with error handling
+        # Import discovery status manager from local web-api directory
+        import sys
+        import os
+        # Add web-api directory to path for discovery_status_manager import
+        web_api_dir = os.path.dirname(os.path.abspath(__file__))
+        if web_api_dir not in sys.path:
+            sys.path.insert(0, web_api_dir)
+
         from discovery_status_manager import discovery_status_manager
 
         # Start new discovery job and get job ID
@@ -3914,17 +4176,25 @@ async def trigger_odd_rediscovery():
             try:
                 logger.info(f"Starting background discovery for job {job_id}")
 
+                # Ensure shared module is importable in this thread
+                import sys
+                import os
+                current_file_dir = os.path.dirname(os.path.abspath(__file__))
+                project_root = os.path.dirname(current_file_dir)
+                if project_root not in sys.path:
+                    sys.path.insert(0, project_root)
+
                 # Import Apple-grade progress tracker
-                from dynamic_progress_tracker import DynamicProgressTracker
+                from shared.dynamic_progress_tracker import DynamicProgressTracker
 
                 # Initialize dynamic progress tracker
                 progress_tracker = DynamicProgressTracker(job_id, discovery_status_manager)
 
                 # Import and run clustering services
                 try:
-                    from embedding_retrieval import load_all_embeddings
-                    from odd_discovery_service import discover_odd_categories
-                    from category_naming_service import name_discovered_clusters, CategoryNamingService
+                    from shared.embedding_retrieval import load_all_embeddings
+                    from shared.odd_discovery_service import discover_odd_categories
+                    from shared.category_naming_service import name_discovered_clusters, CategoryNamingService
 
                     # Phase 1: Loading embeddings with Apple-grade dynamic progress
                     progress_tracker.start_phase('loading', "Loading scene embeddings from S3 storage")
@@ -4071,6 +4341,16 @@ async def trigger_odd_rediscovery():
                     # Calculate savings
                     estimated_savings = max(0, naive_dto_cost - intelligent_dto_cost)
 
+                    # Update shared metrics cache with async discovery results (write-through pattern)
+                    efficiency_percent = round((estimated_savings / naive_dto_cost * 100), 1) if naive_dto_cost > 0 else 0
+                    metrics_cache.update_metrics(
+                        naive_cost=int(naive_dto_cost),
+                        intelligent_cost=int(intelligent_dto_cost),
+                        estimated_savings=int(estimated_savings),
+                        efficiency_percent=efficiency_percent,
+                        analysis_method="async_hdbscan_discovery"
+                    )
+
                     # Create complete frontend-compatible result
                     discovery_results = {
                         "dto_savings_estimate": {
@@ -4146,7 +4426,12 @@ async def get_rediscovery_status(job_id: str):
     try:
         logger.debug(f"Checking status for discovery job: {job_id}")
 
-        # Import status manager
+        # Import discovery status manager from local web-api directory
+        import sys
+        import os
+        web_api_dir = os.path.dirname(os.path.abspath(__file__))
+        if web_api_dir not in sys.path:
+            sys.path.insert(0, web_api_dir)
         from discovery_status_manager import discovery_status_manager
 
         # Get job status
@@ -4357,7 +4642,12 @@ async def list_discovery_jobs(limit: int = 10):
     try:
         logger.debug("Listing recent discovery jobs")
 
-        # Import status manager
+        # Import discovery status manager from local web-api directory
+        import sys
+        import os
+        web_api_dir = os.path.dirname(os.path.abspath(__file__))
+        if web_api_dir not in sys.path:
+            sys.path.insert(0, web_api_dir)
         from discovery_status_manager import discovery_status_manager
 
         # Get recent jobs
@@ -4532,40 +4822,102 @@ async def get_hybrid_coverage_matrix():
                 Returns updated category with real scene count.
                 """
                 try:
+                    # DEBUG: Log S3 Vectors availability status
+                    logger.info(f"DEBUG: s3vectors_available = {s3vectors_available}")
                     if not s3vectors_available:
+                        logger.warning(f"S3 Vectors unavailable - keeping placeholder count for {category_info['category']}")
                         return category_info  # Keep placeholder count if S3 Vectors unavailable
 
                     # Enhanced query for better semantic matching
                     search_query = f"autonomous vehicle driving scenario: {category_info['description']}"
+                    logger.info(f"DEBUG: Searching for '{category_info['category']}' with query: {search_query}")
 
                     # Generate behavioral embedding for the category
                     query_vector = generate_embedding(search_query, DEFAULT_ANALYTICS_ENGINE)
                     if not query_vector:
-                        logger.warning(f"Failed to generate embedding for category: {category_info['category']}")
+                        logger.error(f"Failed to generate embedding for category: {category_info['category']}")
                         return category_info
 
+                    logger.info(f"DEBUG: Generated embedding for {category_info['category']}, vector length: {len(query_vector)}")
+
                     # Search for matching scenes
+                    logger.info(f"DEBUG: Querying S3 Vectors with index: {INDICES_CONFIG[DEFAULT_ANALYTICS_ENGINE]['name']}")
                     results = s3vectors.query_vectors(
                         vectorBucketName=VECTOR_BUCKET,
                         indexName=INDICES_CONFIG[DEFAULT_ANALYTICS_ENGINE]["name"],
                         queryVector={"float32": query_vector},
-                        topK=200,  # Large sample for accurate counting
-                        minSimilarity=0.6,  # Threshold for category matching
-                        returnMetadata=True
+                        topK=100,  # Max allowed by S3 Vectors API (was 200)
+                        returnMetadata=True,
+                        returnDistance=True  # Get similarity scores for filtering
                     )
 
-                    # Count unique scenes (not individual camera angles)
-                    unique_scene_ids = set()
+                    total_results = len(results.get('vectors', []))
+                    logger.info(f"DEBUG: S3 Vectors returned {total_results} total results for {category_info['category']}")
+
+                    # Tiered Confidence Scoring (TCS) Framework - Automotive Safety-Critical
+                    # Load from S3 for zero-downtime threshold calibration
+                    TCS_FRAMEWORK = load_tcs_framework_from_s3()
+
+                    # Get TCS parameters for this category
+                    category_name = category_info['category']
+                    tcs_config = TCS_FRAMEWORK.get(category_name, {
+                        "threshold": 0.55, "tier": 3, "priority": "Medium", "zone": "Nuance"  # Default fallback
+                    })
+
+                    similarity_threshold = tcs_config["threshold"]
+                    confidence_tier = tcs_config["tier"]
+                    safety_priority = tcs_config["priority"]
+                    search_zone = tcs_config["zone"]
+
+                    filtered_results = []
+                    similarity_scores = []
+
                     for result in results.get("vectors", []):
+                        distance = result.get("distance", 1.0)
+                        similarity = 1.0 - distance
+                        similarity_scores.append(similarity)
+
+                        if similarity >= similarity_threshold:
+                            filtered_results.append(result)
+
+                    logger.info(f"DEBUG: TCS Tier {confidence_tier} ({search_zone} Zone) - Filtered to {len(filtered_results)}/{total_results} results above {similarity_threshold:.2f} threshold for {category_info['category']}")
+
+                    if similarity_scores:
+                        avg_similarity = sum(similarity_scores) / len(similarity_scores)
+                        max_similarity = max(similarity_scores)
+                        min_similarity = min(similarity_scores)
+                        logger.info(f"DEBUG: TCS Analysis for {category_info['category']} (Priority: {safety_priority}): {min_similarity:.3f} - {max_similarity:.3f} (avg: {avg_similarity:.3f})")
+
+                        # Safety-critical logging for Tier 4 scenarios
+                        if confidence_tier == 4:
+                            above_threshold_count = len(filtered_results)
+                            if above_threshold_count == 0:
+                                logger.warning(f"SAFETY ALERT: Tier 4 critical scenario '{category_info['category']}' found NO matches above {similarity_threshold:.2f} threshold")
+                            else:
+                                logger.info(f"SAFETY: Tier 4 critical scenario '{category_info['category']}' discovered {above_threshold_count} potential matches")
+
+                    # Count unique scenes from filtered results (not individual camera angles)
+                    unique_scene_ids = set()
+                    for result in filtered_results:
                         scene_id = result.get("metadata", {}).get("scene_id")
                         if scene_id and scene_id.startswith('scene-'):
                             unique_scene_ids.add(scene_id)
 
-                    # Update category with real count
+                    # Update category with real count and TCS metadata
                     real_count = len(unique_scene_ids)
                     category_info["current"] = real_count
 
-                    logger.info(f"Category '{category_info['category']}': {real_count} scenes found")
+                    # Add Tiered Confidence Scoring metadata for frontend display
+                    category_info["tcs_metadata"] = {
+                        "tier": confidence_tier,
+                        "priority": safety_priority,
+                        "zone": search_zone,
+                        "threshold": similarity_threshold,
+                        "total_candidates": total_results,
+                        "filtered_matches": len(filtered_results)
+                    }
+
+                    logger.info(f"TCS Category '{category_info['category']}' (Tier {confidence_tier}): {real_count} scenes found via {search_zone} Zone")
                     return category_info
 
                 except Exception as e:
@@ -4607,6 +4959,12 @@ async def get_hybrid_coverage_matrix():
         discovered_categories = []
         try:
             # Check if we have completed discovery results
+            # Import discovery status manager from local web-api directory
+            import sys
+            import os
+            web_api_dir = os.path.dirname(os.path.abspath(__file__))
+            if web_api_dir not in sys.path:
+                sys.path.insert(0, web_api_dir)
             from discovery_status_manager import discovery_status_manager
 
             # Get most recent completed job
@@ -4677,8 +5035,8 @@ async def get_hybrid_coverage_matrix():
             }
         }
 
-        # Combined matrix response
-        return {
+        # HIGH-PERFORMANCE CACHE FIX: Combined matrix response with SWR headers
+        response_data = {
             "coverage_matrix": {
                 "industry_standard_categories": industry_categories,
                 "discovered_categories": discovered_categories,
@@ -4696,6 +5054,16 @@ async def get_hybrid_coverage_matrix():
                 "data_freshness": "real_time" if discovered_categories else "industry_baseline"
             }
         }
+
+        response = Response(
+            content=json.dumps(response_data),
+            media_type="application/json",
+            headers={
+                "Cache-Control": "public, max-age=300, stale-while-revalidate=60",  # 5min cache + 1min SWR
+                "X-Cache-Info": "Enterprise-SWR-Enabled"
+            }
+        )
+        return response
 
     except Exception as e:
         logger.error(f"Failed to generate hybrid coverage matrix: {str(e)}")

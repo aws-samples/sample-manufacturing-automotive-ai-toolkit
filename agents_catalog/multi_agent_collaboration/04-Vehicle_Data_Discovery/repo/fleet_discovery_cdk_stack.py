@@ -43,7 +43,7 @@ class FleetDiscoveryCdkStack(NestedStack):
         super().__init__(scope, construct_id, **kwargs)
 
         # Generate unique_id from stack name for consistent naming
-        unique_id = hashlib.md5(construct_id.encode()).hexdigest()[:8]
+        unique_id = hashlib.md5(construct_id.encode(), usedforsecurity=False).hexdigest()[:8]
 
         # ECR REPOSITORIES for pipeline images
         self.ecr_repo = ecr.Repository(
@@ -88,7 +88,7 @@ class FleetDiscoveryCdkStack(NestedStack):
             container_insights=True
         )
 
-        # IAM ROLE for ECS instances - FULL ADMIN PERMISSIONS FOR TESTING
+        # IAM ROLE for ECS instances - Scoped permissions for fleet discovery pipeline
         self.ecs_instance_role = iam.Role(
             self, "FleetECSInstanceRole",
             role_name=f"fleet-ecs-instance-role-{unique_id}",
@@ -96,7 +96,6 @@ class FleetDiscoveryCdkStack(NestedStack):
             managed_policies=[
                 iam.ManagedPolicy.from_aws_managed_policy_name("service-role/AmazonEC2ContainerServiceforEC2Role"),
                 iam.ManagedPolicy.from_aws_managed_policy_name("AmazonSSMManagedInstanceCore"),
-                iam.ManagedPolicy.from_aws_managed_policy_name("AdministratorAccess")  # Full admin for testing
             ]
         )
 
@@ -265,6 +264,7 @@ class FleetDiscoveryCdkStack(NestedStack):
             enforce_ssl=True,
             block_public_access=s3.BlockPublicAccess.BLOCK_ALL,
             encryption=s3.BucketEncryption.S3_MANAGED,
+            versioned=True,
             server_access_logs_bucket=self.access_logs_bucket,
             server_access_logs_prefix="discovery-bucket/",
         )
@@ -278,6 +278,7 @@ class FleetDiscoveryCdkStack(NestedStack):
             enforce_ssl=True,
             block_public_access=s3.BlockPublicAccess.BLOCK_ALL,
             encryption=s3.BucketEncryption.S3_MANAGED,
+            versioned=True,
             server_access_logs_bucket=self.access_logs_bucket,
             server_access_logs_prefix="vector-bucket/",
         )
@@ -302,16 +303,59 @@ class FleetDiscoveryCdkStack(NestedStack):
             ]
         )
 
-        # ECS Task Role - FULL ADMIN PERMISSIONS FOR TESTING + explicit Bedrock + AgentCore permissions
-        # WARNING: Scope down permissions for production use
+        # ECS Task Role - Scoped permissions for fleet discovery pipeline
         self.ecs_task_role = iam.Role(
             self, "FleetECSTaskRole",
             role_name=f"fleet-ecs-task-role-{unique_id}",
             assumed_by=iam.ServicePrincipal("ecs-tasks.amazonaws.com"),
             managed_policies=[
-                iam.ManagedPolicy.from_aws_managed_policy_name("AdministratorAccess"),  # Full admin for testing
                 iam.ManagedPolicy.from_aws_managed_policy_name("AmazonBedrockFullAccess")
             ]
+        )
+
+        # S3 permissions for pipeline data
+        self.ecs_task_role.add_to_policy(
+            iam.PolicyStatement(
+                effect=iam.Effect.ALLOW,
+                actions=["s3:GetObject", "s3:PutObject", "s3:ListBucket", "s3:DeleteObject"],
+                resources=["arn:aws:s3:::fleet-*", "arn:aws:s3:::fleet-*/*"]
+            )
+        )
+
+        # Step Functions permissions (full access for task callbacks)
+        self.ecs_task_role.add_to_policy(
+            iam.PolicyStatement(
+                effect=iam.Effect.ALLOW,
+                actions=["states:*"],
+                resources=["arn:aws:states:*:*:stateMachine:fleet-*", "arn:aws:states:*:*:execution:fleet-*:*"]
+            )
+        )
+
+        # CloudWatch Logs permissions
+        self.ecs_task_role.add_to_policy(
+            iam.PolicyStatement(
+                effect=iam.Effect.ALLOW,
+                actions=["logs:CreateLogGroup", "logs:CreateLogStream", "logs:PutLogEvents"],
+                resources=["arn:aws:logs:*:*:log-group:/aws/fleet-*", "arn:aws:logs:*:*:log-group:/aws/fleet-*:*"]
+            )
+        )
+
+        # ECR permissions
+        self.ecs_task_role.add_to_policy(
+            iam.PolicyStatement(
+                effect=iam.Effect.ALLOW,
+                actions=["ecr:GetAuthorizationToken", "ecr:BatchCheckLayerAvailability", "ecr:GetDownloadUrlForLayer", "ecr:BatchGetImage"],
+                resources=["*"]
+            )
+        )
+
+        # S3 Vectors permissions
+        self.ecs_task_role.add_to_policy(
+            iam.PolicyStatement(
+                effect=iam.Effect.ALLOW,
+                actions=["s3vectors:*"],
+                resources=["*"]
+            )
         )
 
         # Add explicit AgentCore permissions (for Phase 6 orchestrator)
@@ -1433,7 +1477,7 @@ def handler(event, context):
         # Generate a hash of key source files to force rebuild when code changes
         def get_source_hash(directory):
             import hashlib
-            h = hashlib.md5()
+            h = hashlib.md5(usedforsecurity=False)
             for root, dirs, files in os.walk(directory):
                 dirs[:] = [d for d in dirs if d not in ['__pycache__', '.git', 'cdk.out', '.venv']]
                 for f in sorted(files):

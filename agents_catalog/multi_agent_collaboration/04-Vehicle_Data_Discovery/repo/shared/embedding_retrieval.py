@@ -2,6 +2,7 @@
 import boto3
 import json
 import logging
+import os
 import numpy as np
 from typing import List, Dict, Optional, Tuple
 from dataclasses import dataclass
@@ -11,9 +12,9 @@ from datetime import datetime
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-# AWS Configuration (following dashboard_api.py pattern)
-FLEET_BUCKET = os.getenv('S3_BUCKET', '')
-VECTOR_BUCKET = os.getenv('VECTOR_BUCKET_NAME', '')
+# AWS Configuration from environment variables
+FLEET_BUCKET = os.getenv("S3_BUCKET", "")
+VECTOR_BUCKET = os.getenv("VECTOR_BUCKET_NAME", "")
 
 @dataclass
 class SceneEmbeddings:
