@@ -21,3 +21,7 @@ agents_catalog/**/.dockerignore
 .vscode/*
 **/cdk/cdk.context.json
 agentcore_deployment_results.md
+
+# Config files with API keys
+agents_catalog/multi_agent_collaboration/04-Vehicle_Data_Discovery/repo/frontend/tesla-discovery-studio/current-dist-config.json
+agents_catalog/multi_agent_collaboration/04-Vehicle_Data_Discovery/repo/frontend/tesla-discovery-studio/updated-dist-config.json

@@ -25,6 +25,7 @@ COPY web-api/requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
 COPY web-api/*.py ./
+COPY shared/ ./shared/
 COPY --from=frontend-build /frontend/out ./static
 
 EXPOSE 8000
