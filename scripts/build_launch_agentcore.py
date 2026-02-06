@@ -153,8 +153,10 @@ def deploy_agentcore_agent(agent_path, agent_id, agent_name, entrypoint, region,
         os.chdir(agent_path)
         
         try:
-            # Find requirements.txt in current directory
-            requirements_file = "requirements.txt" if Path("requirements.txt").exists() else None
+            # Find requirements.txt in same directory as entrypoint
+            entrypoint_dir = Path(entrypoint).parent
+            requirements_path = entrypoint_dir / "requirements.txt"
+            requirements_file = str(requirements_path) if requirements_path.exists() else None
             print(f"DEBUG: cwd={os.getcwd()}, requirements_file={requirements_file}", flush=True)
             
             # Configure the agent

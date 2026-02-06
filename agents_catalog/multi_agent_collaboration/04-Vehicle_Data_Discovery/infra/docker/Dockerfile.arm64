@@ -1,0 +1,18 @@
+# Fleet Pipeline - ARM64 (Graviton) Image
+# For Phases 1, 2, 4-5, 6
+FROM public.ecr.aws/docker/library/python:3.11-slim
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    ffmpeg libsm6 libxext6 && \
+    rm -rf /var/lib/apt/lists/*
+
+WORKDIR /app
+COPY pipeline/requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
+
+COPY pipeline/phase-1/*.py /app/phase-1/
+COPY pipeline/phase-2/*.py /app/phase-2/
+COPY pipeline/phase-4-5/*.py /app/phase-4-5/
+COPY pipeline/phase-6/*.py /app/phase-6/
+
+CMD ["python3", "/app/phase-1/multi_sensor_rosbag_extractor.py"]
