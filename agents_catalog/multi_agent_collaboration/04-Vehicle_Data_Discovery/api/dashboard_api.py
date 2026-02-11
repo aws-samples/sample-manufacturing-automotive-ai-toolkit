@@ -100,11 +100,33 @@ def health_check():
 # Mount API under /api
 app.mount("/api", api_app)
 
-# Mount static files for frontend
-try:
-    app.mount("/", StaticFiles(directory="static", html=True), name="static")
-except Exception as e:
-    logger.warning(f"Static files not available: {e}")
+# Serve static frontend with SPA fallback
+from fastapi.responses import FileResponse
+import os
+
+STATIC_DIR = "static"
+
+@app.get("/{path:path}")
+async def serve_spa(path: str):
+    """Serve static files with SPA-style routing"""
+    # Try exact file
+    file_path = os.path.join(STATIC_DIR, path)
+    if os.path.isfile(file_path):
+        return FileResponse(file_path)
+    # Try with .html extension
+    html_path = os.path.join(STATIC_DIR, f"{path}.html")
+    if os.path.isfile(html_path):
+        return FileResponse(html_path)
+    # Try index.html in directory
+    index_path = os.path.join(STATIC_DIR, path, "index.html")
+    if os.path.isfile(index_path):
+        return FileResponse(index_path)
+    # Fallback to 404.html
+    return FileResponse(os.path.join(STATIC_DIR, "404.html"), status_code=404)
+
+@app.get("/")
+async def serve_index():
+    return FileResponse(os.path.join(STATIC_DIR, "index.html"))
 
 
 # Lambda handler

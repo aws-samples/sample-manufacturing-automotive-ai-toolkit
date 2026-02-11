@@ -53,6 +53,14 @@ def get_scene_detail(scene_id: str):
         except:
             pass
 
+        # Load Phase 6 output for properly formatted key_findings
+        phase6_data = {}
+        try:
+            p6_key = f"processed/phase6/{scene_id}/enhanced_orchestration_results.json"
+            phase6_data = json.loads(s3.get_object(Bucket=BUCKET, Key=p6_key)['Body'].read())
+        except:
+            pass
+
         scene_analysis = safe_parse_agent_analysis(agents_data.get("scene_understanding", {}))
         anomaly_analysis = safe_parse_agent_analysis(agents_data.get("anomaly_detection", {}))
 
@@ -106,11 +114,16 @@ def get_scene_detail(scene_id: str):
         else:
             anomaly_status = "NORMAL"
 
-        # Key findings
+        # Key findings - prefer Phase 6 formatted output
         key_findings = []
-        for f in scene_analysis.get("key_findings", []):
-            if isinstance(f, str) and f.strip() and "unavailable" not in f.lower():
-                key_findings.append(f)
+        p6_scene = phase6_data.get("agent_results", {}).get("scene_understanding_worker", {}).get("scene_understanding", {}).get("analysis", {})
+        p6_kf = p6_scene.get("key_findings", [])
+        if p6_kf:
+            key_findings = [f for f in p6_kf if isinstance(f, str) and f.strip()]
+        else:
+            for f in scene_analysis.get("key_findings", []):
+                if isinstance(f, str) and f.strip() and "unavailable" not in f.lower():
+                    key_findings.append(f)
 
         # Behavioral insights
         behavioral_insights = []

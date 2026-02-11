@@ -91,12 +91,21 @@ class S3VectorsDualIndexCreator:
                     logger.error(f"Failed to create index {index_name}: {str(e)}")
                     return False
 
-            # Wait for index to be ready (simplified - following backfill pattern)
-            logger.info(f"Waiting 60 seconds for {index_name} to be ready...")
-            time.sleep(60)
-
-            logger.info(f"SUCCESS: {index_name} creation completed!")
-            return True
+            # Poll for index to be ready
+            logger.info(f"Waiting for {index_name} to be ready...")
+            for attempt in range(30):  # Max 5 minutes (30 * 10s)
+                try:
+                    self.s3vectors_client.get_index(
+                        vectorBucketName=self.vector_bucket,
+                        indexName=index_name
+                    )
+                    logger.info(f"SUCCESS: {index_name} is ready!")
+                    return True
+                except Exception:
+                    time.sleep(10)
+            
+            logger.error(f"Timeout waiting for {index_name} to be ready")
+            return False
 
         except Exception as e:
             logger.error(f"FAILED: Failed to create index {index_name}: {str(e)}")

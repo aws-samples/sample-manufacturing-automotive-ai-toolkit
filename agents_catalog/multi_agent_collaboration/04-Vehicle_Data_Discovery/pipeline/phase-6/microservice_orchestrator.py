@@ -1500,6 +1500,12 @@ class MicroserviceWorkerNode(MultiAgentBase):
         logger.warning(f"Could not parse JSON string for {self.agent_type}")
         return None
 
+    def _format_dict_value(self, value) -> str:
+        """Format a dict value as readable text, or return string as-is"""
+        if isinstance(value, dict):
+            return ", ".join(f"{k}: {v}" for k, v in value.items())
+        return str(value)
+
     def _extract_structured_fields(self, parsed_summary: dict, agent_type: str) -> tuple:
         """Extract key_findings, metrics, and confidence_score from parsed summary"""
         key_findings = []
@@ -1510,10 +1516,11 @@ class MicroserviceWorkerNode(MultiAgentBase):
         if agent_type == "scene_understanding":
             # Scene understanding agent structure
             if 'scene_analysis' in parsed_summary:
+                sa = parsed_summary['scene_analysis']
                 key_findings.extend([
-                    f"Environment: {parsed_summary['scene_analysis'].get('environmental_conditions', 'N/A')}",
-                    f"Traffic: {parsed_summary['scene_analysis'].get('traffic_complexity', 'N/A')}",
-                    f"Behavior: {parsed_summary['scene_analysis'].get('vehicle_behavior', 'N/A')}"
+                    f"Environment: {self._format_dict_value(sa.get('environmental_conditions', 'N/A'))}",
+                    f"Traffic: {self._format_dict_value(sa.get('traffic_complexity', 'N/A'))}",
+                    f"Behavior: {self._format_dict_value(sa.get('vehicle_behavior', 'N/A'))}"
                 ])
             
             if 'behavioral_insights' in parsed_summary:

@@ -32,8 +32,8 @@ class ROSBagVideoReconstructor:
 
         # Create temporary file
         temp_file = tempfile.NamedTemporaryFile(delete=False, suffix='.bag')
-        temp_path = temp_file.name
-        temp_file.close()  # nosemgrep: tempfile-without-flush - file is closed before using temp_path
+        temp_file.close()
+        temp_path = temp_file.name  # Access name after close
 
         # Download from S3
         try:

@@ -112,7 +112,6 @@ class S3VectorsBackfillOrchestrator:
                         indexName=index_name
                     )
                     logger.info(f"{index_name} deleted successfully")
-                    time.sleep(10)  # nosemgrep: arbitrary-sleep - pause between S3 deletions
                 except Exception as e:
                     if "NotFoundException" in str(e) or "ResourceNotFoundException" in str(e):
                         logger.info(f"{index_name} doesn't exist, skipping deletion")
@@ -120,9 +119,18 @@ class S3VectorsBackfillOrchestrator:
                         logger.error(f"Failed to delete {index_name}: {str(e)}")
                         return False
 
-            # Wait after all deletions
+            # Poll until deletions are propagated
             logger.info("Waiting for deletion propagation...")
-            time.sleep(30)
+            for index_name in [self.behavioral_index, self.visual_index]:
+                for attempt in range(15):  # Max 2.5 minutes per index
+                    try:
+                        self.s3vectors_client.get_index(
+                            vectorBucketName=self.vector_bucket,
+                            indexName=index_name
+                        )
+                        time.sleep(10)  # Index still exists, wait
+                    except Exception:
+                        break  # Index deleted
 
             # CREATE INDEX 1: Behavioral Metadata (Cohere 1536-dim)
             logger.info(f"Creating new {self.behavioral_index} index (Cohere 1536-dim)...")
@@ -164,9 +172,21 @@ class S3VectorsBackfillOrchestrator:
             )
             logger.info("Video similarity index created successfully")
 
-            # Wait for both indices to be ready
+            # Poll for both indices to be ready
             logger.info("Waiting for dual indices to be ready...")
-            time.sleep(90)  # nosemgrep: arbitrary-sleep - wait for S3 index propagation
+            for index_name in [self.behavioral_index, self.visual_index]:
+                for attempt in range(30):  # Max 5 minutes per index
+                    try:
+                        self.s3vectors_client.get_index(
+                            vectorBucketName=self.vector_bucket,
+                            indexName=index_name
+                        )
+                        logger.info(f"{index_name} is ready")
+                        break
+                    except Exception:
+                        time.sleep(10)
+                else:
+                    raise Exception(f"Timeout waiting for {index_name} to be ready")
 
             logger.info("NUCLEAR RESET completed successfully - Dual-index architecture ready!")
             return True

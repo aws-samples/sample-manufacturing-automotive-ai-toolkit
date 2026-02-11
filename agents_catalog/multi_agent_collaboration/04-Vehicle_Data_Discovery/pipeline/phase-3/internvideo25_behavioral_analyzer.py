@@ -500,30 +500,29 @@ def load_internvideo25_model():
         os.makedirs(cache_dir, exist_ok=True)
         logger.info(f"Using HuggingFace cache directory: {cache_dir}")
 
-        # NO QUANTIZATION for NVIDIA A10G (24GB VRAM) - use standard half-precision
-        # As specified by user: A10G has sufficient VRAM for 8B model without quantization
-        quantization_config = None
+        # Requires GPU with >=20GB VRAM (A10G, A100, etc.) - no quantization for best quality
+        gpu_name = torch.cuda.get_device_name(0) if torch.cuda.is_available() else "Unknown"
+        gpu_memory_gb = torch.cuda.get_device_properties(0).total_memory / (1024**3) if torch.cuda.is_available() else 0
+        logger.info(f"Detected GPU: {gpu_name}, Memory: {gpu_memory_gb:.1f}GB")
 
-        logger.info("Using standard half-precision (no quantization) for NVIDIA A10G 24GB")
+        if gpu_memory_gb < 20:
+            raise RuntimeError(f"GPU {gpu_name} has {gpu_memory_gb:.1f}GB VRAM, need >=20GB for InternVideo2.5")
 
-        # CORRECT: Load tokenizer and model using HuggingFace pattern (no quantization needed)
         tokenizer = AutoTokenizer.from_pretrained(
             model_path,
             trust_remote_code=True,
             cache_dir=cache_dir
         )
 
-        # Load model with standard half-precision (no quantization for A10G 24GB)
         model = AutoModel.from_pretrained(
             model_path,
             trust_remote_code=True,
             cache_dir=cache_dir,
-            torch_dtype=torch.bfloat16,    # Standard half-precision
-            device_map="auto"              # Automatic device placement
+            torch_dtype=torch.bfloat16,
+            device_map="auto"
         )
 
-        # Model is already loaded with bfloat16 and proper device placement (no quantization)
-        logger.info(f"InternVideo2.5 model loaded successfully with standard half-precision")
+        logger.info(f"InternVideo2.5 model loaded successfully")
         logger.info(f"Model device: {next(model.parameters()).device if hasattr(model, 'parameters') else 'Unknown'}")
         logger.info(f"Model dtype: {next(model.parameters()).dtype if hasattr(model, 'parameters') else 'Unknown'}")
 
@@ -919,6 +918,11 @@ def aggregate_camera_insights(all_video_analysis: Dict[str, Any], video_s3_uris:
 
         if prompt in results and results[prompt]:
             response = results[prompt].strip()
+
+            # Filter out error messages (e.g., CUDA OOM errors)
+            if response.startswith("Analysis failed:"):
+                logger.warning(f"Filtered error message from {uri}: {response[:80]}...")
+                continue
 
             # Filter out specific hallucination tokens found in logs
             if "<track_begin>" in response or "<tracking>" in response:

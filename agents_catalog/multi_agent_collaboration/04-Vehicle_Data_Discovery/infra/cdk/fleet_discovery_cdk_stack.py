@@ -182,8 +182,8 @@ class FleetDiscoveryCdkStack(NestedStack):
                 launch_template=self.gpu_launch_template,
                 launch_template_overrides=[
                     autoscaling.LaunchTemplateOverrides(instance_type=ec2.InstanceType("g5.4xlarge")),
-                    autoscaling.LaunchTemplateOverrides(instance_type=ec2.InstanceType("g4dn.4xlarge")),
                     autoscaling.LaunchTemplateOverrides(instance_type=ec2.InstanceType("g5.8xlarge")),
+                    autoscaling.LaunchTemplateOverrides(instance_type=ec2.InstanceType("g5.2xlarge")),
                 ],
                 instances_distribution=autoscaling.InstancesDistribution(
                     on_demand_percentage_above_base_capacity=100,
@@ -269,7 +269,7 @@ class FleetDiscoveryCdkStack(NestedStack):
             server_access_logs_prefix="discovery-bucket/",
         )
 
-        # S3 BUCKET - Vector storage
+        # S3 BUCKET - Vector storage (regular S3 for fallback)
         self.vector_bucket = s3.Bucket(
             self, "FleetVectorBucket",
             bucket_name=f"fleet-vectors-{unique_id}",
@@ -281,6 +281,108 @@ class FleetDiscoveryCdkStack(NestedStack):
             versioned=True,
             server_access_logs_bucket=self.access_logs_bucket,
             server_access_logs_prefix="vector-bucket/",
+        )
+
+        # S3 VECTORS - Create vector bucket and indices via Custom Resource
+        s3vectors_lambda = lambda_.Function(
+            self, "S3VectorsSetupLambda",
+            function_name=f"fleet-s3vectors-setup-{unique_id}",
+            runtime=lambda_.Runtime.PYTHON_3_12,
+            handler="index.handler",
+            timeout=Duration.minutes(5),
+            code=lambda_.Code.from_inline('''
+import boto3
+import cfnresponse
+
+def handler(event, context):
+    try:
+        props = event['ResourceProperties']
+        bucket_name = props['VectorBucketName']
+        region = props['Region']
+        
+        s3v = boto3.client('s3vectors', region_name=region)
+        
+        if event['RequestType'] in ['Create', 'Update']:
+            # Create vector bucket
+            try:
+                s3v.create_vector_bucket(vectorBucketName=bucket_name)
+                print(f"Created vector bucket: {bucket_name}")
+            except Exception as e:
+                if 'already exists' not in str(e).lower() and 'Conflict' not in str(e):
+                    raise
+                print(f"Vector bucket already exists: {bucket_name}")
+            
+            # Create behavioral index (1536 dims for Cohere embed-v4)
+            try:
+                s3v.create_index(
+                    vectorBucketName=bucket_name,
+                    indexName='behavioral-metadata-index',
+                    dimension=1536,
+                    distanceMetric='cosine',
+                    dataType='float32',
+                    metadataConfiguration={
+                        'nonFilterableMetadataKeys': [
+                            'scene_id', 'behavioral_features_text', 'extraction_method',
+                            'processing_timestamp', 'cohere_model_version'
+                        ]
+                    }
+                )
+                print("Created behavioral-metadata-index")
+            except Exception as e:
+                if 'already exists' not in str(e).lower() and 'Conflict' not in str(e):
+                    print(f"Index creation error: {e}")
+            
+            # Create visual index (768 dims for Cosmos-Embed1)
+            try:
+                s3v.create_index(
+                    vectorBucketName=bucket_name,
+                    indexName='video-similarity-index',
+                    dimension=768,
+                    distanceMetric='cosine',
+                    dataType='float32',
+                    metadataConfiguration={
+                        'nonFilterableMetadataKeys': [
+                            'scene_id', 'camera_angles', 'video_metadata',
+                            'processing_timestamp', 'cosmos_model_version'
+                        ]
+                    }
+                )
+                print("Created video-similarity-index")
+            except Exception as e:
+                if 'already exists' not in str(e).lower() and 'Conflict' not in str(e):
+                    print(f"Index creation error: {e}")
+            
+            cfnresponse.send(event, context, cfnresponse.SUCCESS, {'VectorBucket': bucket_name})
+        
+        elif event['RequestType'] == 'Delete':
+            try:
+                s3v.delete_index(vectorBucketName=bucket_name, indexName='behavioral-metadata-index')
+            except: pass
+            try:
+                s3v.delete_index(vectorBucketName=bucket_name, indexName='video-similarity-index')
+            except: pass
+            try:
+                s3v.delete_vector_bucket(vectorBucketName=bucket_name)
+            except: pass
+            cfnresponse.send(event, context, cfnresponse.SUCCESS, {})
+    except Exception as e:
+        print(f"Error: {e}")
+        cfnresponse.send(event, context, cfnresponse.FAILED, {'Error': str(e)})
+'''),
+        )
+        
+        s3vectors_lambda.add_to_role_policy(iam.PolicyStatement(
+            actions=["s3vectors:*"],
+            resources=["*"]
+        ))
+
+        self.s3vectors_setup = CustomResource(
+            self, "S3VectorsSetup",
+            service_token=s3vectors_lambda.function_arn,
+            properties={
+                "VectorBucketName": f"fleet-vectors-{unique_id}",
+                "Region": Stack.of(self).region
+            }
         )
 
         # CLOUDWATCH LOG GROUP
@@ -1138,7 +1240,10 @@ def handler(event, context):
         self.vector_bucket.grant_read(apprunner_instance_role)
         apprunner_instance_role.add_to_policy(iam.PolicyStatement(
             actions=["bedrock:InvokeModel"],
-            resources=["arn:aws:bedrock:*::foundation-model/*"]
+            resources=[
+                "arn:aws:bedrock:*::foundation-model/*",
+                "arn:aws:bedrock:*:*:inference-profile/*"
+            ]
         ))
         apprunner_instance_role.add_to_policy(iam.PolicyStatement(
             actions=["s3vectors:*"],
