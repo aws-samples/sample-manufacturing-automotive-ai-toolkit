@@ -128,7 +128,7 @@ class S3VectorsBackfillOrchestrator:
                             vectorBucketName=self.vector_bucket,
                             indexName=index_name
                         )
-                        time.sleep(10)  # Index still exists, wait
+                        time.sleep(10)  # nosemgrep: arbitrary-sleep - polling for deletion propagation
                     except Exception:
                         break  # Index deleted
 
@@ -184,7 +184,7 @@ class S3VectorsBackfillOrchestrator:
                         logger.info(f"{index_name} is ready")
                         break
                     except Exception:
-                        time.sleep(10)
+                        time.sleep(10)  # nosemgrep: arbitrary-sleep - polling for index readiness
                 else:
                     raise Exception(f"Timeout waiting for {index_name} to be ready")
 

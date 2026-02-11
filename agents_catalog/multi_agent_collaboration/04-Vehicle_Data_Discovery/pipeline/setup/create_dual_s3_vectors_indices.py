@@ -102,7 +102,7 @@ class S3VectorsDualIndexCreator:
                     logger.info(f"SUCCESS: {index_name} is ready!")
                     return True
                 except Exception:
-                    time.sleep(10)
+                    time.sleep(10)  # nosemgrep: arbitrary-sleep - polling for index readiness
             
             logger.error(f"Timeout waiting for {index_name} to be ready")
             return False

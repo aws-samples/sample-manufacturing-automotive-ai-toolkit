@@ -102,21 +102,34 @@ def get_analytics_trends():
 
 @router.get("/stats/traffic-light")
 def get_traffic_light_stats():
-    """Traffic light status summary"""
+    """Traffic light status summary - counts scenes by anomaly_status"""
     try:
-        paginator = s3.get_paginator('list_objects_v2')
-        pages = paginator.paginate(Bucket=BUCKET, Prefix="pipeline-results/", Delimiter='/')
+        from routes.fleet import get_fleet_overview
+        scenes_response = get_fleet_overview(limit=10000)
+        scenes = scenes_response.get("scenes", [])
 
-        total = 0
-        for s3_page in pages:
-            total += len([p for p in s3_page.get('CommonPrefixes', []) if 'scene-' in p['Prefix']])
+        counts = {"CRITICAL": 0, "DEVIATION": 0, "NORMAL": 0}
+        for scene in scenes:
+            status = scene.get("anomaly_status", "NORMAL") if isinstance(scene, dict) else getattr(scene, "anomaly_status", "NORMAL")
+            if status in counts:
+                counts[status] += 1
 
+        total = len(scenes)
         return {
-            "green": int(total * 0.7),
-            "yellow": int(total * 0.2),
-            "red": int(total * 0.1),
-            "total": total
+            "total_scenes": total,
+            "critical": {
+                "count": counts["CRITICAL"],
+                "percentage": round(counts["CRITICAL"] / total * 100, 1) if total > 0 else 0
+            },
+            "deviation": {
+                "count": counts["DEVIATION"],
+                "percentage": round(counts["DEVIATION"] / total * 100, 1) if total > 0 else 0
+            },
+            "normal": {
+                "count": counts["NORMAL"],
+                "percentage": round(counts["NORMAL"] / total * 100, 1) if total > 0 else 0
+            }
         }
     except Exception as e:
         logger.error(f"Error in get_traffic_light_stats: {e}")
-        return {"green": 0, "yellow": 0, "red": 0, "total": 0}
+        return {"total_scenes": 0, "critical": {"count": 0, "percentage": 0}, "deviation": {"count": 0, "percentage": 0}, "normal": {"count": 0, "percentage": 0}}

@@ -844,6 +844,12 @@ def handler(event, context):
             ],
             result_path="$.phase1_raw_result"
         )
+        phase1_task.add_retry(
+            errors=["ECS.AmazonECSException"],
+            interval=Duration.seconds(30),
+            max_attempts=10,
+            backoff_rate=2.0
+        )
 
         # Parse Phase 1 result - Simplified (no agent endpoints needed)
         parse_phase1_result = sfn.Pass(
@@ -875,6 +881,12 @@ def handler(event, context):
                 )
             ],
             result_path="$.phase2_raw_result"
+        )
+        phase2_task.add_retry(
+            errors=["ECS.AmazonECSException"],
+            interval=Duration.seconds(30),
+            max_attempts=10,
+            backoff_rate=2.0
         )
 
         # Parse Phase 2 result
@@ -911,6 +923,12 @@ def handler(event, context):
             ],
             result_path="$.phase3_raw_result"
         )
+        phase3_task.add_retry(
+            errors=["ECS.AmazonECSException"],
+            interval=Duration.seconds(30),
+            max_attempts=10,
+            backoff_rate=2.0
+        )
 
         # Parse Phase 3 result
         parse_phase3_result = sfn.Pass(
@@ -942,6 +960,12 @@ def handler(event, context):
                 )
             ],
             result_path="$.phase45_raw_result"
+        )
+        phase45_task.add_retry(
+            errors=["ECS.AmazonECSException"],
+            interval=Duration.seconds(30),
+            max_attempts=10,
+            backoff_rate=2.0
         )
 
         # Parse Phase 4-5 result
@@ -976,6 +1000,12 @@ def handler(event, context):
                 )
             ],
             result_path="$.phase6_raw_result"
+        )
+        phase6_task.add_retry(
+            errors=["ECS.AmazonECSException"],
+            interval=Duration.seconds(30),
+            max_attempts=10,
+            backoff_rate=2.0
         )
 
         # Parse final result
