@@ -147,7 +147,10 @@ def twin_engine_search(request: SearchRequest):
         except Exception as e:
             logger.error(f"Visual search failed: {e}")
 
-    final_results = sorted(results_map.values(), key=lambda x: (x.get("is_verified", False), x["score"]), reverse=True)
+    # Filter out low-confidence results (below 25% match)
+    MIN_SCORE_THRESHOLD = 0.25
+    final_results = [r for r in results_map.values() if r["score"] >= MIN_SCORE_THRESHOLD]
+    final_results = sorted(final_results, key=lambda x: (x.get("is_verified", False), x["score"]), reverse=True)
 
     search_context = {}
     if request.source:

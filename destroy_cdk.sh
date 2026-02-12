@@ -25,6 +25,47 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 
+# Check if this is a Quality Inspection destroy
+if [ "$STACK_NAME" = "QualityInspectionStack" ]; then
+  # Force us-east-1 for Quality Inspection
+  REGION="us-east-1"
+  
+  echo "Quality Inspection stack detected. Redirecting to specialized destroy script..."
+  echo "  Stack Name: $STACK_NAME"
+  echo "  Region: $REGION (forced to us-east-1)"
+  
+  # Set environment variables for the quality inspection script
+  export AWS_REGION="$REGION"
+  
+  # Pass AWS_PROFILE if set, otherwise use default
+  if [ -z "$AWS_PROFILE" ]; then
+    export AWS_PROFILE="default"
+  fi
+  
+  # Run the quality inspection destroy script with --force flag
+  exec bash "./agents_catalog/multi_agent_collaboration/03-quality-inspection/deploy/destroy_full_stack_quality_inspection.sh" --force
+fi
+
+echo "Checking for Quality Inspection stack..."
+
+# Check if Quality Inspection stack exists
+QI_STACK_NAME="AgenticQualityInspectionStack"
+if aws cloudformation describe-stacks --stack-name "$QI_STACK_NAME" --region "$REGION" &>/dev/null; then
+    echo "Found Quality Inspection stack: $QI_STACK_NAME"
+    echo "Destroying Quality Inspection stack..."
+    
+    # Change to quality inspection CDK directory and destroy
+    cd agents_catalog/multi_agent_collaboration/03-quality-inspection/cdk
+    cdk destroy "$QI_STACK_NAME" --force --region "$REGION"
+    
+    # Return to root directory
+    cd ../../../..
+    
+    echo "Quality Inspection stack destroyed"
+else
+    echo "No Quality Inspection stack found"
+fi
+
 echo "Cleaning up external resources before CDK destroy..."
 
 # Delete AgentCore agents created by this toolkit

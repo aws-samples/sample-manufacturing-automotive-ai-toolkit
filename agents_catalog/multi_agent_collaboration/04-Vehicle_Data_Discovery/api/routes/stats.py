@@ -78,26 +78,66 @@ def get_stats_overview():
 
 @router.get("/stats/trends")
 def get_analytics_trends():
-    """Analytics trends data"""
+    """Aggregates risk and anomaly data for charts from real scene data"""
     try:
-        paginator = s3.get_paginator('list_objects_v2')
-        pages = paginator.paginate(Bucket=BUCKET, Prefix="pipeline-results/", Delimiter='/')
+        from routes.fleet import get_fleet_overview
+        scenes_response = get_fleet_overview(limit=10000)
 
-        scene_count = 0
-        for s3_page in pages:
-            scene_count += len([p for p in s3_page.get('CommonPrefixes', []) if 'scene-' in p['Prefix']])
+        if not scenes_response or not scenes_response.get("scenes"):
+            return {"risk_timeline": [], "anomalies_by_type": {}, "total_scenes_analyzed": 0}
 
-        return {
-            "trends": [
-                {"date": "2024-01", "scenes_processed": int(scene_count * 0.3), "anomalies": int(scene_count * 0.05)},
-                {"date": "2024-02", "scenes_processed": int(scene_count * 0.5), "anomalies": int(scene_count * 0.08)},
-                {"date": "2024-03", "scenes_processed": scene_count, "anomalies": int(scene_count * 0.12)}
-            ],
-            "total_scenes": scene_count
+        scenes = scenes_response["scenes"]
+
+        # Anomaly distribution by type
+        anomaly_counts = {"Behavioral": 0, "Environmental": 0, "Traffic": 0, "Unknown": 0}
+
+        # Risk timeline - per scene with real timestamps
+        risk_over_time = []
+
+        for scene in scenes:
+            s = scene if isinstance(scene, dict) else scene.__dict__
+            anomaly_status = s.get("anomaly_status", "NORMAL")
+            tags = [tag.lower() for tag in s.get("tags", [])]
+
+            # Categorize anomalies
+            if anomaly_status in ["CRITICAL", "DEVIATION"]:
+                if any(tag in tags for tag in ["construction", "weather", "night"]):
+                    anomaly_counts["Environmental"] += 1
+                elif any(tag in tags for tag in ["pedestrian", "vehicle", "intersection"]):
+                    anomaly_counts["Traffic"] += 1
+                elif any(tag in tags for tag in ["lane", "speed", "following"]):
+                    anomaly_counts["Behavioral"] += 1
+                else:
+                    anomaly_counts["Unknown"] += 1
+
+            # Risk timeline entry with real timestamp
+            timestamp = s.get("timestamp", "")
+            risk_over_time.append({
+                "date": timestamp.split('T')[0] if timestamp else "unknown",
+                "risk_score": s.get("risk_score", 0),
+                "scene_id": s.get("scene_id", "")
+            })
+
+        total_scenes = len(scenes)
+
+        response_data = {
+            "anomalies_by_type": anomaly_counts,
+            "risk_timeline": risk_over_time,
+            "total_scenes_analyzed": total_scenes
         }
+
+        return Response(
+            content=json.dumps(response_data),
+            media_type="application/json",
+            headers={"Cache-Control": "public, max-age=300, stale-while-revalidate=60"}
+        )
     except Exception as e:
         logger.error(f"Error in get_analytics_trends: {e}")
-        return {"trends": [], "total_scenes": 0}
+        return {
+            "anomalies_by_type": {"Behavioral": 0, "Environmental": 0, "Traffic": 0, "Unknown": 0},
+            "risk_timeline": [],
+            "total_scenes_analyzed": 0
+        }
 
 
 @router.get("/stats/traffic-light")

@@ -46,6 +46,20 @@ interface SceneData {
   camera_angles: string[]
   analysis_summary: string
   anomaly_detected: boolean
+  // All camera URLs for multi-camera support
+  all_camera_urls: { [key: string]: string }
+  camera_urls?: { [key: string]: string }
+}
+
+interface ApiScene {
+  scene_id: string
+  description_preview?: string
+  anomaly_status?: string
+  risk_score?: number
+  timestamp?: string
+  hil_priority?: string
+  tags?: string[]
+  confidence_score?: number
 }
 
 interface FleetOverview {
@@ -87,7 +101,6 @@ export function useFleetStats() {
 
 export function useFleetOverview(page = 1, limit = 20, filter = "all") {
   const [data, setData] = useState<FleetOverview | null>(null)
-  const [allScenes, setAllScenes] = useState<SceneData[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
 
@@ -121,30 +134,37 @@ export function useFleetOverview(page = 1, limit = 20, filter = "all") {
         const totalCount = paginationResponse.total_count || scenesArray.length
         const totalPages = paginationResponse.total_pages || 1
 
-
-interface ApiScene {
-  scene_id: string
-  description_preview?: string
-  anomaly_status?: string
-  risk_score?: number
-  timestamp?: string
-  hil_priority?: string
-  tags?: string[]
-  confidence_score?: number
-}
-
         // Transform API response to expected format
-        const transformedScenes = scenesArray.map((scene: ApiScene) => ({
-          ...scene,
-          // Add compatibility fields for existing UI components
-          analysis_summary: scene.description_preview,
-          anomaly_detected: scene.anomaly_status === "ANOMALY",
-          safety_score: scene.risk_score,
-          camera_angles: ["CAM_FRONT", "CAM_FRONT_LEFT", "CAM_FRONT_RIGHT", "CAM_BACK", "CAM_BACK_LEFT", "CAM_BACK_RIGHT"],
-          // Required fields for SceneCard component
-          video_url: `${API_BASE_URL}/scene/${scene.scene_id}/video`,
-          thumbnail_url: `${API_BASE_URL}/scene/${scene.scene_id}/thumbnail`
-        }))
+        const transformedScenes = scenesArray.map((scene: ApiScene) => {
+          // Direct CloudFront URL generation for all 6 cameras
+          // AWS Best Practice: Direct CloudFront serving eliminates API processing and 302 redirects
+          const sceneIdPadded = scene.scene_id.toString().padStart(4, '0')
+          const cloudFrontDomain = "https://auto-mfg-pvt-ltd.co"
+
+          const allCameraUrls = {
+            'CAM_FRONT': `${cloudFrontDomain}/processed-videos/scene-${sceneIdPadded}/CAM_FRONT.mp4`,
+            'CAM_BACK': `${cloudFrontDomain}/processed-videos/scene-${sceneIdPadded}/CAM_BACK.mp4`,
+            'CAM_FRONT_LEFT': `${cloudFrontDomain}/processed-videos/scene-${sceneIdPadded}/CAM_FRONT_LEFT.mp4`,
+            'CAM_FRONT_RIGHT': `${cloudFrontDomain}/processed-videos/scene-${sceneIdPadded}/CAM_FRONT_RIGHT.mp4`,
+            'CAM_BACK_LEFT': `${cloudFrontDomain}/processed-videos/scene-${sceneIdPadded}/CAM_BACK_LEFT.mp4`,
+            'CAM_BACK_RIGHT': `${cloudFrontDomain}/processed-videos/scene-${sceneIdPadded}/CAM_BACK_RIGHT.mp4`
+          }
+
+          return {
+            ...scene,
+            // Add compatibility fields for existing UI components
+            analysis_summary: scene.description_preview,
+            anomaly_detected: scene.anomaly_status === "ANOMALY",
+            safety_score: scene.risk_score,
+            camera_angles: Object.keys(allCameraUrls),
+            // Direct CloudFront URLs
+            video_url: allCameraUrls['CAM_FRONT'],
+            thumbnail_url: `${cloudFrontDomain}/processed-thumbnails/scene-${sceneIdPadded}/CAM_FRONT.jpg`,
+            // All camera URLs for MultiCameraPlayer (forensic page)
+            all_camera_urls: allCameraUrls,
+            camera_urls: allCameraUrls
+          }
+        })
 
         // Use server-side pagination directly (no client-side slicing needed)
         const serverPaginatedData = {
@@ -156,7 +176,6 @@ interface ApiScene {
         }
 
         setData(serverPaginatedData)
-        setAllScenes(transformedScenes) // Keep for compatibility
       } catch (err) {
         setError(err instanceof Error ? err.message : "An error occurred")
       } finally {

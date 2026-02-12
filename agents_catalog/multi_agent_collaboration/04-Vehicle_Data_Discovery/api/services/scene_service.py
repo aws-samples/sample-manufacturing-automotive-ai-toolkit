@@ -108,14 +108,18 @@ def apply_metadata_filter(scenes: list, filter_id: str) -> list:
     """Apply metadata filter to scene list."""
     if not filter_id or filter_id == "all":
         return scenes
-    
-    if filter_id == "anomalies":
-        return [s for s in scenes if s.get("anomaly_status") == "ANOMALY"]
-    
-    if filter_id == "high_risk":
-        return [s for s in scenes if s.get("risk_score", 0) >= 0.7]
-    
-    if filter_id == "hil_ready":
-        return [s for s in scenes if s.get("hil_priority") in ["HIGH", "CRITICAL"]]
-    
+
+    filter_map = {
+        "critical": ("anomaly_status", "CRITICAL"),
+        "deviation": ("anomaly_status", "DEVIATION"),
+        "normal": ("anomaly_status", "NORMAL"),
+        "hil_high": ("hil_priority", "HIGH"),
+        "hil_medium": ("hil_priority", "MEDIUM"),
+        "hil_low": ("hil_priority", "LOW"),
+    }
+
+    field, value = filter_map.get(filter_id, (None, None))
+    if field and value:
+        return [s for s in scenes if getattr(s, field, None) == value]
+
     return scenes

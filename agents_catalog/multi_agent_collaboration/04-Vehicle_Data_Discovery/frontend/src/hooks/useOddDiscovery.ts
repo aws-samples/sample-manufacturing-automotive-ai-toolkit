@@ -65,31 +65,38 @@ export function useOddDiscovery() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
 
-  useEffect(() => {
-    async function fetchOddDiscoveryData() {
-      try {
-        const response = await fetch(`${API_BASE_URL}/analytics/odd-uniqueness-analysis`)
+  async function fetchOddDiscoveryData(cacheBust = false) {
+    try {
+      const cacheBustParam = cacheBust ? `?_t=${Date.now()}` : ''
+      const response = await fetch(`${API_BASE_URL}/analytics/odd-uniqueness-analysis${cacheBustParam}`)
 
-        if (!response.ok) {
-          throw new Error(`HTTP ${response.status}: Failed to fetch ODD discovery data`)
-        }
-
-        const oddData = await response.json()
-        setData(oddData)
-      } catch (err) {
-        setError(err instanceof Error ? err.message : "An error occurred")
-      } finally {
-        setLoading(false)
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}: Failed to fetch ODD discovery data`)
       }
-    }
 
+      const oddData = await response.json()
+      setData(oddData)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "An error occurred")
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  useEffect(() => {
     fetchOddDiscoveryData()
     // Refresh every 5 minutes for updated analysis
-    const interval = setInterval(fetchOddDiscoveryData, 300000)
+    const interval = setInterval(() => fetchOddDiscoveryData(), 300000)
     return () => clearInterval(interval)
   }, [])
 
-  return { data, loading, error }
+  // Refetch function for manual refresh (with cache-busting)
+  const refetch = async () => {
+    setLoading(true)
+    await fetchOddDiscoveryData(true)
+  }
+
+  return { data, loading, error, refetch }
 }
 
 export type { OddDiscoveryData }

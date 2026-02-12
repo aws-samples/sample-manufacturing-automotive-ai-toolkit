@@ -37,9 +37,7 @@ interface PriorityItem {
 interface RiskTimelineItem {
   date: string
   risk_score?: number
-  risk?: number
   scene_id?: string
-  id?: string
 }
 
 interface CoverageCategory {
@@ -55,6 +53,10 @@ interface CoverageCategory {
   average_risk_score?: number
   uniqueness_score?: number
   percentage?: number
+  tcs_metadata?: {
+    tier: number
+    threshold: number
+  }
 }
 
 // Helper function for case-insensitive priority classification
@@ -80,9 +82,9 @@ interface DiscoveryJobStatus {
 }
 
 export default function AnalyticsPage() {
-  const { data, coverageData, loading } = useAnalytics()
+  const { data, coverageData, loading, refetch } = useAnalytics()
   const trafficLightData = useTrafficLightStats()
-  const oddDiscoveryData = useOddDiscovery()
+  const { data: oddDiscoveryData, loading: oddDiscoveryLoading, error: oddDiscoveryError, refetch: refetchOddDiscovery } = useOddDiscovery()
 
   // Discovery state management
   const [discoveryState, setDiscoveryState] = useState<{
@@ -102,7 +104,8 @@ export default function AnalyticsPage() {
   })
 
   // Trigger ODD rediscovery
-  const triggerDiscovery = async () => {
+  const triggerDiscovery = async (e?: React.MouseEvent) => {
+    e?.preventDefault()
     try {
       setDiscoveryState(prev => ({
         ...prev,
@@ -113,7 +116,8 @@ export default function AnalyticsPage() {
         currentStep: 'Initializing discovery process'
       }))
 
-      const response = await fetch('/api/analytics/rediscover', {
+      const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "/api"
+      const response = await fetch(`${API_BASE_URL}/analytics/rediscover`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' }
       })
@@ -143,9 +147,10 @@ export default function AnalyticsPage() {
 
   // Poll discovery job status
   const startStatusPolling = (jobId: string) => {
+    const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "/api"
     const pollInterval = setInterval(async () => {
       try {
-        const response = await fetch(`/api/analytics/rediscover/${jobId}/status`)
+        const response = await fetch(`${API_BASE_URL}/analytics/rediscover/${jobId}/status`)
         if (!response.ok) {
           throw new Error('Status polling failed')
         }
@@ -166,9 +171,10 @@ export default function AnalyticsPage() {
           clearInterval(pollInterval)
 
           if (status.status === 'completed') {
-            // Refresh ODD discovery data
+            // Refresh both analytics data AND ODD discovery cards with cache-busting
             setTimeout(() => {
-              window.location.reload() // Simple approach to refresh data
+              refetch()
+              refetchOddDiscovery()
             }, 1000)
           }
         }
@@ -187,26 +193,8 @@ export default function AnalyticsPage() {
     return () => clearInterval(pollInterval)
   }
 
-  if (loading) {
-    return (
-      <div className="space-y-8">
-        <div className="flex items-center gap-4">
-          <div className="w-10 h-10 bg-gray-100 rounded-xl animate-pulse" />
-          <div>
-            <div className="h-6 w-48 bg-gray-100 rounded animate-pulse mb-2" />
-            <div className="h-4 w-64 bg-gray-100 rounded animate-pulse" />
-          </div>
-        </div>
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-          {[...Array(4)].map((_, i) => (
-            <Card key={i} className="p-6 animate-pulse">
-              <div className="h-16 bg-gray-100 rounded" />
-            </Card>
-          ))}
-        </div>
-      </div>
-    )
-  }
+  // HIGH-PERFORMANCE FIX: Remove global blocking - let fast components show immediately!
+  // Each component will handle its own loading state for progressive UX
 
   // Format data for traffic light pie chart - use consistent 3-tier system
   const pieData = trafficLightData.stats?.critical ? [
@@ -228,9 +216,9 @@ export default function AnalyticsPage() {
   ].filter(item => item.value > 0) : [] // Only show categories with scenes
 
   const riskTimelineData = data?.risk_timeline?.map((item: RiskTimelineItem) => ({
-    date: item.date,
-    risk: Math.round((item.risk_score || item.risk || 0) * 100),
-    scene: item.scene_id || item.id
+    label: item.scene_id || item.date,
+    risk: Math.round((item.risk_score || 0) * 100),
+    scene: item.scene_id
   })) || []
 
 
@@ -240,8 +228,8 @@ export default function AnalyticsPage() {
   const allCoverageItems = [...industryCategories, ...discoveredCategories]
   const coverageAnalysis = (coverageData?.coverage_matrix?.coverage_analysis || {}) as {
     total_scenes_analyzed?: number
-    industry_approach?: { categories?: number; coverage_percentage?: number }
-    discovered_approach?: { categories?: number; coverage_percentage?: number }
+    industry_approach?: { categories?: number; estimated_coverage?: number; coverage_percentage?: number }
+    discovered_approach?: { categories?: number; actual_coverage?: number; coverage_percentage?: number }
   }
 
   // Calculate critical gaps from both approaches
@@ -331,7 +319,11 @@ export default function AnalyticsPage() {
                   position="auto"
                 />
               </div>
-              <p className="text-2xl font-bold text-blue-900">{data?.scenarios_processed || 0}</p>
+              {data?.scenarios_processed ? (
+                <p className="text-2xl font-bold text-blue-900">{data.scenarios_processed}</p>
+              ) : (
+                <div className="h-8 w-16 bg-blue-200 rounded animate-pulse" />
+              )}
             </div>
             <Activity className="w-8 h-8 text-blue-500" />
           </div>
@@ -350,7 +342,11 @@ export default function AnalyticsPage() {
                   position="auto"
                 />
               </div>
-              <p className="text-2xl font-bold text-green-900">{data?.dto_efficiency_percent || 0}%</p>
+              {data?.dto_efficiency_percent ? (
+                <p className="text-2xl font-bold text-green-900">{data.dto_efficiency_percent}%</p>
+              ) : (
+                <div className="h-8 w-12 bg-green-200 rounded animate-pulse" />
+              )}
             </div>
             <TrendingUp className="w-8 h-8 text-green-500" />
           </div>
@@ -369,7 +365,11 @@ export default function AnalyticsPage() {
                   position="auto"
                 />
               </div>
-              <p className="text-2xl font-bold text-amber-900">{criticalGaps.length}</p>
+              {coverageData ? (
+                <p className="text-2xl font-bold text-amber-900">{criticalGaps.length}</p>
+              ) : (
+                <div className="h-8 w-8 bg-amber-200 rounded animate-pulse" />
+              )}
             </div>
             <AlertTriangle className="w-8 h-8 text-amber-500" />
           </div>
@@ -505,8 +505,8 @@ export default function AnalyticsPage() {
             <h3 className="font-semibold text-[var(--deep-charcoal)]">Risk Timeline</h3>
             <InfoTooltip
               title="Risk Timeline"
-              description="Tracks safety risk levels of driving scenarios over time. Higher peaks indicate more dangerous situations (emergency braking, complex intersections). Lower values show routine driving. Use this to identify patterns - are certain time periods more risky?"
-              calculation="Risk Score: AI analysis of driving complexity, hazards, and safety criticality (0-100%). Each point = one analyzed driving scene. Timeline helps spot risk trends and seasonal patterns."
+              description="Tracks safety risk levels of driving scenarios over time. Higher peaks indicate more dangerous situations (emergency braking, complex intersections). Lower values show routine driving."
+              calculation="Risk Score: AI analysis of driving complexity, hazards, and safety criticality (0-100%). Each point = one analyzed driving scene."
               size="sm"
               position="auto"
             />
@@ -515,8 +515,8 @@ export default function AnalyticsPage() {
             {!loading && typeof window !== 'undefined' && riskTimelineData.length > 0 ? (
               <ResponsiveContainer width="100%" height="100%" minHeight={300} minWidth={300}>
                 <LineChart data={riskTimelineData}>
-                  <XAxis dataKey="date" fontSize={10} />
-                  <YAxis />
+                  <XAxis dataKey="label" fontSize={10} />
+                  <YAxis domain={[0, 100]} />
                   <Tooltip formatter={(value) => [`${value}%`, 'Risk Score']} />
                   <Line
                     type="monotone"
@@ -640,13 +640,13 @@ export default function AnalyticsPage() {
                 item.type === 'discovered' ? 'border-l-purple-500 bg-gradient-to-br from-purple-50 to-blue-50' :
                 'border-l-blue-500 bg-gradient-to-br from-blue-50 to-indigo-50'
               }`}>
-                {/* Apple-level clean header with unified badge layout */}
-                <div className="flex items-center justify-between mb-3">
-                  <h4 className="font-medium text-[var(--deep-charcoal)] flex-1 mr-4 min-w-0 truncate">
+                {/* Full category name with badges below */}
+                <div className="mb-3">
+                  <h4 className="font-medium text-[var(--deep-charcoal)] mb-2 leading-tight">
                     {item.category}
                   </h4>
-                  {/* Unified badge container - no flex-wrap, properly contained */}
-                  <div className="flex items-center gap-1.5 flex-shrink-0">
+                  {/* Badges container - below category name */}
+                  <div className="flex items-center gap-1.5 flex-wrap">
                     <Badge
                       variant="outline"
                       className={`text-xs px-2 py-0.5 whitespace-nowrap ${
@@ -660,6 +660,32 @@ export default function AnalyticsPage() {
                     {item.type === 'discovered' && item.risk_adaptive_target && (
                       <Badge className="text-xs px-2 py-0.5 bg-gradient-to-r from-purple-500 to-pink-500 text-white border-0 whitespace-nowrap">
                         Dynamic
+                      </Badge>
+                    )}
+                    {/* TCS Confidence & Action Badge */}
+                    {item.tcs_metadata && (
+                      <Badge
+                        variant="outline"
+                        className={`text-xs px-3 py-1.5 whitespace-nowrap font-semibold transition-all duration-200 hover:shadow-md ${
+                          item.tcs_metadata.tier === 4
+                            ? 'text-amber-900 border-amber-500 bg-gradient-to-r from-amber-50 to-amber-100 shadow-amber-100' :
+                          item.tcs_metadata.tier === 3
+                            ? 'text-blue-900 border-blue-500 bg-gradient-to-r from-blue-50 to-blue-100 shadow-blue-100 animate-pulse' :
+                          item.tcs_metadata.tier === 2
+                            ? 'text-green-900 border-green-600 bg-gradient-to-r from-green-50 to-green-100 shadow-green-100' :
+                          'text-slate-700 border-slate-400 bg-gradient-to-r from-slate-50 to-slate-100'
+                        }`}
+                        title={`${
+                          item.tcs_metadata.tier === 4 ? 'Safety-Sensitive: Casting a wide net; manual triage required to catch rare risks' :
+                          item.tcs_metadata.tier === 3 ? 'Context-Aware: Matches vary by environment; review for edge-case diversity' :
+                          item.tcs_metadata.tier === 2 ? 'High-Fidelity: Matches are exact; trust this data for automated testing' :
+                          'Unknown tier'
+                        }. Threshold: ${item.tcs_metadata.threshold} | ISO 26262 Tier ${item.tcs_metadata.tier}`}
+                      >
+                        {item.tcs_metadata.tier === 4 ? 'Safety-Sensitive' :
+                         item.tcs_metadata.tier === 3 ? 'Context-Aware' :
+                         item.tcs_metadata.tier === 2 ? 'High-Fidelity' :
+                         `Tier ${item.tcs_metadata.tier}`}
                       </Badge>
                     )}
                     {/* Priority Badge with proper color coding */}
@@ -711,8 +737,10 @@ export default function AnalyticsPage() {
                     <span className="text-xs text-[var(--slate-grey)]">Coverage Progress</span>
                     <span className="text-xs font-medium">
                       {item.type === 'discovered' ?
-                        `${Math.round((item.actual_scenes || 0) / Math.max(item.risk_adaptive_target || 1, 1) * 100)}%` :
-                        `${item.percentage || 0}%`
+                        (item.risk_adaptive_target
+                          ? `${Math.min(Math.round((item.actual_scenes || 0) / item.risk_adaptive_target * 100), 100)}%`
+                          : 'N/A')
+                        : `${item.percentage ?? Math.round((item.current || 0) / Math.max(item.target || 1, 1) * 100)}%`
                       }
                     </span>
                   </div>
@@ -725,8 +753,10 @@ export default function AnalyticsPage() {
                       style={{
                         width: `${Math.min(
                           item.type === 'discovered' ?
-                            ((item.actual_scenes || 0) / Math.max(item.risk_adaptive_target || 1, 1) * 100) :
-                            (item.percentage || 0),
+                            (item.risk_adaptive_target
+                              ? ((item.actual_scenes || 0) / item.risk_adaptive_target * 100)
+                              : 0) :
+                            (item.percentage ?? ((item.current || 0) / Math.max(item.target || 1, 1) * 100)),
                           100
                         )}%`
                       }}
@@ -772,7 +802,7 @@ export default function AnalyticsPage() {
             <div className="flex flex-wrap gap-2">
               {criticalGaps.map((gap: CoverageCategory) => (
                 <Badge key={gap.category} variant="outline" className="text-red-600 border-red-300">
-                  {gap.category}: {gap.percentage}% coverage
+                  {gap.category}: {gap.percentage ?? Math.round((gap.current || 0) / Math.max(gap.target || 1, 1) * 100)}% coverage
                 </Badge>
               ))}
             </div>
@@ -819,7 +849,7 @@ export default function AnalyticsPage() {
           </div>
           <div className="flex items-center gap-3">
             <Badge variant="outline" className="text-sm px-3 py-1">
-              {oddDiscoveryData.data?.total_scenes_analyzed || 0} scenes analyzed
+              {oddDiscoveryData?.total_scenes_analyzed || 0} scenes analyzed
             </Badge>
             <Badge variant="outline" className="text-xs px-3 py-1 text-purple-600 border-purple-300">
               Vector Similarity Analysis
@@ -829,6 +859,7 @@ export default function AnalyticsPage() {
               onClick={triggerDiscovery}
               disabled={discoveryState.isRunning}
               size="sm"
+              type="button"
               className={`transition-all duration-300 ${
                 discoveryState.isRunning
                   ? 'bg-gradient-to-r from-purple-500 to-blue-500'
@@ -923,7 +954,7 @@ export default function AnalyticsPage() {
         )}
 
         {/* Loading State */}
-        {oddDiscoveryData.loading && (
+        {oddDiscoveryLoading && (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
             {[...Array(6)].map((_, i) => (
               <div key={i} className="animate-pulse">
@@ -934,19 +965,19 @@ export default function AnalyticsPage() {
         )}
 
         {/* Error State */}
-        {oddDiscoveryData.error && (
+        {oddDiscoveryError && (
           <div className="text-center py-12">
             <AlertTriangle className="w-12 h-12 mx-auto text-amber-500 mb-4" />
             <p className="text-[var(--slate-grey)] mb-2">Unable to load ODD discovery data</p>
-            <p className="text-sm text-gray-500">{oddDiscoveryData.error}</p>
+            <p className="text-sm text-gray-500">{oddDiscoveryError}</p>
           </div>
         )}
 
         {/* ODD Categories Grid */}
-        {oddDiscoveryData.data?.uniqueness_results && (
+        {oddDiscoveryData?.uniqueness_results && (
           <>
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 mb-8">
-              {oddDiscoveryData.data?.uniqueness_results?.map((category: OddCategory, index: number) => (
+              {oddDiscoveryData?.uniqueness_results?.map((category: OddCategory, index: number) => (
                 <motion.div
                   key={category.category}
                   initial={{ opacity: 0, y: 20 }}
@@ -1069,19 +1100,19 @@ export default function AnalyticsPage() {
                       <div className="grid grid-cols-3 gap-2 text-xs">
                         <div className="text-center">
                           <div className="text-red-600 font-medium">
-                            {category.similarity_distribution.high_similarity_count}
+                            {category.similarity_distribution?.high_similarity_count ?? 0}
                           </div>
                           <div className="text-gray-500">High Sim</div>
                         </div>
                         <div className="text-center">
                           <div className="text-amber-600 font-medium">
-                            {category.similarity_distribution.medium_similarity_count}
+                            {category.similarity_distribution?.medium_similarity_count ?? 0}
                           </div>
                           <div className="text-gray-500">Med Sim</div>
                         </div>
                         <div className="text-center">
                           <div className="text-green-600 font-medium">
-                            {category.similarity_distribution.low_similarity_count}
+                            {category.similarity_distribution?.low_similarity_count ?? 0}
                           </div>
                           <div className="text-gray-500">Low Sim</div>
                         </div>
@@ -1130,7 +1161,7 @@ export default function AnalyticsPage() {
               <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
                 <div className="text-center">
                   <div className="text-2xl font-bold text-green-800">
-                    ${oddDiscoveryData.data?.dto_savings_estimate?.estimated_savings_usd?.toLocaleString() ?? 0}
+                    ${oddDiscoveryData?.dto_savings_estimate?.estimated_savings_usd?.toLocaleString() ?? 0}
                   </div>
                   <div className="flex items-center justify-center gap-1 text-sm text-green-600">
                     <span>Total Savings</span>
@@ -1145,7 +1176,7 @@ export default function AnalyticsPage() {
                 </div>
                 <div className="text-center">
                   <div className="text-2xl font-bold text-green-800">
-                    {oddDiscoveryData.data?.dto_savings_estimate?.efficiency_gain_percent?.toFixed(1) ?? 0}%
+                    {oddDiscoveryData?.dto_savings_estimate?.efficiency_gain_percent?.toFixed(1) ?? 0}%
                   </div>
                   <div className="flex items-center justify-center gap-1 text-sm text-green-600">
                     <span>Efficiency Gain</span>
@@ -1160,7 +1191,7 @@ export default function AnalyticsPage() {
                 </div>
                 <div className="text-center">
                   <div className="text-lg font-medium text-gray-700">
-                    ${oddDiscoveryData.data?.dto_savings_estimate?.naive_cost_usd?.toLocaleString() ?? 0}
+                    ${oddDiscoveryData?.dto_savings_estimate?.naive_cost_usd?.toLocaleString() ?? 0}
                   </div>
                   <div className="flex items-center justify-center gap-1 text-sm text-gray-500">
                     <span>Naive Cost</span>
@@ -1175,7 +1206,7 @@ export default function AnalyticsPage() {
                 </div>
                 <div className="text-center">
                   <div className="text-lg font-medium text-green-700">
-                    ${oddDiscoveryData.data?.dto_savings_estimate?.intelligent_cost_usd?.toLocaleString() ?? 0}
+                    ${oddDiscoveryData?.dto_savings_estimate?.intelligent_cost_usd?.toLocaleString() ?? 0}
                   </div>
                   <div className="flex items-center justify-center gap-1 text-sm text-green-600">
                     <span>Intelligent Cost</span>
@@ -1193,8 +1224,8 @@ export default function AnalyticsPage() {
               <div className="mt-4 text-center">
                 <div className="inline-block">
                   <Badge className="bg-green-200 border-green-300 text-green-800 px-4 py-2 flex items-center gap-2">
-                    <span>🧠 Uniqueness Ratio: {((oddDiscoveryData.data?.overall_uniqueness_ratio ?? 0) * 100).toFixed(1)}%
-                    ({oddDiscoveryData.data?.total_unique_scenes_estimated?.toFixed(1) ?? 0}/{oddDiscoveryData.data?.total_scenes_analyzed ?? 0} scenes)</span>
+                    <span>🧠 Uniqueness Ratio: {((oddDiscoveryData?.overall_uniqueness_ratio ?? 0) * 100).toFixed(1)}%
+                    ({oddDiscoveryData?.total_unique_scenes_estimated?.toFixed(1) ?? 0}/{oddDiscoveryData?.total_scenes_analyzed ?? 0} scenes)</span>
                     <InfoTooltip
                       title="Uniqueness Ratio (Overall)"
                       description="Overall percentage of scenarios that are estimated to be unique and valuable for training, across all discovered ODD categories. Higher ratios indicate a more diverse, less redundant dataset."
