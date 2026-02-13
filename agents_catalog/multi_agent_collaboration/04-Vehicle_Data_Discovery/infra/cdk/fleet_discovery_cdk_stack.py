@@ -1307,6 +1307,8 @@ def handler(event, context):
                             apprunner.CfnService.KeyValuePairProperty(name="VECTOR_BUCKET_NAME", value=self.vector_bucket.bucket_name),
                             apprunner.CfnService.KeyValuePairProperty(name="STATE_MACHINE_ARN", value=self.state_machine.state_machine_arn),
                             apprunner.CfnService.KeyValuePairProperty(name="AWS_REGION", value=Stack.of(self).region),
+                            apprunner.CfnService.KeyValuePairProperty(name="COGNITO_USER_POOL_ID", value=self.user_pool.user_pool_id),
+                            apprunner.CfnService.KeyValuePairProperty(name="COGNITO_CLIENT_ID", value=self.user_pool_client.user_pool_client_id),
                         ]
                     )
                 )

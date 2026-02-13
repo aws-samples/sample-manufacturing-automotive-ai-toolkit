@@ -23,6 +23,7 @@
 
 import { useState, useEffect } from "react"
 import { SceneDetail } from "@/types/scene"
+import { authenticatedFetch } from "@/lib/api"
 
 const API_BASE_URL = "/api"
 
@@ -38,7 +39,7 @@ export function useSceneDetail(sceneId: string) {
       setLoading(true)
       setError(null)
 
-      const response = await fetch(`${API_BASE_URL}/scene/${sceneId}`)
+      const response = await authenticatedFetch(`${API_BASE_URL}/scene/${sceneId}`)
       if (!response.ok) {
         throw new Error(`Failed to fetch scene details: ${response.statusText}`)
       }

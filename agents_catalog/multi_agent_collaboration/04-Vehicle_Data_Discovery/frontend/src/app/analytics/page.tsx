@@ -15,6 +15,7 @@ import { Card } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import InfoTooltip from "@/components/ui/InfoTooltip"
+import { authenticatedFetch } from "@/lib/api"
 import { useAnalytics } from "@/hooks/useAnalytics"
 import { useTrafficLightStats } from "@/hooks/useTrafficLightStats"
 import { useOddDiscovery, OddCategory } from "@/hooks/useOddDiscovery"
@@ -117,7 +118,7 @@ export default function AnalyticsPage() {
       }))
 
       const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "/api"
-      const response = await fetch(`${API_BASE_URL}/analytics/rediscover`, {
+      const response = await authenticatedFetch(`${API_BASE_URL}/analytics/rediscover`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' }
       })
@@ -150,7 +151,7 @@ export default function AnalyticsPage() {
     const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "/api"
     const pollInterval = setInterval(async () => {
       try {
-        const response = await fetch(`${API_BASE_URL}/analytics/rediscover/${jobId}/status`)
+        const response = await authenticatedFetch(`${API_BASE_URL}/analytics/rediscover/${jobId}/status`)
         if (!response.ok) {
           throw new Error('Status polling failed')
         }

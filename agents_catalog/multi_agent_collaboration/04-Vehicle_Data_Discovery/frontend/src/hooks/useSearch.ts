@@ -27,6 +27,7 @@
 "use client"
 
 import { useState } from "react"
+import { authenticatedFetch } from "@/lib/api"
 
 interface SearchResult {
   scene_id: string
@@ -103,7 +104,7 @@ export function useSearch() {
       }
 
 
-      const response = await fetch(`${API_BASE_URL}/search`, {
+      const response = await authenticatedFetch(`${API_BASE_URL}/search`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",

@@ -22,6 +22,7 @@
 "use client"
 
 import { useState, useEffect } from "react"
+import { authenticatedFetch } from "@/lib/api"
 
 interface FleetStats {
   scenarios_processed: number
@@ -79,7 +80,7 @@ export function useFleetStats() {
   useEffect(() => {
     async function fetchStats() {
       try {
-        const response = await fetch(`${API_BASE_URL}/stats/overview`)
+        const response = await authenticatedFetch(`${API_BASE_URL}/stats/overview`)
         if (!response.ok) throw new Error(`HTTP ${response.status}: Failed to fetch stats`)
         const data = await response.json()
         setStats(data)
@@ -124,7 +125,7 @@ export function useFleetOverview(page = 1, limit = 20, filter = "all") {
 
         url += `?${params.toString()}`
 
-        const response = await fetch(url)
+        const response = await authenticatedFetch(url)
 
         if (!response.ok) throw new Error(`HTTP ${response.status}: Failed to fetch fleet overview`)
         const paginationResponse = await response.json()

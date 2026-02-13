@@ -3,7 +3,7 @@
 import os
 import logging
 from contextlib import asynccontextmanager
-from fastapi import FastAPI, Request
+from fastapi import FastAPI, Request, Depends
 from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.cors import CORSMiddleware
@@ -11,6 +11,7 @@ from mangum import Mangum
 
 from dependencies import init_aws_clients, rate_limiter
 from services.cache_service import S3BackedMetricsCache
+from auth import require_auth
 from routes import (
     health_router,
     fleet_router,
@@ -75,15 +76,18 @@ api_app.add_middleware(
 
 
 # Register all routers
+# Public - health check and debug endpoints
 api_app.include_router(health_router)
-api_app.include_router(fleet_router)
-api_app.include_router(scene_router)
-api_app.include_router(search_router)
-api_app.include_router(stats_router)
-api_app.include_router(config_router)
-api_app.include_router(upload_router)
-api_app.include_router(pipeline_router)
-api_app.include_router(analytics_router)
+
+# Protected - require Cognito JWT authentication
+api_app.include_router(fleet_router, dependencies=[Depends(require_auth)])
+api_app.include_router(scene_router, dependencies=[Depends(require_auth)])
+api_app.include_router(search_router, dependencies=[Depends(require_auth)])
+api_app.include_router(stats_router, dependencies=[Depends(require_auth)])
+api_app.include_router(config_router, dependencies=[Depends(require_auth)])
+api_app.include_router(upload_router, dependencies=[Depends(require_auth)])
+api_app.include_router(pipeline_router, dependencies=[Depends(require_auth)])
+api_app.include_router(analytics_router, dependencies=[Depends(require_auth)])
 
 
 # Main app with static files

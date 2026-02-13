@@ -19,6 +19,7 @@
  */
 "use client"
 import { useState, useEffect } from "react"
+import { authenticatedFetch } from "@/lib/api"
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "/api"
 
@@ -66,9 +67,9 @@ export function useAnalytics() {
       const cacheBustParam = cacheBust ? `?_t=${Date.now()}` : ''
 
       const [trendsRes, statsRes, coverageRes] = await Promise.all([
-        fetch(`${API_BASE_URL}/stats/trends${cacheBustParam}`),
-        fetch(`${API_BASE_URL}/stats/overview${cacheBustParam}`),
-        fetch(`${API_BASE_URL}/analytics/coverage-matrix${cacheBustParam}`)
+        authenticatedFetch(`${API_BASE_URL}/stats/trends${cacheBustParam}`),
+        authenticatedFetch(`${API_BASE_URL}/stats/overview${cacheBustParam}`),
+        authenticatedFetch(`${API_BASE_URL}/analytics/coverage-matrix${cacheBustParam}`)
       ])
 
       if (!trendsRes.ok) throw new Error(`Trends API failed: ${trendsRes.status}`)

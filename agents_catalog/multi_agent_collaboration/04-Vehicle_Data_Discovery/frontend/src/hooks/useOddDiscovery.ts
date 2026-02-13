@@ -21,6 +21,7 @@
 "use client"
 
 import { useState, useEffect } from "react"
+import { authenticatedFetch } from "@/lib/api"
 
 export interface OddCategory {
   category: string
@@ -68,7 +69,7 @@ export function useOddDiscovery() {
   async function fetchOddDiscoveryData(cacheBust = false) {
     try {
       const cacheBustParam = cacheBust ? `?_t=${Date.now()}` : ''
-      const response = await fetch(`${API_BASE_URL}/analytics/odd-uniqueness-analysis${cacheBustParam}`)
+      const response = await authenticatedFetch(`${API_BASE_URL}/analytics/odd-uniqueness-analysis${cacheBustParam}`)
 
       if (!response.ok) {
         throw new Error(`HTTP ${response.status}: Failed to fetch ODD discovery data`)

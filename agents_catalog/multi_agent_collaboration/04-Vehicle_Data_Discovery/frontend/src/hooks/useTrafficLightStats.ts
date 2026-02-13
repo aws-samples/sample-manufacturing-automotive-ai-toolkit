@@ -23,6 +23,7 @@
 "use client"
 
 import { useState, useEffect } from "react"
+import { authenticatedFetch } from "@/lib/api"
 
 interface TrafficLightStats {
   total_scenes: number
@@ -51,7 +52,7 @@ export function useTrafficLightStats() {
   useEffect(() => {
     async function fetchTrafficLightStats() {
       try {
-        const response = await fetch(`${API_BASE_URL}/stats/traffic-light`)
+        const response = await authenticatedFetch(`${API_BASE_URL}/stats/traffic-light`)
         if (!response.ok) throw new Error(`HTTP ${response.status}: Failed to fetch traffic light stats`)
         const data = await response.json()
         setStats(data)
