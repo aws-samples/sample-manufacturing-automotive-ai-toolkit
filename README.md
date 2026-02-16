@@ -1,6 +1,18 @@
-# Manufacturing & Automotive AI Toolkit (MA3T)
+# Automotive & Manufacturing GenAI Demos
 
-A collection of sample AI agents for Automotive and Manufacturing use cases.
+A collection of sample GenAI demos for Automotive and Manufacturing use cases.
+
+## Use Cases
+
+### 1. In Vehicle Agentic AI Agents (VISTA)
+A Multi-Agent Collaboration system with Supervisor Routing for vehicle service management. VISTA has two deployment options:
+1. [Bedrock Native Agents](agents_catalog/multi_agent_collaboration/00-vista-agents/)
+2. [Bedrock Agentcore](agents_catalog/multi_agent_collaboration/01-vista-agents-agentcore/)
+
+### 2. Inventory Optimizer
+Description
+
+
 
 ## Prerequisites
 
