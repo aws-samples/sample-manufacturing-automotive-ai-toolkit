@@ -110,8 +110,6 @@ cdk destroy --context region=us-east-1
 ```
 *Replace `us-east-1` with the region where you deployed the stack.*
 
-![MA3T User Interface](docs/ui.png)
-
 ## Architecture
 
 The MA3T architecture consists of:
@@ -125,12 +123,7 @@ The MA3T architecture consists of:
    - AgentCore Agents: Container-based agents using the Bedrock AgentCore framework
       - Support for Strands, LangGraph, CrewAI, and LlamaIndex
 
-3. **UI Framework**: A Next.js+React-based user interface for interacting with agents
-   - Single pane of glass for all agents
-   - Automatic agent discovery and registration
-   - Basic authentication for secure access
-
-4. **Deployment Framework**: CDK for deploying agents to AWS
+3. **Deployment Framework**: CDK for deploying agents to AWS
 
 ## Contributing
 
