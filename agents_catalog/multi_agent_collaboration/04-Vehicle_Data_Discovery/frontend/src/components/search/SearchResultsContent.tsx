@@ -126,8 +126,8 @@ export default function SearchResultsContent() {
     return {
       scene_id: result.scene_id,
       timestamp: new Date().toISOString(), // Use current time as placeholder
-      video_url: `/api/scene/${result.scene_id}/video`,
-      thumbnail_url: `/api/scene/${result.scene_id}/thumbnail`,
+      video_url: "",
+      thumbnail_url: "",
       // Generate reasonable risk score based on similarity (higher similarity = lower risk for most scenarios)
       risk_score: Math.max(0.1, 1 - (result.score || 0.5)),
       safety_score: result.score || 0.5,

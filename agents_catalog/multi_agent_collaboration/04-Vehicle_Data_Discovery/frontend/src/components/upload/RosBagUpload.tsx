@@ -12,6 +12,7 @@ import { Upload, CheckCircle, AlertCircle, X, FileText, Loader2, Database } from
 import { Card } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
+import { authenticatedFetch } from "@/lib/api"
 
 interface DataFormat {
   id: string
@@ -195,7 +196,7 @@ export default function RosBagUpload() {
       const apiUrl = process.env.NEXT_PUBLIC_API_URL || '/api'
       const selectedFormat = dataFormats.find(f => f.id === uploadState.selectedFormat)
 
-      const authResponse = await fetch(
+      const authResponse = await authenticatedFetch(
         `${apiUrl}/upload/authorize?filename=${encodeURIComponent(uploadState.file.name)}&file_type=application/octet-stream&data_format=${uploadState.selectedFormat}&format_name=${encodeURIComponent(selectedFormat?.name || '')}`,
         {
           method: 'POST',

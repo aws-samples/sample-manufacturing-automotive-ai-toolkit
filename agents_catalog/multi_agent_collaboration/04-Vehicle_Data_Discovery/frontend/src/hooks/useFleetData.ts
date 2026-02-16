@@ -137,33 +137,19 @@ export function useFleetOverview(page = 1, limit = 20, filter = "all") {
 
         // Transform API response to expected format
         const transformedScenes = scenesArray.map((scene: ApiScene) => {
-          // Direct CloudFront URL generation for all 6 cameras
-          // AWS Best Practice: Direct CloudFront serving eliminates API processing and 302 redirects
-          const sceneIdPadded = scene.scene_id.toString().padStart(4, '0')
-          const cloudFrontDomain = "https://auto-mfg-pvt-ltd.co"
-
-          const allCameraUrls = {
-            'CAM_FRONT': `${cloudFrontDomain}/processed-videos/scene-${sceneIdPadded}/CAM_FRONT.mp4`,
-            'CAM_BACK': `${cloudFrontDomain}/processed-videos/scene-${sceneIdPadded}/CAM_BACK.mp4`,
-            'CAM_FRONT_LEFT': `${cloudFrontDomain}/processed-videos/scene-${sceneIdPadded}/CAM_FRONT_LEFT.mp4`,
-            'CAM_FRONT_RIGHT': `${cloudFrontDomain}/processed-videos/scene-${sceneIdPadded}/CAM_FRONT_RIGHT.mp4`,
-            'CAM_BACK_LEFT': `${cloudFrontDomain}/processed-videos/scene-${sceneIdPadded}/CAM_BACK_LEFT.mp4`,
-            'CAM_BACK_RIGHT': `${cloudFrontDomain}/processed-videos/scene-${sceneIdPadded}/CAM_BACK_RIGHT.mp4`
-          }
-
+          // Video/thumbnail URLs are fetched via authenticated API calls
+          // on the forensic detail page (useSceneDetail -> /scene/{id}).
+          // The grid view uses the SceneCard onError fallback for thumbnails.
           return {
             ...scene,
-            // Add compatibility fields for existing UI components
             analysis_summary: scene.description_preview,
             anomaly_detected: scene.anomaly_status === "ANOMALY",
             safety_score: scene.risk_score,
-            camera_angles: Object.keys(allCameraUrls),
-            // Direct CloudFront URLs
-            video_url: allCameraUrls['CAM_FRONT'],
-            thumbnail_url: `${cloudFrontDomain}/processed-thumbnails/scene-${sceneIdPadded}/CAM_FRONT.jpg`,
-            // All camera URLs for MultiCameraPlayer (forensic page)
-            all_camera_urls: allCameraUrls,
-            camera_urls: allCameraUrls
+            camera_angles: ["CAM_FRONT", "CAM_BACK", "CAM_FRONT_LEFT", "CAM_FRONT_RIGHT", "CAM_BACK_LEFT", "CAM_BACK_RIGHT"],
+            video_url: "",
+            thumbnail_url: "",
+            all_camera_urls: {},
+            camera_urls: {}
           }
         })
 

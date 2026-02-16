@@ -17,6 +17,7 @@ import { Button } from "@/components/ui/button"
 import { Card } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { SceneDetail } from "@/types/scene"
+import { authenticatedFetch } from "@/lib/api"
 
 interface ClientForensicContentProps {
   sceneData: SceneDetail | null
@@ -43,14 +44,7 @@ export default function ClientForensicContent({
     async function fetchSceneData() {
       try {
         const apiUrl = process.env.NEXT_PUBLIC_API_URL || '/api'
-        const response = await fetch(`${apiUrl}/scene/${sceneId}`, {
-          cache: 'no-store',
-          headers: {
-            'Cache-Control': 'no-cache, no-store, must-revalidate',
-            'Pragma': 'no-cache',
-            'Expires': '0'
-          }
-        })
+        const response = await authenticatedFetch(`${apiUrl}/scene/${sceneId}`)
 
         if (!response.ok) {
           throw new Error(`Failed to fetch scene details: ${response.statusText}`)

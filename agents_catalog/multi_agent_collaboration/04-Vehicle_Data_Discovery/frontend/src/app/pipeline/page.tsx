@@ -16,6 +16,7 @@ import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import DashboardLayout from "@/components/layout/DashboardLayout"
 import RosBagUpload from "@/components/upload/RosBagUpload"
+import { authenticatedFetch } from "@/lib/api"
 
 interface PipelineExecution {
   execution_id: string
@@ -50,8 +51,8 @@ export default function PipelinePage() {
     try {
       const apiUrl = process.env.NEXT_PUBLIC_API_URL || '/api'
       const [pipelineResponse, statsResponse] = await Promise.all([
-        fetch(`${apiUrl}/pipeline/executions`),
-        fetch(`${apiUrl}/stats/overview`)
+        authenticatedFetch(`${apiUrl}/pipeline/executions`),
+        authenticatedFetch(`${apiUrl}/stats/overview`)
       ])
 
       const pipelineResult = await pipelineResponse.json()
