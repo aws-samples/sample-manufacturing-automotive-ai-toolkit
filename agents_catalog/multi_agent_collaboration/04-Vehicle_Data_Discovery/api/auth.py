@@ -49,12 +49,11 @@ class CognitoJWTValidator:
                 public_key,
                 algorithms=["RS256"],
                 issuer=self.issuer,
+                audience=self.client_id,
                 options={"require": ["exp", "iss", "token_use"]},
             )
             if claims.get("token_use") != "id":
                 raise HTTPException(status_code=401, detail="Not an ID token")
-            if self.client_id and claims.get("aud") != self.client_id:
-                raise HTTPException(status_code=401, detail="Token audience mismatch")
             return claims
         except jwt.ExpiredSignatureError:
             raise HTTPException(status_code=401, detail="Token has expired")

@@ -5,6 +5,7 @@
  * and typed request/response helpers.
  */
 
+import '@/lib/auth-config' // Ensure Amplify is configured before any auth calls
 import { fetchAuthSession } from 'aws-amplify/auth'
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "/api"
@@ -21,7 +22,10 @@ async function getAuthHeaders(): Promise<Record<string, string>> {
     const session = await fetchAuthSession()
     const token = session.tokens?.idToken?.toString()
     if (token) return { Authorization: `Bearer ${token}` }
-  } catch {}
+    console.warn('[auth] No ID token in session:', JSON.stringify({ hasTokens: !!session.tokens, hasIdToken: !!session.tokens?.idToken }))
+  } catch (e) {
+    console.warn('[auth] fetchAuthSession failed:', e)
+  }
   return {}
 }
 
