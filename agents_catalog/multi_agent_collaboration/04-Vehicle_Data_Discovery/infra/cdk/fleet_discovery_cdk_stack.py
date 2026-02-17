@@ -1143,7 +1143,7 @@ def handler(event, context):
         self.user_pool = cognito.UserPool(
             self, "FleetUserPool",
             user_pool_name=f"fleet-users-{unique_id}",
-            self_sign_up_enabled=True,
+            self_sign_up_enabled=False,
             sign_in_aliases=cognito.SignInAliases(
                 email=True,
             ),

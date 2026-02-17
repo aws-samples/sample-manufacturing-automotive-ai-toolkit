@@ -84,6 +84,50 @@ NEXT_PUBLIC_COGNITO_CLIENT_ID=xxxxx
 NEXT_PUBLIC_AWS_REGION=us-west-2
 ```
 
+## Authentication & User Management
+
+Self-registration is disabled. Users are provisioned by an administrator.
+
+### Initial user (via deploy script)
+
+The main deploy script creates the first user automatically:
+
+```bash
+./deploy_cdk.sh --auth-user agweber@amazon.com --auth-password '1234Qwer!!' --skip-nag
+```
+
+The `--auth-user` and `--auth-password` flags are passed as `AUTH_USER` / `AUTH_PASSWORD` environment variables to CDK, which provisions a Lambda-backed custom resource to call `AdminCreateUser` + `AdminSetUserPassword` on the Cognito User Pool.
+
+### Adding users after deployment
+
+Use the AWS CLI to create additional users against the deployed Cognito User Pool:
+
+```bash
+# Find the User Pool ID from stack outputs
+USER_POOL_ID=$(aws cloudformation describe-stacks \
+  --stack-name MA3TMainStack \
+  --query "Stacks[0].Outputs[?contains(OutputKey,'UserPool')].OutputValue" \
+  --output text --region us-west-2)
+
+# Create a new user
+aws cognito-idp admin-create-user \
+  --user-pool-id $USER_POOL_ID \
+  --username user@example.com \
+  --user-attributes Name=email,Value=user@example.com Name=email_verified,Value=true \
+  --message-action SUPPRESS \
+  --region us-west-2
+
+# Set a permanent password (skips the force-change-password flow)
+aws cognito-idp admin-set-user-password \
+  --user-pool-id $USER_POOL_ID \
+  --username user@example.com \
+  --password 'SecurePass123!' \
+  --permanent \
+  --region us-west-2
+```
+
+Password requirements: 8+ characters, uppercase, lowercase, digit, and symbol.
+
 ## Key Patterns
 
 ### API Integration

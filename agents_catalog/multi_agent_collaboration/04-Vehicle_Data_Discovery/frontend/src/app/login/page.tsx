@@ -1,29 +1,28 @@
 /**
  * Login Page - AWS Cognito Authentication
- * 
- * Handles user sign-in, sign-up, email verification, and password reset
- * flows using AWS Amplify authentication.
- * 
+ *
+ * Handles user sign-in and password reset flows using AWS Amplify authentication.
+ * Self-registration is disabled; users are provisioned via the deploy script
+ * (--auth-user / --auth-password) or the AWS CLI.
+ *
  * @route /login
  */
 "use client"
 
-import { useState } from 'react'
+import { useState, useMemo } from 'react'
 import { motion } from 'framer-motion'
 import '@/lib/auth-config' // Must be imported before any auth calls
-import { signIn, signUp, resetPassword, confirmResetPassword, confirmSignUp } from 'aws-amplify/auth'
-import { Eye, EyeOff, Lock, Mail, Zap, AlertCircle, Sparkles, ArrowLeft, UserPlus, KeyRound, CheckCircle } from 'lucide-react'
+import { signIn, resetPassword, confirmResetPassword } from 'aws-amplify/auth'
+import { Eye, EyeOff, Lock, Mail, Zap, AlertCircle, Sparkles, ArrowLeft, KeyRound, CheckCircle } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
 
-type AuthMode = 'signin' | 'signup' | 'forgot' | 'verify' | 'reset'
+type AuthMode = 'signin' | 'forgot' | 'reset'
 
 export default function LoginPage() {
   const [mode, setMode] = useState<AuthMode>('signin')
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
-  const [confirmPassword, setConfirmPassword] = useState('')
-  const [verificationCode, setVerificationCode] = useState('')
   const [resetCode, setResetCode] = useState('')
   const [newPassword, setNewPassword] = useState('')
   const [showPassword, setShowPassword] = useState(false)
@@ -56,65 +55,9 @@ export default function LoginPage() {
         setError('No account found with this email address')
       } else if (errorMessage.includes('NotAuthorizedException')) {
         setError('Invalid email or password')
-      } else if (errorMessage.includes('UserNotConfirmedException')) {
-        setError('Please check your email and verify your account first')
-        setMode('verify')
       } else {
         setError('Authentication failed. Please try again.')
       }
-    } finally {
-      setLoading(false)
-    }
-  }
-
-  const handleSignUp = async (e: React.FormEvent) => {
-    e.preventDefault()
-    setLoading(true)
-    clearMessages()
-
-    if (password !== confirmPassword) {
-      setError('Passwords do not match')
-      setLoading(false)
-      return
-    }
-
-    try {
-      await signUp({
-        username: email,
-        password,
-        options: {
-          userAttributes: { email }
-        }
-      })
-      setSuccess('Account created! Please check your email for verification code.')
-      setMode('verify')
-    } catch (err: unknown) {
-      const errorMessage = err instanceof Error ? err.message : 'Sign up failed'
-
-      if (errorMessage.includes('UsernameExistsException')) {
-        setError('An account with this email already exists')
-      } else if (errorMessage.includes('InvalidPasswordException')) {
-        setError('Password must be at least 8 characters with uppercase, lowercase, number and symbol')
-      } else {
-        setError('Sign up failed. Please try again.')
-      }
-    } finally {
-      setLoading(false)
-    }
-  }
-
-  const handleVerifyEmail = async (e: React.FormEvent) => {
-    e.preventDefault()
-    setLoading(true)
-    clearMessages()
-
-    try {
-      await confirmSignUp({ username: email, confirmationCode: verificationCode })
-      setSuccess('Email verified! You can now sign in.')
-      setMode('signin')
-      setVerificationCode('')
-    } catch {
-      setError('Invalid verification code. Please try again.')
     } finally {
       setLoading(false)
     }
@@ -158,6 +101,20 @@ export default function LoginPage() {
     }
   }
 
+  // Deterministic values for background animations (avoids hydration mismatch from Math.random)
+  const particles = useMemo(() => Array.from({ length: 50 }, (_, i) => ({
+    left: ((i * 37 + 13) % 100),
+    top: ((i * 53 + 7) % 100),
+    duration: 3 + (i % 5) * 0.4,
+    delay: (i % 8) * 0.25,
+  })), [])
+
+  const paths = useMemo(() => Array.from({ length: 8 }, (_, i) => ({
+    d: `M ${(i * 13 + 5) % 100} ${(i * 29 + 11) % 100} Q ${(i * 43 + 17) % 100} ${(i * 19 + 37) % 100} ${(i * 61 + 23) % 100} ${(i * 31 + 41) % 100}`,
+    duration: 4 + (i % 4) * 0.75,
+    delay: (i % 6) * 0.33,
+  })), [])
+
   return (
     <div className="min-h-screen relative overflow-hidden bg-gradient-to-br from-[var(--deep-charcoal)] via-gray-900 to-black">
 
@@ -165,22 +122,22 @@ export default function LoginPage() {
       <div className="absolute inset-0 overflow-hidden">
         {/* Animated Neural Particles */}
         <div className="absolute inset-0">
-          {[...Array(50)].map((_, i) => (
+          {particles.map((p, i) => (
             <motion.div
               key={i}
               className="absolute w-1 h-1 bg-[var(--cyber-blue)] rounded-full opacity-60"
               style={{
-                left: `${Math.random() * 100}%`,
-                top: `${Math.random() * 100}%`,
+                left: `${p.left}%`,
+                top: `${p.top}%`,
               }}
               animate={{
                 opacity: [0.2, 0.8, 0.2],
                 scale: [1, 1.5, 1],
               }}
               transition={{
-                duration: 3 + Math.random() * 2,
+                duration: p.duration,
                 repeat: Infinity,
-                delay: Math.random() * 2,
+                delay: p.delay,
               }}
             />
           ))}
@@ -196,20 +153,20 @@ export default function LoginPage() {
                 <stop offset="100%" stopColor="var(--cyber-blue)" stopOpacity="0.1"/>
               </linearGradient>
             </defs>
-            {[...Array(8)].map((_, i) => (
+            {paths.map((p, i) => (
               <motion.path
                 key={i}
-                d={`M ${Math.random() * 100} ${Math.random() * 100} Q ${Math.random() * 100} ${Math.random() * 100} ${Math.random() * 100} ${Math.random() * 100}`}
+                d={p.d}
                 stroke="url(#neuralGradient)"
                 strokeWidth="1"
                 fill="none"
                 initial={{ pathLength: 0, opacity: 0 }}
                 animate={{ pathLength: 1, opacity: 0.6 }}
                 transition={{
-                  duration: 4 + Math.random() * 3,
+                  duration: p.duration,
                   repeat: Infinity,
                   repeatType: "reverse",
-                  delay: Math.random() * 2,
+                  delay: p.delay,
                 }}
               />
             ))}
@@ -298,16 +255,12 @@ export default function LoginPage() {
                   className="flex items-center justify-center gap-2 mb-2"
                 >
                   {mode === 'signin' && <Zap className="w-5 h-5 text-[var(--cyber-blue)]" />}
-                  {mode === 'signup' && <UserPlus className="w-5 h-5 text-[var(--cyber-blue)]" />}
                   {mode === 'forgot' && <KeyRound className="w-5 h-5 text-[var(--cyber-blue)]" />}
-                  {mode === 'verify' && <CheckCircle className="w-5 h-5 text-[var(--cyber-blue)]" />}
                   {mode === 'reset' && <Lock className="w-5 h-5 text-[var(--cyber-blue)]" />}
 
                   <h2 className="text-xl font-semibold text-white">
                     {mode === 'signin' && 'Sign In'}
-                    {mode === 'signup' && 'Create Account'}
                     {mode === 'forgot' && 'Reset Password'}
-                    {mode === 'verify' && 'Verify Email'}
                     {mode === 'reset' && 'New Password'}
                   </h2>
                 </motion.div>
@@ -381,14 +334,7 @@ export default function LoginPage() {
                     )}
                   </Button>
 
-                  <div className="flex justify-between text-sm">
-                    <button
-                      type="button"
-                      onClick={() => setMode('signup')}
-                      className="text-[var(--cyber-blue)] hover:text-blue-300 transition-colors"
-                    >
-                      Create Account
-                    </button>
+                  <div className="flex justify-end text-sm">
                     <button
                       type="button"
                       onClick={() => setMode('forgot')}
@@ -397,81 +343,6 @@ export default function LoginPage() {
                       Forgot Password?
                     </button>
                   </div>
-                </form>
-              )}
-
-              {mode === 'signup' && (
-                <form onSubmit={handleSignUp} className="space-y-6">
-                  <div className="space-y-2">
-                    <label className="text-sm font-medium text-white/90">Email Address</label>
-                    <div className="relative group">
-                      <Mail className="absolute left-4 top-1/2 transform -translate-y-1/2 w-5 h-5 text-white/40 group-focus-within:text-[var(--cyber-blue)] transition-colors" />
-                      <input
-                        type="email"
-                        value={email}
-                        onChange={(e) => setEmail(e.target.value)}
-                        className="w-full pl-12 pr-4 py-4 rounded-xl bg-white/10 border border-white/20 focus:border-[var(--cyber-blue)] focus:ring-2 focus:ring-[var(--cyber-blue)]/30 transition-all duration-300 text-white placeholder-white/40"
-                        placeholder="Enter your email"
-                        required
-                      />
-                    </div>
-                  </div>
-
-                  <div className="space-y-2">
-                    <label className="text-sm font-medium text-white/90">Password</label>
-                    <div className="relative group">
-                      <Lock className="absolute left-4 top-1/2 transform -translate-y-1/2 w-5 h-5 text-white/40 group-focus-within:text-[var(--cyber-blue)] transition-colors" />
-                      <input
-                        type={showPassword ? "text" : "password"}
-                        value={password}
-                        onChange={(e) => setPassword(e.target.value)}
-                        className="w-full pl-12 pr-14 py-4 rounded-xl bg-white/10 border border-white/20 focus:border-[var(--cyber-blue)] focus:ring-2 focus:ring-[var(--cyber-blue)]/30 transition-all duration-300 text-white placeholder-white/40"
-                        placeholder="Create a password"
-                        required
-                      />
-                      <button
-                        type="button"
-                        onClick={() => setShowPassword(!showPassword)}
-                        className="absolute right-4 top-1/2 transform -translate-y-1/2 text-white/40 hover:text-white/70 transition-colors"
-                      >
-                        {showPassword ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
-                      </button>
-                    </div>
-                    <p className="text-xs text-white/50">8+ chars with uppercase, lowercase, number & symbol</p>
-                  </div>
-
-                  <div className="space-y-2">
-                    <label className="text-sm font-medium text-white/90">Confirm Password</label>
-                    <div className="relative group">
-                      <Lock className="absolute left-4 top-1/2 transform -translate-y-1/2 w-5 h-5 text-white/40 group-focus-within:text-[var(--cyber-blue)] transition-colors" />
-                      <input
-                        type="password"
-                        value={confirmPassword}
-                        onChange={(e) => setConfirmPassword(e.target.value)}
-                        className="w-full pl-12 pr-4 py-4 rounded-xl bg-white/10 border border-white/20 focus:border-[var(--cyber-blue)] focus:ring-2 focus:ring-[var(--cyber-blue)]/30 transition-all duration-300 text-white placeholder-white/40"
-                        placeholder="Confirm your password"
-                        required
-                      />
-                    </div>
-                  </div>
-
-                  <Button
-                    type="submit"
-                    disabled={loading}
-                    className="w-full py-4 bg-gradient-to-r from-green-500 via-emerald-500 to-teal-500 hover:from-green-500/90 hover:via-emerald-500/90 hover:to-teal-500/90 text-white font-semibold rounded-xl transition-all duration-300 shadow-lg hover:shadow-xl disabled:opacity-50"
-                  >
-                    {loading ? (
-                      <div className="flex items-center justify-center gap-3">
-                        <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                        Creating Account...
-                      </div>
-                    ) : (
-                      <div className="flex items-center justify-center gap-2">
-                        <UserPlus className="w-5 h-5" />
-                        Create Account
-                      </div>
-                    )}
-                  </Button>
                 </form>
               )}
 
@@ -510,49 +381,6 @@ export default function LoginPage() {
                       <div className="flex items-center justify-center gap-2">
                         <KeyRound className="w-5 h-5" />
                         Send Reset Code
-                      </div>
-                    )}
-                  </Button>
-                </form>
-              )}
-
-              {mode === 'verify' && (
-                <form onSubmit={handleVerifyEmail} className="space-y-6">
-                  <div className="text-center mb-4">
-                    <p className="text-sm text-white/70">Enter the verification code sent to your email</p>
-                    <p className="text-xs text-white/50 mt-1">{email}</p>
-                  </div>
-
-                  <div className="space-y-2">
-                    <label className="text-sm font-medium text-white/90">Verification Code</label>
-                    <div className="relative group">
-                      <CheckCircle className="absolute left-4 top-1/2 transform -translate-y-1/2 w-5 h-5 text-white/40 group-focus-within:text-[var(--cyber-blue)] transition-colors" />
-                      <input
-                        type="text"
-                        value={verificationCode}
-                        onChange={(e) => setVerificationCode(e.target.value)}
-                        className="w-full pl-12 pr-4 py-4 rounded-xl bg-white/10 border border-white/20 focus:border-[var(--cyber-blue)] focus:ring-2 focus:ring-[var(--cyber-blue)]/30 transition-all duration-300 text-white placeholder-white/40 text-center text-lg tracking-widest"
-                        placeholder="000000"
-                        maxLength={6}
-                        required
-                      />
-                    </div>
-                  </div>
-
-                  <Button
-                    type="submit"
-                    disabled={loading}
-                    className="w-full py-4 bg-gradient-to-r from-[var(--cyber-blue)] via-blue-500 to-purple-500 hover:from-[var(--cyber-blue)]/90 hover:via-blue-500/90 hover:to-purple-500/90 text-white font-semibold rounded-xl transition-all duration-300 shadow-lg hover:shadow-xl disabled:opacity-50"
-                  >
-                    {loading ? (
-                      <div className="flex items-center justify-center gap-3">
-                        <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                        Verifying...
-                      </div>
-                    ) : (
-                      <div className="flex items-center justify-center gap-2">
-                        <CheckCircle className="w-5 h-5" />
-                        Verify Email
                       </div>
                     )}
                   </Button>
