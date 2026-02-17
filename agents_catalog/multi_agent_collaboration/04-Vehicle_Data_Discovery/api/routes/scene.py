@@ -3,12 +3,19 @@ import os
 import json
 import logging
 import boto3
+from concurrent.futures import ThreadPoolExecutor
 from botocore.config import Config
 from fastapi import APIRouter, HTTPException
 from fastapi.responses import RedirectResponse
 
-from dependencies import s3, BUCKET
+from dependencies import s3, BUCKET, AWS_REGION, SCENE_ID_PATTERN
 from services.scene_service import safe_parse_agent_analysis, extract_anomaly_summary
+
+
+def _validate_scene_id(scene_id: str) -> None:
+    """Validate scene_id to prevent path traversal attacks."""
+    if not SCENE_ID_PATTERN.match(scene_id):
+        raise HTTPException(status_code=400, detail="Invalid scene_id format")
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/scene", tags=["scene"])
@@ -17,12 +24,13 @@ router = APIRouter(prefix="/scene", tags=["scene"])
 @router.get("/{scene_id}")
 def get_scene_detail(scene_id: str):
     """The 'Forensic Lens' - Detailed Scene Inspector"""
+    _validate_scene_id(scene_id)
     try:
         USE_CLOUDFRONT = os.getenv('USE_CLOUDFRONT_VIDEOS', 'false').lower() == 'true'
         
         def get_presigned_url(key):
             if USE_CLOUDFRONT:
-                s3_accel = boto3.client('s3', region_name='us-west-2',
+                s3_accel = boto3.client('s3', region_name=AWS_REGION,
                     config=Config(s3={'use_accelerate_endpoint': True}))
                 return s3_accel.generate_presigned_url('get_object',
                     Params={'Bucket': BUCKET, 'Key': key}, ExpiresIn=3600)
@@ -31,26 +39,30 @@ def get_scene_detail(scene_id: str):
 
         video_url = get_presigned_url(f"processed-videos/{scene_id}/CAM_FRONT.mp4")
 
+        cameras = ["CAM_FRONT", "CAM_FRONT_LEFT", "CAM_FRONT_RIGHT", "CAM_BACK", "CAM_BACK_LEFT", "CAM_BACK_RIGHT"]
         camera_urls = {}
-        for cam in ["CAM_FRONT", "CAM_FRONT_LEFT", "CAM_FRONT_RIGHT", "CAM_BACK", "CAM_BACK_LEFT", "CAM_BACK_RIGHT"]:
-            try:
-                camera_urls[cam] = get_presigned_url(f"processed-videos/{scene_id}/{cam}.mp4")
-            except:
-                pass
+        with ThreadPoolExecutor(max_workers=6) as executor:
+            futures = {executor.submit(get_presigned_url, f"processed-videos/{scene_id}/{cam}.mp4"): cam for cam in cameras}
+            for future in futures:
+                cam = futures[future]
+                try:
+                    camera_urls[cam] = future.result()
+                except Exception:
+                    pass
 
         agents_data = {}
         for agent_type in ["scene_understanding", "anomaly_detection", "similarity_search"]:
             try:
                 key = f"pipeline-results/{scene_id}/agent-{agent_type}-results.json"
                 agents_data[agent_type] = json.loads(s3.get_object(Bucket=BUCKET, Key=key)['Body'].read())
-            except:
+            except Exception:
                 agents_data[agent_type] = {}
 
         phase3_data = {}
         try:
             p3_key = f"processed/phase3/{scene_id}/internvideo25_analysis.json"
             phase3_data = json.loads(s3.get_object(Bucket=BUCKET, Key=p3_key)['Body'].read())
-        except:
+        except Exception:
             pass
 
         # Load Phase 6 output for properly formatted key_findings
@@ -58,7 +70,7 @@ def get_scene_detail(scene_id: str):
         try:
             p6_key = f"processed/phase6/{scene_id}/enhanced_orchestration_results.json"
             phase6_data = json.loads(s3.get_object(Bucket=BUCKET, Key=p6_key)['Body'].read())
-        except:
+        except Exception:
             pass
 
         scene_analysis = safe_parse_agent_analysis(agents_data.get("scene_understanding", {}))
@@ -99,12 +111,12 @@ def get_scene_detail(scene_id: str):
         severity = anomaly_findings.get("anomaly_severity", 0.0) if isinstance(anomaly_findings, dict) else 0.0
         try:
             severity = float(severity)
-        except:
+        except (ValueError, TypeError):
             severity = 0.0
         risk_score = phase3_data.get("behavioral_analysis", {}).get("quantified_metrics", {}).get("risk_score", 0.0)
         try:
             risk_score = float(risk_score)
-        except:
+        except (ValueError, TypeError):
             risk_score = 0.0
 
         if severity >= 0.6 or risk_score >= 0.5:
@@ -182,10 +194,11 @@ def get_scene_detail(scene_id: str):
 @router.get("/{scene_id}/video")
 def get_scene_video(scene_id: str):
     """Return primary video URL"""
+    _validate_scene_id(scene_id)
     try:
         USE_CLOUDFRONT = os.getenv('USE_CLOUDFRONT_VIDEOS', 'false').lower() == 'true'
         if USE_CLOUDFRONT:
-            s3_accel = boto3.client('s3', region_name='us-west-2',
+            s3_accel = boto3.client('s3', region_name=AWS_REGION,
                 config=Config(s3={'use_accelerate_endpoint': True}))
             url = s3_accel.generate_presigned_url('get_object',
                 Params={'Bucket': BUCKET, 'Key': f"processed-videos/{scene_id}/CAM_FRONT.mp4"}, ExpiresIn=3600)
@@ -200,10 +213,11 @@ def get_scene_video(scene_id: str):
 @router.get("/{scene_id}/thumbnail")
 def get_scene_thumbnail(scene_id: str):
     """Return thumbnail (video placeholder)"""
+    _validate_scene_id(scene_id)
     try:
         USE_CLOUDFRONT = os.getenv('USE_CLOUDFRONT_VIDEOS', 'false').lower() == 'true'
         if USE_CLOUDFRONT:
-            s3_accel = boto3.client('s3', region_name='us-west-2',
+            s3_accel = boto3.client('s3', region_name=AWS_REGION,
                 config=Config(s3={'use_accelerate_endpoint': True}))
             url = s3_accel.generate_presigned_url('get_object',
                 Params={'Bucket': BUCKET, 'Key': f"processed-videos/{scene_id}/CAM_FRONT.mp4"}, ExpiresIn=3600)

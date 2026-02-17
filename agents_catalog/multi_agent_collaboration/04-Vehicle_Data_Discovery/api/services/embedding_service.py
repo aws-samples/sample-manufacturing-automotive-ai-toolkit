@@ -22,7 +22,7 @@ def get_scene_behavioral_text(scene_id: str) -> str:
             desc = data.get("behavioral_analysis", {}).get("scene_understanding", {}).get("comprehensive_analysis", "")
             if desc and len(desc.strip()) > 20:
                 return desc[:500]
-        except:
+        except Exception:
             pass
 
         # Fallback: Phase 6
@@ -33,7 +33,7 @@ def get_scene_behavioral_text(scene_id: str) -> str:
             content = data.get("agent_results", {}).get("scene_understanding_worker", {}).get("scene_understanding", {}).get("analysis", {}).get("content", "")
             if content and len(content.strip()) > 20:
                 return content[:500]
-        except:
+        except Exception:
             pass
 
         return f"driving scenarios similar to {scene_id}"
@@ -44,15 +44,15 @@ def get_scene_behavioral_text(scene_id: str) -> str:
 
 def generate_embedding(text: str, engine_type: str) -> List[float]:
     """Generate embedding vector using the correct engine."""
-    from dependencies import INDICES_CONFIG
-    
+    from dependencies import INDICES_CONFIG, AWS_REGION
+
     config = INDICES_CONFIG.get(engine_type)
     if not config:
         return []
 
     try:
         if config["source"] == "bedrock":
-            bedrock = boto3.client('bedrock-runtime', region_name='us-west-2')
+            bedrock = boto3.client('bedrock-runtime', region_name=AWS_REGION)
             response = bedrock.invoke_model(
                 modelId=config["embedding_model"],
                 contentType="application/json",
@@ -65,7 +65,7 @@ def generate_embedding(text: str, engine_type: str) -> List[float]:
             endpoint_name = config["embedding_model"]
             if not endpoint_name:
                 return []
-            sagemaker = boto3.client('sagemaker-runtime', region_name='us-west-2')
+            sagemaker = boto3.client('sagemaker-runtime', region_name=AWS_REGION)
             response = sagemaker.invoke_endpoint(
                 EndpointName=endpoint_name,
                 ContentType='application/json',

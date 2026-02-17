@@ -5,7 +5,7 @@ import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from fastapi import APIRouter
 
-from dependencies import s3, BUCKET, fleet_overview_cache
+from dependencies import s3, BUCKET, fleet_overview_cache, CACHE_MAX_ENTRIES
 from models.responses import SceneSummary
 from services.scene_service import (
     safe_parse_agent_analysis, format_tags_for_ui, apply_metadata_filter
@@ -202,6 +202,10 @@ def get_fleet_overview(page: int = 1, limit: int = 50, filter: str = "all"):
             "total_pages": (total_count + limit - 1) // limit
         }
 
+        # Evict oldest entries if cache exceeds max size
+        if len(fleet_overview_cache) >= CACHE_MAX_ENTRIES:
+            oldest_key = min(fleet_overview_cache, key=lambda k: fleet_overview_cache[k].get("timestamp", 0))
+            del fleet_overview_cache[oldest_key]
         fleet_overview_cache[cache_key] = {"data": response_data, "timestamp": current_time}
         return response_data
 

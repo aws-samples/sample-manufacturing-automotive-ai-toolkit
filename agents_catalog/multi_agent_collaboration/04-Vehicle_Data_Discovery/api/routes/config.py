@@ -2,7 +2,7 @@
 import logging
 from fastapi import APIRouter
 
-from dependencies import BUCKET, VECTOR_BUCKET, STATE_MACHINE_ARN, INDICES_CONFIG
+from dependencies import INDICES_CONFIG
 from models.requests import ConfigUpdate
 
 logger = logging.getLogger(__name__)
@@ -24,9 +24,6 @@ def update_configuration(config: ConfigUpdate):
 def get_current_configuration():
     """Get current system configuration"""
     return {
-        "bucket": BUCKET,
-        "vector_bucket": VECTOR_BUCKET,
-        "state_machine_arn": STATE_MACHINE_ARN,
         "indices": {
             name: {"name": cfg["name"], "type": cfg["type"], "source": cfg["source"]}
             for name, cfg in INDICES_CONFIG.items()

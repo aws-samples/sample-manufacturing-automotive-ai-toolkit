@@ -196,20 +196,21 @@ interface CameraData {
         <Card className={cardClassName}>
           {/* Thumbnail Section */}
           <div className="relative aspect-video bg-gray-100 overflow-hidden">
-            <Image
-              src={scene.thumbnail_url || "/api/placeholder/400/225"}
-              alt={`Scene ${scene.scene_id}`}
-              fill
-              className="object-cover"
-              onError={(e) => {
-                // Replace failed image with fallback design
-                const target = e.target as HTMLImageElement;
-                target.style.display = 'none';
-                const fallback = target.nextElementSibling as HTMLElement;
-                if (fallback) fallback.style.display = 'flex';
-              }}
-            />
-            <div className="w-full h-full bg-gradient-to-br from-gray-800 to-gray-900 items-center justify-center hidden" style={{ display: 'none' }}>
+            {scene.thumbnail_url ? (
+              <Image
+                src={scene.thumbnail_url}
+                alt={`Scene ${scene.scene_id}`}
+                fill
+                className="object-cover"
+                onError={(e) => {
+                  const target = e.target as HTMLImageElement;
+                  target.style.display = 'none';
+                  const fallback = target.nextElementSibling as HTMLElement;
+                  if (fallback) fallback.style.display = 'flex';
+                }}
+              />
+            ) : null}
+            <div className={`w-full h-full bg-gradient-to-br from-gray-800 to-gray-900 items-center justify-center ${scene.thumbnail_url ? 'hidden' : 'flex'}`} style={scene.thumbnail_url ? { display: 'none' } : undefined}>
               <div className="text-center">
                 <div className="w-16 h-16 bg-[var(--cyber-blue)]/20 rounded-full flex items-center justify-center mx-auto mb-3">
                   <Camera className="w-8 h-8 text-[var(--cyber-blue)]" />

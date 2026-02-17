@@ -11,6 +11,7 @@ from aws_cdk import (
     RemovalPolicy,
     CustomResource,
     Aspects,
+    Tags,
     aws_s3 as s3,
     aws_iam as iam,
     aws_ecs as ecs,
@@ -41,6 +42,14 @@ class FleetDiscoveryCdkStack(NestedStack):
 
     def __init__(self, scope: Construct, construct_id: str, shared_resources: dict = None, **kwargs) -> None:
         super().__init__(scope, construct_id, **kwargs)
+
+        # Resource tagging strategy
+        # Exclude App Runner CfnService — tag changes force replacement, which
+        # fails when service_name is set because the old service still exists.
+        Tags.of(self).add("Application", "fleet-discovery",
+                          exclude_resource_types=["AWS::AppRunner::Service"])
+        Tags.of(self).add("ManagedBy", "cdk",
+                          exclude_resource_types=["AWS::AppRunner::Service"])
 
         # Generate unique_id from stack name for consistent naming
         unique_id = hashlib.md5(construct_id.encode(), usedforsecurity=False).hexdigest()[:8]
@@ -372,8 +381,13 @@ def handler(event, context):
         )
         
         s3vectors_lambda.add_to_role_policy(iam.PolicyStatement(
-            actions=["s3vectors:*"],
-            resources=["*"]
+            actions=[
+                "s3vectors:CreateVectorBucket", "s3vectors:DeleteVectorBucket",
+                "s3vectors:GetVectorBucket", "s3vectors:ListVectorBuckets",
+                "s3vectors:CreateIndex", "s3vectors:DeleteIndex",
+                "s3vectors:GetIndex", "s3vectors:ListIndexes",
+            ],
+            resources=[f"arn:aws:s3vectors:{Stack.of(self).region}:{Stack.of(self).account}:*"]
         ))
 
         self.s3vectors_setup = CustomResource(
@@ -455,8 +469,13 @@ def handler(event, context):
         self.ecs_task_role.add_to_policy(
             iam.PolicyStatement(
                 effect=iam.Effect.ALLOW,
-                actions=["s3vectors:*"],
-                resources=["*"]
+                actions=[
+                    "s3vectors:PutVectors", "s3vectors:GetVectors",
+                    "s3vectors:DeleteVectors", "s3vectors:QueryVectors",
+                    "s3vectors:ListVectors", "s3vectors:GetIndex",
+                    "s3vectors:ListIndexes", "s3vectors:GetVectorBucket",
+                ],
+                resources=[f"arn:aws:s3vectors:{Stack.of(self).region}:{Stack.of(self).account}:*"]
             )
         )
 
@@ -481,7 +500,9 @@ def handler(event, context):
                 ],
                 resources=[
                     "arn:aws:bedrock:*::foundation-model/cohere.embed-v4:0",
-                    "arn:aws:bedrock:*::foundation-model/amazon.titan-embed-text-v2:0"
+                    "arn:aws:bedrock:*::foundation-model/amazon.titan-embed-text-v2:0",
+                    f"arn:aws:bedrock:{Stack.of(self).region}:{Stack.of(self).account}:inference-profile/us.cohere.embed-v4:0",
+                    f"arn:aws:bedrock:{Stack.of(self).region}:{Stack.of(self).account}:inference-profile/us.amazon.titan-embed-text-v2:0",
                 ]
             )
         )
@@ -1271,13 +1292,24 @@ def handler(event, context):
         apprunner_instance_role.add_to_policy(iam.PolicyStatement(
             actions=["bedrock:InvokeModel"],
             resources=[
-                "arn:aws:bedrock:*::foundation-model/*",
-                "arn:aws:bedrock:*:*:inference-profile/*"
+                "arn:aws:bedrock:*::foundation-model/cohere.embed-v4:0",
+                "arn:aws:bedrock:*::foundation-model/amazon.titan-embed-text-v2:0",
+                f"arn:aws:bedrock:{Stack.of(self).region}:{Stack.of(self).account}:inference-profile/us.cohere.embed-v4:0",
+                f"arn:aws:bedrock:{Stack.of(self).region}:{Stack.of(self).account}:inference-profile/us.amazon.titan-embed-text-v2:0",
             ]
         ))
         apprunner_instance_role.add_to_policy(iam.PolicyStatement(
-            actions=["s3vectors:*"],
-            resources=["*"]
+            actions=["sagemaker:InvokeEndpoint"],
+            resources=[f"arn:aws:sagemaker:{Stack.of(self).region}:{Stack.of(self).account}:endpoint/endpoint-cosmos-embed1-text"]
+        ))
+        apprunner_instance_role.add_to_policy(iam.PolicyStatement(
+            actions=[
+                "s3vectors:QueryVectors", "s3vectors:GetVectors",
+                "s3vectors:ListVectors", "s3vectors:GetIndex",
+                "s3vectors:ListIndexes", "s3vectors:GetVectorBucket",
+                "s3vectors:ListVectorBuckets",
+            ],
+            resources=[f"arn:aws:s3vectors:{Stack.of(self).region}:{Stack.of(self).account}:*"]
         ))
         apprunner_instance_role.add_to_policy(iam.PolicyStatement(
             actions=["states:DescribeExecution", "states:ListExecutions"],

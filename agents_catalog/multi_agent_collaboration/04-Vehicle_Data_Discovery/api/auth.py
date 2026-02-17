@@ -58,7 +58,8 @@ class CognitoJWTValidator:
         except jwt.ExpiredSignatureError:
             raise HTTPException(status_code=401, detail="Token has expired")
         except jwt.InvalidTokenError as e:
-            raise HTTPException(status_code=401, detail=f"Invalid token: {e}")
+            logger.warning(f"JWT validation failed: {type(e).__name__}")
+            raise HTTPException(status_code=401, detail="Authentication failed")
 
 
 # Singleton validator (created lazily when env vars are set)

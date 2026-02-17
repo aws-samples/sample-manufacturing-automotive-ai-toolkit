@@ -27,7 +27,7 @@ def get_pipeline_status():
                         if state_name in phase_mapping:
                             return {"current_phase": state_name, "phase_number": phase_mapping[state_name]}
                 return {"current_phase": "Starting", "phase_number": 1}
-            except:
+            except Exception:
                 return {"current_phase": None, "phase_number": None}
 
         response = sfn.list_executions(stateMachineArn=STATE_MACHINE_ARN, maxResults=10)

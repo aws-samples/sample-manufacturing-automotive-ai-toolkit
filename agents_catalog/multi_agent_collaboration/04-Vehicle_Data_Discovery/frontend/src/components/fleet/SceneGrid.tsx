@@ -9,6 +9,7 @@
  */
 "use client"
 
+import { useMemo } from "react"
 import { motion } from "framer-motion"
 import { Sparkles, Layers } from "lucide-react"
 import SceneCard from "./SceneCard"
@@ -38,11 +39,17 @@ interface SceneGridProps {
 }
 
 export default function SceneGrid({ scenes, isLoading }: SceneGridProps) {
-  if (isLoading) return null
-
   // Separate verified and non-verified results
-  const verifiedScenes = scenes.filter(scene => scene.is_verified || scene.highlight === "gold")
-  const additionalScenes = scenes.filter(scene => !scene.is_verified && scene.highlight !== "gold")
+  const verifiedScenes = useMemo(
+    () => scenes.filter(scene => scene.is_verified || scene.highlight === "gold"),
+    [scenes]
+  )
+  const additionalScenes = useMemo(
+    () => scenes.filter(scene => !scene.is_verified && scene.highlight !== "gold"),
+    [scenes]
+  )
+
+  if (isLoading) return null
 
   return (
     <div className="space-y-8">

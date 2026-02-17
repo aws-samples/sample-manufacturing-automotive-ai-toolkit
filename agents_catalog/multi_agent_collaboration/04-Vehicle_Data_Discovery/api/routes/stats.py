@@ -37,7 +37,7 @@ def get_stats_overview():
                 anomaly_analysis = safe_parse_agent_analysis(data)
                 severity = anomaly_analysis.get("anomaly_findings", {}).get("anomaly_severity", 0.0)
                 return 1 if severity > 0.0 else 0
-            except:
+            except Exception:
                 return 0
 
         anomaly_count = 0
@@ -54,7 +54,7 @@ def get_stats_overview():
             else:
                 efficiency_ratio = 0.276
                 estimated_dto_savings = int(total_scenes * 30 * efficiency_ratio)
-        except:
+        except Exception:
             efficiency_ratio = 0.276
             estimated_dto_savings = int(total_scenes * 8)
 

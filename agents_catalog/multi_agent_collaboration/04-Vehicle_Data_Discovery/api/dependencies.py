@@ -41,7 +41,8 @@ INDICES_CONFIG = {
 
 DEFAULT_ANALYTICS_ENGINE = "behavioral"
 
-# Fleet overview cache
+# Fleet overview cache (bounded to prevent memory growth)
+CACHE_MAX_ENTRIES = 50
 fleet_overview_cache = {}
 
 

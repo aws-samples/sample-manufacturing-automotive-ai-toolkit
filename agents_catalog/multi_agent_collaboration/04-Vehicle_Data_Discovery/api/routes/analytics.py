@@ -329,7 +329,7 @@ def get_odd_uniqueness_analysis():
                     representative_scene_id = representative_scene.scene_id
                 elif cluster.scenes:
                     representative_scene_id = cluster.scenes[0].scene_id
-            except:
+            except Exception:
                 if hasattr(cluster, 'scenes') and cluster.scenes:
                     representative_scene_id = cluster.scenes[0].scene_id
 
@@ -715,7 +715,7 @@ def get_coverage_matrix():
                             "representative_scene_id": cat_data.get("representative_scene_id")
                         })
                     break
-        except:
+        except Exception:
             pass
 
         # Compute average coverage % across categories (current/target per category)
