@@ -579,6 +579,7 @@ class IAMConstruct(Construct):
                 effect=iam.Effect.ALLOW,
                 actions=[
                     "ssm:GetParameter",
+                    "ssm:PutParameter",
                     "ssm:StartSession"
                 ],
                 resources=[

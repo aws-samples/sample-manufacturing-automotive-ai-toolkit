@@ -1,0 +1,47 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>API Debug Test</title>
+</head>
+<body>
+    <h1>Direct API Test</h1>
+    <div id="status">Testing...</div>
+    <div id="result"></div>
+
+    <script>
+        console.log("🎯 Script starting...");
+        const statusDiv = document.getElementById('status');
+        const resultDiv = document.getElementById('result');
+
+        async function testAPI() {
+            try {
+                console.log("🚀 Testing fetch to localhost:8000/stats/overview");
+                statusDiv.textContent = "Fetching from API...";
+
+                const response = await fetch('http://localhost:8000/stats/overview');
+                console.log("📡 Response received:", response.status, response.ok);
+
+                if (response.ok) {
+                    const data = await response.json();
+                    console.log("📊 Data:", data);
+                    statusDiv.textContent = "✅ Fetch successful!";
+                    resultDiv.textContent = JSON.stringify(data, null, 2);
+                } else {
+                    console.log("❌ Fetch failed:", response.status);
+                    statusDiv.textContent = `❌ Fetch failed: ${response.status}`;
+                    resultDiv.textContent = `HTTP ${response.status}: ${response.statusText}`;
+                }
+            } catch (error) {
+                console.error("💥 Fetch error:", error);
+                statusDiv.textContent = "💥 Fetch error";
+                resultDiv.textContent = error.message;
+            }
+        }
+
+        // Test immediately
+        testAPI();
+    </script>
+</body>
+</html>

@@ -1,0 +1,51 @@
+{
+  "group": ["Vehicle Data Discovery"],
+  "agents": [
+    {
+      "id": "intelligence_gathering_agent",
+      "name": "Fleet Discovery - Intelligence Gathering",
+      "version": "1.0.0",
+      "description": "Multi-agent HIL system for vehicle fleet data discovery using S3 Vectors similarity search.",
+      "type": "agentcore",
+      "role": "supervisor",
+      "entrypoint": "agents/intelligence_gathering_agent.py",
+      "metadata": {
+        "authors": [
+          {"name": "agweber", "organization": "AWS"},
+          {"name": "pamrith", "organization": "AWS"}
+        ],
+        "created_date": "2025-12-22",
+        "last_updated": "2025-01-22",
+        "maturity": "development"
+      }
+    },
+    {
+      "id": "safety_validation_agent",
+      "name": "Fleet Discovery - Safety Validation",
+      "version": "1.0.0",
+      "description": "Validates safety patterns and anomaly detection in fleet driving scenarios.",
+      "type": "agentcore",
+      "role": "specialist",
+      "entrypoint": "agents/safety_validation_agent.py"
+    },
+    {
+      "id": "behavioral_gap_analysis_agent",
+      "name": "Fleet Discovery - Behavioral Analysis",
+      "version": "1.0.0",
+      "description": "Analyzes behavioral gaps and scene understanding for HIL testing optimization.",
+      "type": "agentcore",
+      "role": "specialist",
+      "entrypoint": "agents/behavioral_gap_analysis_agent.py"
+    }
+  ],
+  "ssm_parameter_mapping": {
+    "behavioral_gap_analysis_agent": "/fleet/vehicle-data-discovery/agent-arns/scene-understanding",
+    "safety_validation_agent": "/fleet/vehicle-data-discovery/agent-arns/anomaly-detection",
+    "intelligence_gathering_agent": "/fleet/vehicle-data-discovery/agent-arns/similarity-search"
+  },
+  "infrastructure": {
+    "cdk": true,
+    "stack_class": "FleetDiscoveryCdkStack",
+    "stack_path": "infra/cdk/fleet_discovery_cdk_stack.py"
+  }
+}

@@ -1,15 +1,26 @@
 # In Vehicle Agentic AI Agents - Bedrock Agents
 
+> **This agent is disabled by default.** The AgentCore-based implementation
+> ([01-vista-agents-agentcore](../01-vista-agents-agentcore/README.md)) is the
+> active version deployed by the main stack. This Bedrock Agents variant is
+> retained for reference but is excluded from `deploy_cdk.sh` deployments.
+>
+> To enable it, set `enabled` and `infrastructure.cdk` to `true` in
+> `manifest.json`:
+>
+> ```json
+> {
+>   "enabled": true,
+>   "infrastructure": {
+>     "cdk": true
+>   }
+> }
+> ```
+>
+> **Do not enable both 00 and 01 simultaneously** — they deploy the same
+> agents with different backing services and will conflict.
+
 A Multi-Agent Collaboration system with Supervisor Routing for vehicle service management.
-
-## 🚨 Important: Agent Configuration Options
-
-> MA3T contains **two different agent implementations** of In Vehicle Agentic AI Agents:
-> 
-> - **Current folder**: Agents configured for **native Amazon Bedrock**
-> - [**01-vista-agents-agentcore**](../01-vista-agents-agentcore/README.md): Agents configured for **Bedrock Agent Core**
-> 
-> Choose the implementation that matches your requirements. Both provide the same functionality but use different underlying architectures.
 
 ## Overview
 
