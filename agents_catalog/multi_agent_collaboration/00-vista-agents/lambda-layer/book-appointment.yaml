@@ -1,0 +1,784 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: 'CloudFormation template to create a DynamoDB table and Lambda function that inserts sample records'
+
+Parameters:
+  TargetRegion:
+    Type: String
+    Default: us-east-1
+    Description: The region where you want to deploy the resources
+
+Resources:
+  CustomerUserProfileTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: customer-user-profile
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: customer_id
+          AttributeType: S
+      KeySchema:
+        - AttributeName: customer_id
+          KeyType: HASH
+      Tags:
+        - Key: Name
+          Value: CustomerUserProfile
+
+  BookAppointmentRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: 'sts:AssumeRole'
+      ManagedPolicyArns:
+        - 'arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole'
+      Policies:
+        - PolicyName: DynamoDBAccess
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - 'dynamodb:PutItem'
+                  - 'dynamodb:Query'
+                  - 'dynamodb:Scan'
+                Resource: 
+                  - !Sub 'arn:aws:dynamodb:${AWS::Region}:${AWS::AccountId}:table/dealer-data'
+                  - !Sub 'arn:aws:dynamodb:${AWS::Region}:${AWS::AccountId}:table/dealer-appointment-slots'
+
+  BookAppointmentFunction:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: BookAppointment
+      Handler: index.lambda_handler
+      Role: !GetAtt BookAppointmentRole.Arn
+      Runtime: python3.11
+      Timeout: 30
+      MemorySize: 256
+      Code:
+        ZipFile: |
+          import boto3
+          import json
+          from datetime import datetime
+          from boto3.dynamodb.conditions import Key, Attr
+          
+          def lambda_handler(event, context):
+              dynamodb = boto3.resource("dynamodb")
+              table = dynamodb.Table("dealer-appointment-slots")
+          
+              if "parameters" in event:
+                  # Loop through the parameters list to find the dealer, appointment date, and appointment time
+                  dealer_name = ""
+                  appointment_date = ""
+                  appointment_time = ""
+                  for param in event["parameters"]:
+                      if param.get("name") == "dealer_name":
+                          dealer_name = param.get("value", "")
+                      elif param.get("name") == "appointment_date":
+                          appointment_date = param.get("value", "")
+                      elif param.get("name") == "appointment_time":
+                          appointment_time = param.get("value", "")
+              else:
+                  dealer_name = event.get("dealer_name")
+                  appointment_date = event.get("appointment_date")
+                  appointment_time = event.get("appointment_time")
+          
+              if not dealer_name or not appointment_date or not appointment_time:
+          
+                  agent = event['agent']
+                  function = event['function']
+                  actionGroup = event['actionGroup']
+          
+                  response_body = {
+                      'TEXT': {
+                          'body': json.dumps({
+                              "message": "Missing dealer name, appointment date or appointment time",
+                          })
+                      }
+                  }
+                  function_response = {
+                      'actionGroup': event['actionGroup'],
+                      'function': event['function'],
+                      'functionResponse': {
+                          'responseBody': response_body
+                      }
+                  }
+          
+                  session_attributes = event['sessionAttributes']
+                  prompt_session_attributes = event['promptSessionAttributes']
+          
+                  action_response = {
+                      'messageVersion': '1.0', 
+                      'response': function_response,
+                      'sessionAttributes': session_attributes,
+                      'promptSessionAttributes': prompt_session_attributes
+                  }
+                  
+                  return action_response
+          
+              dealer_table = dynamodb.Table("dealer-data")
+          
+              response = dealer_table.query(
+                  KeyConditionExpression=Key('dealer_name').eq(dealer_name)
+              )
+              if 'Items' in response and len(response['Items']) == 1:
+                  dealer_item = response['Items'][0]  
+                  dealer_name = dealer_item.get('dealer_name')
+                  print(dealer_name)
+              else:
+                  dealer_name = "Unknown Dealer"
+          
+              agent = event['agent']
+              function = event['function']
+              actionGroup = event['actionGroup']
+          
+              try:
+                  # First, check if there's an available slot for this dealer, date, and time
+                  response = table.scan(
+                      FilterExpression=Key('dealer_name').eq(dealer_name) & 
+                                     Attr('appointment_date').eq(appointment_date) & 
+                                     Attr('appointment_time').eq(appointment_time) & 
+                                     Attr('status').eq('available')
+                  )
+                  
+                  available_slots = response.get('Items', [])
+                  
+                  if not available_slots:
+                      response_body = {
+                          'TEXT': {
+                              'body': json.dumps({
+                                  "message": f"Sorry, no available slot found for {dealer_name} on {appointment_date} at {appointment_time}. Please check available slots first."
+                              })
+                          }
+                      }
+                  else:
+                      # Book the slot by updating its status
+                      slot = available_slots[0]
+                      slot_id = slot['slot_id']
+                      
+                      # Update the slot status to 'booked'
+                      table.update_item(
+                          Key={'slot_id': slot_id},
+                          UpdateExpression='SET #status = :status, customer_info = :customer_info',
+                          ExpressionAttributeNames={'#status': 'status'},
+                          ExpressionAttributeValues={
+                              ':status': 'booked',
+                              ':customer_info': {
+                                  'booked_at': appointment_date_time,
+                                  'booking_timestamp': str(datetime.now())
+                              }
+                          }
+                      )
+                      
+                      response_body = {
+                          'TEXT': {
+                              'body': json.dumps({
+                                  "message": f"Appointment successfully booked with {dealer_name} on {appointment_date} at {appointment_time}",
+                                  "dealer_name": dealer_name,
+                                  "appointment_date": appointment_date,
+                                  "appointment_time": appointment_time
+                              })
+                          }
+                      }
+                  function_response = {
+                      'actionGroup': event['actionGroup'],
+                      'function': event['function'],
+                      'functionResponse': {
+                          'responseBody': response_body
+                      }
+                  }
+          
+                  session_attributes = event['sessionAttributes']
+                  prompt_session_attributes = event['promptSessionAttributes']
+          
+                  action_response = {
+                      'messageVersion': '1.0', 
+                      'response': function_response,
+                      'sessionAttributes': session_attributes,
+                      'promptSessionAttributes': prompt_session_attributes
+                  }
+                  
+                  return action_response
+          
+              except Exception as e:
+                  return {
+                      "statusCode": 500,
+                      "body": json.dumps({"error": str(e)}),
+                      "headers": {"Content-Type": "application/json"}
+                  }
+
+  LambdaExecutionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: 'sts:AssumeRole'
+      ManagedPolicyArns:
+        - 'arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole'
+      Policies:
+        - PolicyName: DynamoDBAccess
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - 'dynamodb:PutItem'
+                Resource: !GetAtt CustomerUserProfileTable.Arn
+
+  InsertUserProfilesFunction:
+    Type: AWS::Lambda::Function
+    DependsOn: CustomerUserProfileTable
+    Properties:
+      FunctionName: InsertCustomerProfiles
+      Handler: index.handler
+      Role: !GetAtt LambdaExecutionRole.Arn
+      Runtime: python3.11
+      Timeout: 60
+      MemorySize: 256
+      Code:
+        ZipFile: |
+          import boto3
+          import json
+          import urllib.request
+          from decimal import Decimal
+          
+          def handler(event, context):
+              print(f"Received event: {json.dumps(event)}")
+              
+              # Extract request details
+              response_url = event.get('ResponseURL')
+              stack_id = event.get('StackId')
+              request_id = event.get('RequestId')
+              logical_resource_id = event.get('LogicalResourceId')
+              physical_resource_id = event.get('PhysicalResourceId', 'CustomerProfilesDataPopulation')
+              
+              # Prepare the response payload
+              response_body = {
+                  'Status': 'SUCCESS',
+                  'PhysicalResourceId': physical_resource_id,
+                  'StackId': stack_id,
+                  'RequestId': request_id,
+                  'LogicalResourceId': logical_resource_id
+              }
+              
+              # For Delete requests, just send success response
+              if event.get('RequestType') == 'Delete':
+                  print("Delete request - sending success response")
+                  send_response(response_url, response_body)
+                  return
+              
+              try:
+                  dynamodb = boto3.resource('dynamodb')
+                  table = dynamodb.Table('customer-user-profile')
+                  
+                  # Sample customer user profile data
+                  sample_customers = [
+                      {
+                          'customer_id': 'CUST001',
+                          'first_name': 'Jane',
+                          'last_name': 'Smith',
+                          'email': 'jane.smith@example.com',
+                          'phone': '555-123-4567',
+                          'address': '123 Main St, Anytown, USA',
+                          'registration_date': '2025-01-15',
+                          'preferred_contact_time': 'Mon-Fri between 9 AM and 5 PM',
+                          'VIN': '1GCNCPEX5DZ000001',
+                          'contact_method': 'email',
+                          'consent': 'true',
+                          'status': 'active'
+                      },
+                      {
+                          'customer_id': 'CUST002',
+                          'first_name': 'Michael',
+                          'last_name': 'Johnson',
+                          'email': 'michael.johnson@example.com',
+                          'phone': '555-234-5678',
+                          'address': '456 Oak Ave, Somewhere, USA',
+                          'registration_date': '2025-02-20',
+                          'preferred_contact_time': 'Weekends only',
+                          'VIN': '1GCNCPEX5DZ000002',
+                          'contact_method': 'sms',
+                          'consent': 'true',
+                          'status': 'active'
+                      },
+                      {
+                          'customer_id': 'CUST003',
+                          'first_name': 'Emily',
+                          'last_name': 'Williams',
+                          'email': 'emily.williams@example.com',
+                          'phone': '555-345-6789',
+                          'address': '789 Pine Rd, Elsewhere, USA',
+                          'registration_date': '2025-03-10',
+                          'preferred_contact_time': 'Evenings after 6 PM',
+                          'VIN': '1GCNCPEX5DZ000003',
+                          'contact_method': 'phone',
+                          'consent': 'false',
+                          'status': 'inactive'
+                      },
+                      {
+                          'customer_id': 'CUST004',
+                          'first_name': 'David',
+                          'last_name': 'Brown',
+                          'email': 'david.brown@example.com',
+                          'phone': '555-456-7890',
+                          'address': '101 Cedar Ln, Nowhere, USA',
+                          'registration_date': '2025-04-05',
+                          'preferred_contact_time': 'Anytime',
+                          'VIN': '1GCNCPEX5DZ000004',
+                          'contact_method': 'email',
+                          'consent': 'true',
+                          'status': 'active'
+                      },
+                      {
+                          'customer_id': 'CUST005',
+                          'first_name': 'Sarah',
+                          'last_name': 'Miller',
+                          'email': 'sarah.miller@example.com',
+                          'phone': '555-567-8901',
+                          'address': '202 Maple Dr, Anywhere, USA',
+                          'registration_date': '2025-05-01',
+                          'preferred_contact_time': 'Tue-Thu between 1 PM and 4 PM',
+                          'VIN': '1GCNCPEX5DZ000005',
+                          'contact_method': 'sms',
+                          'consent': 'true',
+                          'status': 'active'
+                      }
+                  ]
+                  
+                  # Put the items
+                  for item in sample_customers:
+                      table.put_item(Item=item)
+                      print(f"Added item: {item['customer_id']} - {item['first_name']} {item['last_name']}")
+                  
+                  print(f"Successfully added {len(sample_customers)} sample records")
+                  
+                  # Add data to response
+                  response_body['Data'] = {'Message': f"Added {len(sample_customers)} sample records"}
+                  
+                  # Send success response
+                  send_response(response_url, response_body)
+              except Exception as e:
+                  error_message = str(e)
+                  print(f"Error adding sample data: {error_message}")
+                  
+                  # Send failure response
+                  response_body['Status'] = 'FAILED'
+                  response_body['Reason'] = error_message
+                  send_response(response_url, response_body)
+          
+          def send_response(response_url, response_body):
+              """Send a response to CloudFormation to handle the custom resource."""
+              json_response_body = json.dumps(response_body)
+              
+              print(f"Sending response to: {response_url}")
+              print(f"Response body: {json_response_body}")
+              
+              headers = {
+                  'content-type': '',
+                  'content-length': str(len(json_response_body))
+              }
+              
+              try:
+                  req = urllib.request.Request(response_url, 
+                                              data=json_response_body.encode('utf-8'),
+                                              headers=headers,
+                                              method='PUT')
+                  
+                  response = urllib.request.urlopen(req)
+                  print(f"Status code: {response.getcode()}")
+                  print(f"Status message: {response.msg}")
+                  return True
+              except Exception as e:
+                  print(f"Failed to send response: {str(e)}")
+                  print(f"Error details: {str(e)}")
+                  return False
+
+
+  # Custom Resource to Populate Data
+  PopulateCustomerData:
+    Type: Custom::PopulateCustomerData
+    DependsOn: InsertUserProfilesFunction
+    Properties:
+      ServiceToken: !GetAtt InsertUserProfilesFunction.Arn
+
+  BookAppointmentStarRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: 'sts:AssumeRole'
+      ManagedPolicyArns:
+        - 'arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole'
+      Policies:
+        - PolicyName: DynamoDBAccess
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - 'dynamodb:PutItem'
+                  - 'dynamodb:Query'
+                  - 'dynamodb:Scan'
+                Resource: 
+                  - !Sub 'arn:aws:dynamodb:${AWS::Region}:${AWS::AccountId}:table/dealer-data'
+                  - !Sub 'arn:aws:dynamodb:${AWS::Region}:${AWS::AccountId}:table/customer-user-profile'
+
+  BookAppointmentStarFunction:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: BookAppointmentStar
+      Handler: index.lambda_handler
+      Role: !GetAtt BookAppointmentStarRole.Arn
+      Runtime: python3.11
+      Timeout: 30
+      MemorySize: 256
+      Code:
+        ZipFile: |
+          import boto3
+          import json
+          import uuid
+          from boto3.dynamodb.conditions import Key
+          from boto3.dynamodb.conditions import Attr
+
+          def lambda_handler(event, context):
+              print(f"Event: {event}")
+              
+              dynamodb = boto3.resource("dynamodb")
+              dealer_table = dynamodb.Table("dealer-data")
+              user_profiles_table = dynamodb.Table("customer-user-profile")
+
+              # Extract parameters
+              dealer_name = ""
+              appointment_date = ""
+              appointment_time = ""
+              customer_code = ""
+              for param in event.get("parameters", []):
+                  if param.get("name") == "dealer_name":
+                      dealer_name = param.get("value", "")
+                  elif param.get("name") == "appointment_date":
+                      appointment_date = param.get("value", "")
+                  elif param.get("name") == "appointment_time":
+                      appointment_time = param.get("value", "")
+                  elif param.get("name") == "customer_code":
+                      customer_code = param.get("value", "")
+
+              # Basic validation
+              if not all([dealer_name, appointment_date, appointment_time, customer_code]):
+                  agent = event['agent']
+                  function = event['function']
+                  actionGroup = event['actionGroup']
+
+                  response_body = {
+                      'TEXT': {
+                          'body': json.dumps({
+                              "message": "Missing dealer name, appointment date or appointment time",
+                          })
+                      }
+                  }
+                  function_response = {
+                      'actionGroup': event['actionGroup'],
+                      'function': event['function'],
+                      'functionResponse': {
+                          'responseBody': response_body
+                      }
+                  }
+
+                  session_attributes = event['sessionAttributes']
+                  prompt_session_attributes = event['promptSessionAttributes']
+
+                  action_response = {
+                      'messageVersion': '1.0', 
+                      'response': function_response,
+                      'sessionAttributes': session_attributes,
+                      'promptSessionAttributes': prompt_session_attributes
+                  }
+                  
+                  return action_response
+
+              # Format dealer name properly (capitalize each word)
+              def format_dealer_name(name):
+                  # Special case handling
+                  if name.lower() == "super":
+                      return "Super"
+                  elif name.lower() == "apex autos":
+                      return "Apex Autos"
+                  else:
+                      # Default case: capitalize each word
+                      return ' '.join(word.capitalize() for word in name.split())
+              
+              # Format the dealer name before querying
+              formatted_dealer_name = format_dealer_name(dealer_name)
+              print(f"Original dealer name: {dealer_name}, Formatted dealer name: {formatted_dealer_name}")
+              
+              # Query dealer name    
+              try:
+                  dealer_response = dealer_table.scan(
+                      FilterExpression=Attr('dealer_name').eq(formatted_dealer_name)
+                  )
+                  dealer_name = dealer_response['Items'][0].get('dealer_name') if dealer_response['Items'] else "Unknown Dealer"
+
+              except Exception as e:
+                  print(f"Error retrieving dealer name: {str(e)}")
+                  dealer_name = "Unknown Dealer"
+
+              # Query customer data (customer_id is partition key)
+              try:
+                  customer_response = user_profiles_table.query(
+                      KeyConditionExpression=Key('customer_id').eq(customer_code)
+                  )
+                  if not customer_response['Items']:
+                      raise ValueError("Customer not found")
+
+                  customer_data = customer_response['Items'][0]
+                  first_name = customer_data.get('first_name', '')
+                  last_name = customer_data.get('last_name', '')
+                  contact_method = customer_data.get('contact_method', {})
+                  consent = customer_data.get('consent', False)
+                  preferred_contact_time = customer_data.get('preferred_contact_time', '')
+                  vin = customer_data.get('VIN', '')
+
+                  # If contact_method is a JSON string, parse it
+                  if isinstance(contact_method, str):
+                      try:
+                          contact_method = json.loads(contact_method)
+                      except json.JSONDecodeError:
+                          contact_method = {}
+
+              except Exception as e:
+                  print(f"Error retrieving customer data: {str(e)}")
+
+                  agent = event['agent']
+                  function = event['function']
+                  actionGroup = event['actionGroup']
+
+                  response_body = {
+                      'TEXT': {
+                          'body': json.dumps({
+                              "message": "Customer ID not found in DynamoDB",
+                          })
+                      }
+                  }
+                  function_response = {
+                      'actionGroup': event['actionGroup'],
+                      'function': event['function'],
+                      'functionResponse': {
+                          'responseBody': response_body
+                      }
+                  }
+
+                  session_attributes = event['sessionAttributes']
+                  prompt_session_attributes = event['promptSessionAttributes']
+
+                  action_response = {
+                      'messageVersion': '1.0', 
+                      'response': function_response,
+                      'sessionAttributes': session_attributes,
+                      'promptSessionAttributes': prompt_session_attributes
+                  }
+                  
+                  return action_response
+
+              request_id = str(uuid.uuid4())
+
+              response_body = {
+                  'TEXT': {
+                      'body': json.dumps({
+                          "dealerId": dealer_name,
+                          "appointmentDate": appointment_date,
+                          "appointmentTime": appointment_time,
+                          "customer": {
+                              "name": {
+                                  "firstName": first_name,
+                                  "lastName": last_name
+                              },
+                              "contactMethod": [
+                                  {
+                                      "type": contact_method.get("type", "phone"),
+                                      "value": contact_method.get("value", ""),
+                                      "use": contact_method.get("use", "home"),
+                                      "rank": contact_method.get("rank", 1),
+                                      "preferredContactTime": preferred_contact_time,
+                                      "consent": consent
+                                  }
+                              ]
+                          },
+                          "requestId": request_id,
+                          "vehicle": {
+                              "vin": vin
+                          },
+                          "serviceOperations": [
+                              {
+                                  "customerComments": "Some comments about this specific service operation"
+                              }
+                          ]
+                      })
+                  }
+              }
+
+              print(f"Response Body: {response_body}")
+
+              function_response = {
+                  'actionGroup': event['actionGroup'],
+                  'function': event['function'],
+                  'functionResponse': {
+                      'responseBody': response_body
+                  }
+              }
+
+              session_attributes = event['sessionAttributes']
+              prompt_session_attributes = event['promptSessionAttributes']
+
+              action_response = {
+                  'messageVersion': '1.0', 
+                  'response': function_response,
+                  'sessionAttributes': session_attributes,
+                  'promptSessionAttributes': prompt_session_attributes
+              }
+              
+              return action_response
+
+Outputs:
+  LambdaFunctionName:
+    Description: Name of the Lambda function
+    Value: !Ref InsertUserProfilesFunction
+  LambdaFunctionArn:
+    Description: ARN of the Lambda function
+    Value: !GetAtt InsertUserProfilesFunction.Arn
+  CustomerUserProfileTableName:
+    Description: Name of the customer user profile DynamoDB table
+    Value: !Ref CustomerUserProfileTable
+  CustomerUserProfileTableArn:
+    Description: ARN of the customer user profile DynamoDB table
+    Value: !GetAtt CustomerUserProfileTable.Arn
+  BookAppointmentFunctionName:
+    Description: Name of the Book Appointment Lambda function
+    Value: !Ref BookAppointmentFunction
+  BookAppointmentFunctionArn:
+    Description: ARN of the Book Appointment Lambda function
+    Value: !GetAtt BookAppointmentFunction.Arn
+  BookAppointmentStarFunctionName:
+    Description: Name of the Book Appointment Star Lambda function
+    Value: !Ref BookAppointmentStarFunction
+  BookAppointmentStarFunctionArn:
+    Description: ARN of the Book Appointment Star Lambda function
+    Value: !GetAtt BookAppointmentStarFunction.Arn
+
+  # Add appointment slot data loader
+  GenerateAppointmentSlotsRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+      Policies:
+        - PolicyName: DynamoDBAccess
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - dynamodb:PutItem
+                  - dynamodb:BatchWriteItem
+                  - dynamodb:Scan
+                Resource:
+                  - !Sub 'arn:aws:dynamodb:${AWS::Region}:${AWS::AccountId}:table/dealer-appointment-slots'
+                  - !Sub 'arn:aws:dynamodb:${AWS::Region}:${AWS::AccountId}:table/dealer-data'
+
+  GenerateAppointmentSlotsFunction:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: GenerateAppointmentSlots
+      Handler: index.handler
+      Role: !GetAtt GenerateAppointmentSlotsRole.Arn
+      Runtime: python3.11
+      Timeout: 60
+      MemorySize: 256
+      Code:
+        ZipFile: |
+          import json
+          import boto3
+          import cfnresponse
+          from datetime import datetime, timedelta
+
+          def handler(event, context):
+              print(f"Event: {event}")
+              
+              if event['RequestType'] == 'Delete':
+                  cfnresponse.send(event, context, cfnresponse.SUCCESS, {})
+                  return
+              
+              try:
+                  dynamodb = boto3.resource('dynamodb')
+                  appointment_table = dynamodb.Table('dealer-appointment-slots')
+                  dealer_table = dynamodb.Table('dealer-data')
+                  
+                  # Get all dealers
+                  dealer_response = dealer_table.scan()
+                  dealers = dealer_response.get('Items', [])
+                  
+                  # Generate appointment slots for the next 30 days
+                  today = datetime.now().date()
+                  
+                  appointment_slots = []
+                  for dealer in dealers:
+                      dealer_name = dealer.get('dealer_name', '')
+                      if not dealer_name:
+                          continue
+                          
+                      # Generate slots for next 30 days
+                      for day_offset in range(1, 31):  # Start from tomorrow
+                          slot_date = today + timedelta(days=day_offset)
+                          date_str = slot_date.strftime('%Y-%m-%d')
+                          
+                          # Skip weekends for this example
+                          if slot_date.weekday() >= 5:  # Saturday = 5, Sunday = 6
+                              continue
+                          
+                          # Generate time slots from 9 AM to 5 PM (every hour)
+                          for hour in range(9, 17):  # 9 AM to 4 PM (last slot)
+                              time_str = f"{hour:02d}:00"
+                              
+                              appointment_slots.append({
+                                  'dealer_name': dealer_name,
+                                  'appointment_date': date_str,
+                                  'appointment_time': time_str,
+                                  'appointment_date_time': f"{date_str} {time_str}",
+                                  'status': 'available',
+                                  'slot_id': f"{dealer_name}_{date_str}_{time_str}".replace(' ', '_')
+                              })
+                  
+                  # Batch write appointment slots
+                  with appointment_table.batch_writer() as batch:
+                      for slot in appointment_slots:
+                          batch.put_item(Item=slot)
+                  
+                  print(f"Generated {len(appointment_slots)} appointment slots")
+                  cfnresponse.send(event, context, cfnresponse.SUCCESS, {
+                      'SlotsGenerated': len(appointment_slots)
+                  })
+                  
+              except Exception as e:
+                  print(f"Error: {str(e)}")
+                  cfnresponse.send(event, context, cfnresponse.FAILED, {})
+
+  PopulateAppointmentSlots:
+    Type: Custom::PopulateAppointmentSlots
+    Properties:
+      ServiceToken: !GetAtt GenerateAppointmentSlotsFunction.Arn

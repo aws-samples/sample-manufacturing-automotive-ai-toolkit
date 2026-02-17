@@ -1,0 +1,27 @@
+venv/
+.scratch
+agenteval_*
+.DS_Store
+node_modules
+.next
+.kiro
+.claude
+.amazonq
+__pycache__
+*-packaged.yaml
+tasks.md
+.venv/
+.bedrock_agentcore.yaml
+ui/app/api/agents/config/*
+packaged_infra_cfn.yaml
+.env
+**/cdk.out/
+agents_catalog/**/Dockerfile
+agents_catalog/**/.dockerignore
+.vscode/*
+**/cdk/cdk.context.json
+agentcore_deployment_results.md
+
+# Config files with API keys
+agents_catalog/multi_agent_collaboration/04-Vehicle_Data_Discovery/repo/frontend/tesla-discovery-studio/current-dist-config.json
+agents_catalog/multi_agent_collaboration/04-Vehicle_Data_Discovery/repo/frontend/tesla-discovery-studio/updated-dist-config.json

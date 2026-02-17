@@ -1,0 +1,30 @@
+{
+  "group": ["In Vehicle Agentic AI Agents - AgentCore"],
+  "agents": [
+    {
+      "id": "invehicleassistantagentcore",
+      "name": "In Vehicle Agentic AI Agent - Supervisor",
+      "version": "1.0.0",
+      "description": "A multi agent colloboration framework to improve the in-vehicle experience especially focused on diagnostic trouble codes and service center experience.",
+      "type": "agentcore",
+      "role": "supervisor",
+      "entrypoint": "agent.py",
+      "metadata": {
+        "authors": [
+          {
+            "name": "vedev",
+            "organization": "AWS"
+          }
+        ],
+        "created_date": "2025-10-10",
+        "last_updated": "2025-10-10",
+        "maturity": "development"
+      }
+    }
+  ],
+  "infrastructure": {
+    "cdk": true,
+    "stack_class": "VistaAgentStack",
+    "stack_path": "cdk/stack.py"
+  }
+}

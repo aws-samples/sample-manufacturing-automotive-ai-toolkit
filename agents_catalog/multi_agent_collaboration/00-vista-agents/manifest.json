@@ -1,0 +1,8 @@
+{
+  "group": ["In Vehicle Agentic AI Agents - Bedrock Agent"],
+  "enabled": false,
+  "infrastructure": {
+    "cdk": false
+  },
+  "agents": []
+}
