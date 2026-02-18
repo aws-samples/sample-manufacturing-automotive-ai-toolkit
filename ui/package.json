@@ -27,13 +27,14 @@
     "react-dom": "^19.0.0",
     "react-markdown": "^10.1.0",
     "react-syntax-highlighter": "^16.1.0",
-    "remark-gfm": "^4.0.1"
+    "remark-gfm": "^4.0.1",
+    "sharp": "^0.34.5"
   },
   "optionalDependencies": {
-    "sharp": "0.0.0"
+    "sharp": "^0.34.5"
   },
   "overrides": {
-    "sharp": "0.0.0",
+    "sharp": "^0.34.5",
     "glob": ">=10.5.0",
     "fast-xml-parser": ">=5.3.4"
   },
