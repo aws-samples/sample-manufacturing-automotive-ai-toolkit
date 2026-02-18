@@ -55,6 +55,11 @@ AWS_BEDROCK_MODEL_ID = os.getenv(
 )
 AWS_BEDROCK_REGION = os.getenv("BEDROCK_REGION", "us-east-1")
 
+# S3/DynamoDB storage configuration for agent-generated files
+# Resolution order: env var → SSM parameter (set by CDK stack) → default
+# SSM parameters /sfc-config-agent/s3-bucket-name and /sfc-config-agent/ddb-table-name
+# are created by SfcConfigAgentStack and read at runtime by file_operations.py
+
 try:
     from strands import Agent, tool
     from strands.models import BedrockModel
@@ -564,8 +569,8 @@ class SFCWizardAgent:
         self.validation_errors = []
         self.recommendations = []
 
-        # Initialize the prompt logger
-        self.prompt_logger = PromptLogger(max_history=20, log_dir=".sfc")
+        # Initialize the prompt logger (stores conversations in S3/DynamoDB)
+        self.prompt_logger = PromptLogger(max_history=20)
 
         # Detect the running mode (UI or CLI)
         self.is_ui_mode = self._detect_ui_mode()
@@ -604,39 +609,48 @@ class SFCWizardAgent:
 
         @tool
         def read_config_from_file(filename: str) -> str:
-            """Read an SFC configuration from a JSON file.
+            """Read an SFC configuration JSON file from cloud storage (S3 bucket with DynamoDB index).
+
+            Looks up the file first in the DynamoDB metadata table for fast retrieval,
+            then falls back to scanning the S3 bucket under the configs/ prefix.
 
             Args:
-                filename: Name of the file to read the configuration from
+                filename: Name of the config file to read (e.g. 'my-config.json')
             """
             return SFCFileOperations.read_config_from_file(filename)
 
         @tool
         def save_config_to_file(config_json: str, filename: str) -> str:
-            """Save an SFC configuration to a JSON file.
+            """Save an SFC configuration as a JSON file to cloud storage (S3 bucket and DynamoDB index).
+
+            The file is uploaded to the S3 artifacts bucket under configs/ with a timestamp prefix,
+            and its metadata plus base64-encoded content are indexed in the DynamoDB files table.
 
             Args:
-                config_json: SFC configuration to save
-                filename: Name of the file to save the configuration to
+                config_json: SFC configuration JSON string to save
+                filename: Name of the file to save the configuration to (e.g. 'my-config.json')
             """
             return SFCFileOperations.save_config_to_file(config_json, filename)
 
         @tool
         def save_results_to_file(content: str, filename: str) -> str:
-            """Save content to a file with specified extension (txt, vm, md).
+            """Save content to cloud storage (S3 bucket and DynamoDB index) with specified extension (txt, vm, md).
+
+            The file is uploaded to the S3 artifacts bucket under results/ with a timestamp prefix,
+            and its metadata is indexed in the DynamoDB files table.
 
             Args:
                 content: Content to save to the file
-                filename: Name of the file to save the content to (defaults to .txt extension if none provided)
+                filename: Name of the file to save (defaults to .txt extension if none provided)
             """
             return SFCFileOperations.save_results_to_file(content, filename)
 
         @tool
         def save_conversation(count: int = 1) -> str:
-            """Save the last N conversation exchanges as markdown files.
+            """Save the last N conversation exchanges as markdown files to cloud storage (S3 and DynamoDB).
 
             Each file contains a user prompt and the agent's response, formatted in markdown.
-            The filename is generated based on the content of the prompt.
+            Files are stored in the S3 artifacts bucket under conversations/ and indexed in DynamoDB.
 
             Args:
                 count: Number of recent conversations to save (default: 1)
@@ -652,13 +666,14 @@ class SFCWizardAgent:
 
         @tool
         def read_context_from_file(file_path: str) -> str:
-            """Read content from various file types to use as context.
+            """Read content from cloud storage (S3 bucket and DynamoDB) to use as context.
 
-            Supports PDF, Excel (xls/xlsx), Markdown, CSV, Word (doc/docx), RTF, and TXT files.
-            File size is limited to 500KB for performance reasons.
+            Searches across all S3 prefixes (configs/, results/, conversations/, runs/) and the
+            DynamoDB metadata table to find and retrieve the file. Supports JSON, Markdown, CSV,
+            TXT, and VM files.
 
             Args:
-                file_path: Path to the file (relative to where the agent was started)
+                file_path: Filename or S3 key of the file to read
 
             Returns:
                 String containing the file content or error message

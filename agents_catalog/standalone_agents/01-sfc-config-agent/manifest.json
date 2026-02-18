@@ -20,5 +20,10 @@
         "maturity": "development"
       }
     }
-  ]
+  ],
+  "infrastructure": {
+    "cdk": true,
+    "stack_class": "SfcConfigAgentStack",
+    "stack_path": "cdk/stack.py"
+  }
 }

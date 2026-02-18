@@ -9,6 +9,7 @@ bedrock-agentcore
 strands-agents
 strands-agents-tools
 python-dotenv
+boto3>=1.35.0
 black>=25.1.0
 jmespath
 markdown>=3.8.2
