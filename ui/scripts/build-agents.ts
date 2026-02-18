@@ -6,7 +6,7 @@ const yaml = require('js-yaml');
 
 dotenv.config();
 
-const REGION = process.env.AWS_REGION || 'us-east-1';
+const REGION = process.env.AWS_REGION || 'us-west-2';
 const CONFIG_DIR = path.join(process.cwd(), 'app', 'api', 'agents', 'config');
 const AGENTS_CATALOG = path.join(process.cwd(), '..', 'agents_catalog');
 

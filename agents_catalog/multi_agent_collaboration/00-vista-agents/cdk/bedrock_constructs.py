@@ -64,7 +64,7 @@ class Agent(Construct):
         self.agent_description = agent_description
         self.collaborators = []
         
-        # Create the Bedrock agent
+        # Create the Bedrock agent with auto_prepare=True so aliases work immediately
         self.agent = bedrock.CfnAgent(
             self,
             f"{construct_id}Agent",
@@ -74,7 +74,8 @@ class Agent(Construct):
             foundation_model=foundation_model,
             instruction=agent_instruction,
             action_groups=action_groups if action_groups else None,
-            idle_session_ttl_in_seconds=1800
+            idle_session_ttl_in_seconds=1800,
+            auto_prepare=True
         )
         
         # Store for later access

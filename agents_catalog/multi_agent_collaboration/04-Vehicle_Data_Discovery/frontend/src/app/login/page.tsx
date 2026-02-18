@@ -1,0 +1,493 @@
+/**
+ * Login Page - AWS Cognito Authentication
+ *
+ * Handles user sign-in and password reset flows using AWS Amplify authentication.
+ * Self-registration is disabled; users are provisioned via the deploy script
+ * (--auth-user / --auth-password) or the AWS CLI.
+ *
+ * @route /login
+ */
+"use client"
+
+import { useState, useMemo } from 'react'
+import { motion } from 'framer-motion'
+import '@/lib/auth-config' // Must be imported before any auth calls
+import { signIn, resetPassword, confirmResetPassword } from 'aws-amplify/auth'
+import { Eye, EyeOff, Lock, Mail, Zap, AlertCircle, Sparkles, ArrowLeft, KeyRound, CheckCircle } from 'lucide-react'
+import { Button } from '@/components/ui/button'
+import { Card } from '@/components/ui/card'
+
+type AuthMode = 'signin' | 'forgot' | 'reset'
+
+export default function LoginPage() {
+  const [mode, setMode] = useState<AuthMode>('signin')
+  const [email, setEmail] = useState('')
+  const [password, setPassword] = useState('')
+  const [resetCode, setResetCode] = useState('')
+  const [newPassword, setNewPassword] = useState('')
+  const [showPassword, setShowPassword] = useState(false)
+  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState('')
+  const [success, setSuccess] = useState('')
+
+  const clearMessages = () => {
+    setError('')
+    setSuccess('')
+  }
+
+  const handleSignIn = async (e: React.FormEvent) => {
+    e.preventDefault()
+    setLoading(true)
+    clearMessages()
+
+    try {
+      const { isSignedIn } = await signIn({ username: email, password })
+      
+      if (isSignedIn) {
+        window.location.href = '/'
+      } else {
+        setError('Additional authentication step required')
+      }
+    } catch (err: unknown) {
+      const errorMessage = err instanceof Error ? err.message : 'Authentication failed'
+
+      if (errorMessage.includes('UserNotFoundException')) {
+        setError('No account found with this email address')
+      } else if (errorMessage.includes('NotAuthorizedException')) {
+        setError('Invalid email or password')
+      } else {
+        setError('Authentication failed. Please try again.')
+      }
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  const handleForgotPassword = async (e: React.FormEvent) => {
+    e.preventDefault()
+    setLoading(true)
+    clearMessages()
+
+    try {
+      await resetPassword({ username: email })
+      setSuccess('Password reset code sent to your email.')
+      setMode('reset')
+    } catch {
+      setError('Failed to send reset code. Please try again.')
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  const handleResetPassword = async (e: React.FormEvent) => {
+    e.preventDefault()
+    setLoading(true)
+    clearMessages()
+
+    try {
+      await confirmResetPassword({
+        username: email,
+        confirmationCode: resetCode,
+        newPassword
+      })
+      setSuccess('Password reset successfully! You can now sign in.')
+      setMode('signin')
+      setResetCode('')
+      setNewPassword('')
+    } catch {
+      setError('Invalid reset code or password. Please try again.')
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  // Deterministic values for background animations (avoids hydration mismatch from Math.random)
+  const particles = useMemo(() => Array.from({ length: 50 }, (_, i) => ({
+    left: ((i * 37 + 13) % 100),
+    top: ((i * 53 + 7) % 100),
+    duration: 3 + (i % 5) * 0.4,
+    delay: (i % 8) * 0.25,
+  })), [])
+
+  const paths = useMemo(() => Array.from({ length: 8 }, (_, i) => ({
+    d: `M ${(i * 13 + 5) % 100} ${(i * 29 + 11) % 100} Q ${(i * 43 + 17) % 100} ${(i * 19 + 37) % 100} ${(i * 61 + 23) % 100} ${(i * 31 + 41) % 100}`,
+    duration: 4 + (i % 4) * 0.75,
+    delay: (i % 6) * 0.33,
+  })), [])
+
+  return (
+    <div className="min-h-screen relative overflow-hidden bg-gradient-to-br from-[var(--deep-charcoal)] via-gray-900 to-black">
+
+      {/* Neural Horizon Background - Apple-Grade Cinematic Effect */}
+      <div className="absolute inset-0 overflow-hidden">
+        {/* Animated Neural Particles */}
+        <div className="absolute inset-0">
+          {particles.map((p, i) => (
+            <motion.div
+              key={i}
+              className="absolute w-1 h-1 bg-[var(--cyber-blue)] rounded-full opacity-60"
+              style={{
+                left: `${p.left}%`,
+                top: `${p.top}%`,
+              }}
+              animate={{
+                opacity: [0.2, 0.8, 0.2],
+                scale: [1, 1.5, 1],
+              }}
+              transition={{
+                duration: p.duration,
+                repeat: Infinity,
+                delay: p.delay,
+              }}
+            />
+          ))}
+        </div>
+
+        {/* Flowing Neural Connections */}
+        <div className="absolute inset-0">
+          <svg className="w-full h-full">
+            <defs>
+              <linearGradient id="neuralGradient" x1="0%" y1="0%" x2="100%" y2="100%">
+                <stop offset="0%" stopColor="var(--cyber-blue)" stopOpacity="0.1"/>
+                <stop offset="50%" stopColor="#8B5CF6" stopOpacity="0.3"/>
+                <stop offset="100%" stopColor="var(--cyber-blue)" stopOpacity="0.1"/>
+              </linearGradient>
+            </defs>
+            {paths.map((p, i) => (
+              <motion.path
+                key={i}
+                d={p.d}
+                stroke="url(#neuralGradient)"
+                strokeWidth="1"
+                fill="none"
+                initial={{ pathLength: 0, opacity: 0 }}
+                animate={{ pathLength: 1, opacity: 0.6 }}
+                transition={{
+                  duration: p.duration,
+                  repeat: Infinity,
+                  repeatType: "reverse",
+                  delay: p.delay,
+                }}
+              />
+            ))}
+          </svg>
+        </div>
+
+        {/* Gaussian Blur Overlay for Depth */}
+        <div className="absolute inset-0 bg-black/40 backdrop-blur-[1px]" />
+      </div>
+
+      {/* Main Content */}
+      <div className="relative z-10 flex items-center justify-center min-h-screen p-4">
+        <motion.div
+          initial={{ opacity: 0, y: 30, scale: 0.95 }}
+          animate={{ opacity: 1, y: 0, scale: 1 }}
+          transition={{ duration: 1, ease: "easeOut" }}
+          className="w-full max-w-md"
+        >
+
+          {/* Fleet Branding - Cinematic Entry */}
+          <motion.div
+            initial={{ opacity: 0, y: -20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.8, delay: 0.3 }}
+            className="text-center mb-8"
+          >
+            <motion.div
+              initial={{ scale: 0.8, rotate: -5 }}
+              animate={{ scale: 1, rotate: 0 }}
+              transition={{ duration: 0.6, delay: 0.5 }}
+              className="relative w-20 h-20 mx-auto mb-6"
+            >
+              {/* Glowing Background */}
+              <div className="absolute inset-0 bg-gradient-to-r from-[var(--cyber-blue)] to-purple-500 rounded-2xl blur-lg opacity-60" />
+
+              {/* Icon Container */}
+              <div className="relative w-full h-full bg-gradient-to-r from-[var(--cyber-blue)] to-purple-500 rounded-2xl flex items-center justify-center shadow-2xl">
+                <Zap className="w-10 h-10 text-white" />
+
+                {/* Sparkle Effects */}
+                <motion.div
+                  className="absolute -top-1 -right-1"
+                  animate={{ rotate: 360 }}
+                  transition={{ duration: 8, repeat: Infinity, ease: "linear" }}
+                >
+                  <Sparkles className="w-4 h-4 text-white/80" />
+                </motion.div>
+              </div>
+            </motion.div>
+
+            <motion.h1
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              transition={{ delay: 0.7 }}
+              className="text-3xl font-bold bg-gradient-to-r from-white via-gray-100 to-white bg-clip-text text-transparent mb-3"
+            >
+              Fleet Discovery
+            </motion.h1>
+            <motion.p
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              transition={{ delay: 0.9 }}
+              className="text-white/60 text-sm leading-relaxed"
+            >
+              Intelligence-grade autonomous driving insights
+              <br />
+              <span className="text-[var(--cyber-blue)]/80">Neural • Forensic • Discovery</span>
+            </motion.p>
+          </motion.div>
+
+          {/* Apple-Style Glassmorphic Auth Card */}
+          <motion.div
+            key={mode} // Key ensures smooth transitions between modes
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -20 }}
+            transition={{ duration: 0.5 }}
+          >
+            <Card className="p-8 bg-white/10 backdrop-blur-xl border border-white/20 shadow-2xl">
+
+              {/* Mode Header */}
+              <div className="mb-6 text-center">
+                <motion.div
+                  initial={{ opacity: 0 }}
+                  animate={{ opacity: 1 }}
+                  className="flex items-center justify-center gap-2 mb-2"
+                >
+                  {mode === 'signin' && <Zap className="w-5 h-5 text-[var(--cyber-blue)]" />}
+                  {mode === 'forgot' && <KeyRound className="w-5 h-5 text-[var(--cyber-blue)]" />}
+                  {mode === 'reset' && <Lock className="w-5 h-5 text-[var(--cyber-blue)]" />}
+
+                  <h2 className="text-xl font-semibold text-white">
+                    {mode === 'signin' && 'Sign In'}
+                    {mode === 'forgot' && 'Reset Password'}
+                    {mode === 'reset' && 'New Password'}
+                  </h2>
+                </motion.div>
+
+                {mode !== 'signin' && (
+                  <button
+                    onClick={() => setMode('signin')}
+                    className="flex items-center gap-1 text-sm text-white/60 hover:text-white/90 transition-colors mx-auto"
+                  >
+                    <ArrowLeft className="w-4 h-4" />
+                    Back to Sign In
+                  </button>
+                )}
+              </div>
+
+              {/* Dynamic Forms */}
+              {mode === 'signin' && (
+                <form onSubmit={handleSignIn} className="space-y-6">
+                  <div className="space-y-2">
+                    <label className="text-sm font-medium text-white/90">Email Address</label>
+                    <div className="relative group">
+                      <Mail className="absolute left-4 top-1/2 transform -translate-y-1/2 w-5 h-5 text-white/40 group-focus-within:text-[var(--cyber-blue)] transition-colors" />
+                      <input
+                        type="email"
+                        value={email}
+                        onChange={(e) => setEmail(e.target.value)}
+                        className="w-full pl-12 pr-4 py-4 rounded-xl bg-white/10 border border-white/20 focus:border-[var(--cyber-blue)] focus:ring-2 focus:ring-[var(--cyber-blue)]/30 transition-all duration-300 text-white placeholder-white/40"
+                        placeholder="Enter your email"
+                        required
+                      />
+                    </div>
+                  </div>
+
+                  <div className="space-y-2">
+                    <label className="text-sm font-medium text-white/90">Password</label>
+                    <div className="relative group">
+                      <Lock className="absolute left-4 top-1/2 transform -translate-y-1/2 w-5 h-5 text-white/40 group-focus-within:text-[var(--cyber-blue)] transition-colors" />
+                      <input
+                        type={showPassword ? "text" : "password"}
+                        value={password}
+                        onChange={(e) => setPassword(e.target.value)}
+                        className="w-full pl-12 pr-14 py-4 rounded-xl bg-white/10 border border-white/20 focus:border-[var(--cyber-blue)] focus:ring-2 focus:ring-[var(--cyber-blue)]/30 transition-all duration-300 text-white placeholder-white/40"
+                        placeholder="Enter your password"
+                        required
+                      />
+                      <button
+                        type="button"
+                        onClick={() => setShowPassword(!showPassword)}
+                        className="absolute right-4 top-1/2 transform -translate-y-1/2 text-white/40 hover:text-white/70 transition-colors"
+                      >
+                        {showPassword ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
+                      </button>
+                    </div>
+                  </div>
+
+                  <Button
+                    type="submit"
+                    disabled={loading}
+                    className="w-full py-4 bg-gradient-to-r from-[var(--cyber-blue)] via-blue-500 to-purple-500 hover:from-[var(--cyber-blue)]/90 hover:via-blue-500/90 hover:to-purple-500/90 text-white font-semibold rounded-xl transition-all duration-300 shadow-lg hover:shadow-xl disabled:opacity-50"
+                  >
+                    {loading ? (
+                      <div className="flex items-center justify-center gap-3">
+                        <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                        Signing In...
+                      </div>
+                    ) : (
+                      <div className="flex items-center justify-center gap-2">
+                        <Zap className="w-5 h-5" />
+                        Access Fleet Discovery
+                      </div>
+                    )}
+                  </Button>
+
+                  <div className="flex justify-end text-sm">
+                    <button
+                      type="button"
+                      onClick={() => setMode('forgot')}
+                      className="text-[var(--cyber-blue)] hover:text-blue-300 transition-colors"
+                    >
+                      Forgot Password?
+                    </button>
+                  </div>
+                </form>
+              )}
+
+              {mode === 'forgot' && (
+                <form onSubmit={handleForgotPassword} className="space-y-6">
+                  <div className="text-center mb-4">
+                    <p className="text-sm text-white/70">Enter your email to receive a password reset code</p>
+                  </div>
+
+                  <div className="space-y-2">
+                    <label className="text-sm font-medium text-white/90">Email Address</label>
+                    <div className="relative group">
+                      <Mail className="absolute left-4 top-1/2 transform -translate-y-1/2 w-5 h-5 text-white/40 group-focus-within:text-[var(--cyber-blue)] transition-colors" />
+                      <input
+                        type="email"
+                        value={email}
+                        onChange={(e) => setEmail(e.target.value)}
+                        className="w-full pl-12 pr-4 py-4 rounded-xl bg-white/10 border border-white/20 focus:border-[var(--cyber-blue)] focus:ring-2 focus:ring-[var(--cyber-blue)]/30 transition-all duration-300 text-white placeholder-white/40"
+                        placeholder="Enter your email"
+                        required
+                      />
+                    </div>
+                  </div>
+
+                  <Button
+                    type="submit"
+                    disabled={loading}
+                    className="w-full py-4 bg-gradient-to-r from-amber-500 via-orange-500 to-red-500 hover:from-amber-500/90 hover:via-orange-500/90 hover:to-red-500/90 text-white font-semibold rounded-xl transition-all duration-300 shadow-lg hover:shadow-xl disabled:opacity-50"
+                  >
+                    {loading ? (
+                      <div className="flex items-center justify-center gap-3">
+                        <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                        Sending Code...
+                      </div>
+                    ) : (
+                      <div className="flex items-center justify-center gap-2">
+                        <KeyRound className="w-5 h-5" />
+                        Send Reset Code
+                      </div>
+                    )}
+                  </Button>
+                </form>
+              )}
+
+              {mode === 'reset' && (
+                <form onSubmit={handleResetPassword} className="space-y-6">
+                  <div className="text-center mb-4">
+                    <p className="text-sm text-white/70">Enter the reset code and your new password</p>
+                    <p className="text-xs text-white/50 mt-1">{email}</p>
+                  </div>
+
+                  <div className="space-y-2">
+                    <label className="text-sm font-medium text-white/90">Reset Code</label>
+                    <div className="relative group">
+                      <KeyRound className="absolute left-4 top-1/2 transform -translate-y-1/2 w-5 h-5 text-white/40 group-focus-within:text-[var(--cyber-blue)] transition-colors" />
+                      <input
+                        type="text"
+                        value={resetCode}
+                        onChange={(e) => setResetCode(e.target.value)}
+                        className="w-full pl-12 pr-4 py-4 rounded-xl bg-white/10 border border-white/20 focus:border-[var(--cyber-blue)] focus:ring-2 focus:ring-[var(--cyber-blue)]/30 transition-all duration-300 text-white placeholder-white/40 text-center text-lg tracking-widest"
+                        placeholder="000000"
+                        maxLength={6}
+                        required
+                      />
+                    </div>
+                  </div>
+
+                  <div className="space-y-2">
+                    <label className="text-sm font-medium text-white/90">New Password</label>
+                    <div className="relative group">
+                      <Lock className="absolute left-4 top-1/2 transform -translate-y-1/2 w-5 h-5 text-white/40 group-focus-within:text-[var(--cyber-blue)] transition-colors" />
+                      <input
+                        type={showPassword ? "text" : "password"}
+                        value={newPassword}
+                        onChange={(e) => setNewPassword(e.target.value)}
+                        className="w-full pl-12 pr-14 py-4 rounded-xl bg-white/10 border border-white/20 focus:border-[var(--cyber-blue)] focus:ring-2 focus:ring-[var(--cyber-blue)]/30 transition-all duration-300 text-white placeholder-white/40"
+                        placeholder="Enter new password"
+                        required
+                      />
+                      <button
+                        type="button"
+                        onClick={() => setShowPassword(!showPassword)}
+                        className="absolute right-4 top-1/2 transform -translate-y-1/2 text-white/40 hover:text-white/70 transition-colors"
+                      >
+                        {showPassword ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
+                      </button>
+                    </div>
+                  </div>
+
+                  <Button
+                    type="submit"
+                    disabled={loading}
+                    className="w-full py-4 bg-gradient-to-r from-green-500 via-emerald-500 to-teal-500 hover:from-green-500/90 hover:via-emerald-500/90 hover:to-teal-500/90 text-white font-semibold rounded-xl transition-all duration-300 shadow-lg hover:shadow-xl disabled:opacity-50"
+                  >
+                    {loading ? (
+                      <div className="flex items-center justify-center gap-3">
+                        <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                        Resetting Password...
+                      </div>
+                    ) : (
+                      <div className="flex items-center justify-center gap-2">
+                        <Lock className="w-5 h-5" />
+                        Reset Password
+                      </div>
+                    )}
+                  </Button>
+                </form>
+              )}
+
+              {/* Error and Success Messages */}
+              {error && (
+                <motion.div
+                  initial={{ opacity: 0, y: -10 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  className="flex items-center gap-2 p-4 rounded-lg bg-red-500/20 border border-red-500/30 text-red-200 mt-4"
+                >
+                  <AlertCircle className="w-5 h-5 flex-shrink-0" />
+                  <span className="text-sm">{error}</span>
+                </motion.div>
+              )}
+
+              {success && (
+                <motion.div
+                  initial={{ opacity: 0, y: -10 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  className="flex items-center gap-2 p-4 rounded-lg bg-green-500/20 border border-green-500/30 text-green-200 mt-4"
+                >
+                  <CheckCircle className="w-5 h-5 flex-shrink-0" />
+                  <span className="text-sm">{success}</span>
+                </motion.div>
+              )}
+            </Card>
+          </motion.div>
+
+          {/* Footer */}
+          <motion.p
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            transition={{ delay: 1.2 }}
+            className="text-center text-xs text-white/30 mt-8"
+          >
+            Powered by AWS Cognito
+          </motion.p>
+        </motion.div>
+      </div>
+    </div>
+  )
+}

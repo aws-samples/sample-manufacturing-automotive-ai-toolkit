@@ -188,13 +188,41 @@ if [ $? -eq 0 ]; then
   # Clean up the temporary directory
   rm -rf "$TEMP_DIR"
   
-  # Debug: List all stack outputs
-  echo "Available stack outputs:"
+  # List outputs from main stack and all nested stacks
+  echo ""
+  echo "=========================================="
+  echo "  Stack Outputs"
+  echo "=========================================="
+  echo ""
+  echo "--- $STACK_NAME (main) ---"
   aws cloudformation describe-stacks \
     --stack-name "$STACK_NAME" \
     --query "Stacks[0].Outputs[].{Key:OutputKey,Value:OutputValue}" \
     --output table \
     --region "$REGION"
+
+  # Query nested stacks for their outputs (App Runner URLs, Cognito IDs, etc.)
+  NESTED_STACKS=$(aws cloudformation list-stack-resources \
+    --stack-name "$STACK_NAME" \
+    --query "StackResourceSummaries[?ResourceType=='AWS::CloudFormation::Stack'].PhysicalResourceId" \
+    --output text \
+    --region "$REGION")
+
+  for NESTED_ARN in $NESTED_STACKS; do
+    NESTED_NAME=$(echo "$NESTED_ARN" | sed 's|.*/||' | cut -d'/' -f1)
+    # Extract a short label from the nested stack name
+    SHORT_LABEL=$(echo "$NESTED_NAME" | sed "s|${STACK_NAME}-||" | cut -c1-60)
+    echo ""
+    echo "--- $SHORT_LABEL ---"
+    aws cloudformation describe-stacks \
+      --stack-name "$NESTED_ARN" \
+      --query "Stacks[0].Outputs[].{Key:OutputKey,Value:OutputValue}" \
+      --output table \
+      --region "$REGION" 2>/dev/null || echo "  (no outputs)"
+  done
+
+  echo ""
+  echo "=========================================="
   
   # Get the CodeBuild project name for AgentCore deployment
   # Try main stack first, then look for any nested stack deployment projects
@@ -231,18 +259,34 @@ if [ $? -eq 0 ]; then
         case $BUILD_STATUS in
           "SUCCEEDED")
             echo "✅ CodeBuild completed successfully!"
-            
-            # Get App Runner service URL
-            echo "Getting App Runner service URL..."
-            SERVICE_URL=$(aws apprunner list-services --region "$REGION" --query "ServiceSummaryList[?ServiceName=='ma3t-ui-service'].ServiceUrl" --output text)
-            
-            if [ ! -z "$SERVICE_URL" ] && [ "$SERVICE_URL" != "None" ]; then
-              echo ""
-              echo "🌐 MA3T UI is available at: https://$SERVICE_URL"
-              echo ""
-            else
-              echo "⚠️  App Runner service URL not found"
-            fi
+
+            # Get App Runner service URLs from nested stacks
+            echo ""
+            echo "=========================================="
+            echo "  Service URLs"
+            echo "=========================================="
+            for NESTED_ARN in $NESTED_STACKS; do
+              URL=$(aws cloudformation describe-stacks \
+                --stack-name "$NESTED_ARN" \
+                --query "Stacks[0].Outputs[?contains(OutputKey,'WebApiUrl') || contains(OutputKey,'AppRunnerUrl') || contains(OutputKey,'ServiceUrl')].OutputValue | [0]" \
+                --output text \
+                --region "$REGION" 2>/dev/null)
+              if [ ! -z "$URL" ] && [ "$URL" != "None" ]; then
+                SHORT_LABEL=$(echo "$NESTED_ARN" | sed "s|.*${STACK_NAME}-||" | cut -d'/' -f1 | cut -c1-50)
+                echo "  $SHORT_LABEL: $URL"
+              fi
+            done
+            # Fallback: check App Runner directly
+            SERVICE_URL=$(aws apprunner list-services --region "$REGION" --query "ServiceSummaryList[].{Name:ServiceName,Url:ServiceUrl}" --output json 2>/dev/null)
+            echo ""
+            echo "All App Runner services:"
+            echo "$SERVICE_URL" | python3 -c "
+import sys,json
+for s in json.load(sys.stdin):
+    print(f\"  {s['Name']}: https://{s['Url']}\")
+" 2>/dev/null
+            echo "=========================================="
+            echo ""
             
             break
             ;;
