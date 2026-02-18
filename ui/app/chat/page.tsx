@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useRef } from 'react';
 import Link from 'next/link';
+import MarkdownRenderer from './MarkdownRenderer';
 
 // SVG Icons as components
 const SendIcon = () => (
@@ -352,8 +353,12 @@ export default function ChatPage() {
                       </span>
                     </div>
                     
-                    <div className={`whitespace-pre-wrap ${msg.sender === 'You' ? 'text-white' : 'text-gray-800'}`}>
-                      {msg.text}
+                    <div className={msg.sender === 'You' ? 'whitespace-pre-wrap text-white' : 'text-gray-800'}>
+                      {msg.sender === 'You' ? (
+                        msg.text
+                      ) : (
+                        <MarkdownRenderer content={msg.text} />
+                      )}
                     </div>
                     
                     {msg.images && msg.images.length > 0 && (
