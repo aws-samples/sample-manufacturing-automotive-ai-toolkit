@@ -117,6 +117,27 @@ def update_ssm_parameters(results, ssm_mappings, region):
             except Exception as e:
                 logger.error(f"Failed to update SSM parameter {param_name}: {e}")
 
+def inject_dockerfile_deps(agent_path, dockerfile_path):
+    """Inject Dockerfile.deps contents into the generated Dockerfile after the FROM line."""
+    deps_file = os.path.join(agent_path, "Dockerfile.deps")
+    if not os.path.exists(deps_file):
+        return
+    
+    with open(deps_file, 'r') as f:
+        deps = f.read().strip()
+    
+    with open(dockerfile_path, 'r') as f:
+        content = f.read()
+    
+    # Insert after first FROM line
+    content = content.replace('\n\n', f'\n\n{deps}\n\n', 1)
+    
+    with open(dockerfile_path, 'w') as f:
+        f.write(content)
+    
+    logger.info(f"Injected Dockerfile.deps into {dockerfile_path}")
+
+
 def deploy_agentcore_agent(agent_path, agent_id, agent_name, entrypoint, region, execution_role_arn):
     """
     Deploy an AgentCore agent
@@ -172,6 +193,9 @@ def deploy_agentcore_agent(agent_path, agent_id, agent_name, entrypoint, region,
                 verbose=True,
                 requirements_file=requirements_file
             )
+            
+            # Inject system dependencies from Dockerfile.deps if present
+            inject_dockerfile_deps(os.path.join(original_dir, agent_path), str(config_result.dockerfile_path))
             
             # Override the platform to linux/amd64 for AWS compatibility
             logger.info("Overriding platform to linux/amd64 for AWS compatibility")

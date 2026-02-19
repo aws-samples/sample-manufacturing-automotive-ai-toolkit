@@ -129,6 +129,43 @@ def _timestamp_prefix() -> str:
     return now.strftime("%Y-%m-%dT%H-%M-%SZ")
 
 
+def _hive_partition_prefix() -> str:
+    """Generate a Hive-style date partition prefix for S3 keys.
+
+    Returns:
+        String like 'year=2026/month=02/day=18/hour=18'
+    """
+    now = datetime.now(timezone.utc)
+    return now.strftime("year=%Y/month=%m/day=%d/hour=%H")
+
+
+def _generate_presigned_url(s3_key: str, expiration: int = 3600) -> Optional[str]:
+    """Generate a pre-signed URL for an S3 object.
+
+    Args:
+        s3_key: The S3 object key
+        expiration: URL expiration time in seconds (default: 1 hour)
+
+    Returns:
+        Pre-signed URL string, or None if generation fails
+    """
+    bucket = _resolve_s3_bucket()
+    if not bucket:
+        logger.error("S3 bucket name not available – cannot generate pre-signed URL")
+        return None
+    try:
+        url = _get_s3_client().generate_presigned_url(
+            "get_object",
+            Params={"Bucket": bucket, "Key": s3_key},
+            ExpiresIn=expiration,
+        )
+        logger.info(f"Generated pre-signed URL for s3://{bucket}/{s3_key}")
+        return url
+    except ClientError as e:
+        logger.error(f"Failed to generate pre-signed URL for {s3_key}: {e}")
+        return None
+
+
 def _iso_timestamp() -> str:
     """Generate a full ISO timestamp for DynamoDB sort keys.
 
@@ -381,15 +418,16 @@ class SFCFileOperations:
     def save_config_to_file(config_json: str, filename: str) -> str:
         """Save an SFC configuration to the S3 artifacts bucket and index it in DynamoDB.
 
-        The file is stored under configs/<timestamp>_<filename> in S3, and a
-        metadata entry (including base64-encoded content) is written to DynamoDB.
+        The file is stored under configs/year=YYYY/month=MM/day=DD/hour=HH/<filename>
+        in S3, and a metadata entry (including base64-encoded content) is written to DynamoDB.
+        A pre-signed download URL is returned as a markdown hyperlink.
 
         Args:
             config_json: SFC configuration JSON string to save
             filename: Name of the file to save the configuration to (e.g. 'my-config.json')
 
         Returns:
-            String result message indicating success or failure
+            String result message indicating success or failure, with a pre-signed download link
         """
         try:
             # Validate JSON
@@ -401,9 +439,9 @@ class SFCFileOperations:
                 filename += ".json"
             basename = os.path.basename(filename)
 
-            # Build timestamp-prefixed S3 key
-            ts = _timestamp_prefix()
-            s3_key = f"configs/{ts}_{basename}"
+            # Build Hive-partitioned S3 key
+            partition = _hive_partition_prefix()
+            s3_key = f"configs/{partition}/{basename}"
 
             # Upload to S3
             s3_ok = _put_to_s3(s3_key, pretty_json, content_type="application/json")
@@ -419,15 +457,29 @@ class SFCFileOperations:
 
             bucket = _resolve_s3_bucket()
             if s3_ok and ddb_ok:
+                presigned_url = _generate_presigned_url(s3_key)
+                download_link = (
+                    f"[⬇ Download {basename}]({presigned_url})"
+                    if presigned_url
+                    else "(pre-signed URL generation failed)"
+                )
                 return (
                     f"✅ Configuration saved successfully:\n"
-                    f"  • S3: s3://{bucket}/{s3_key}\n"
-                    f"  • DynamoDB: {_resolve_ddb_table()} (config/{basename})"
+                    f"  • S3: `s3://{bucket}/{s3_key}`\n"
+                    f"  • DynamoDB: {_resolve_ddb_table()} (config/{basename})\n"
+                    f"  • {download_link}"
                 )
             elif s3_ok:
+                presigned_url = _generate_presigned_url(s3_key)
+                download_link = (
+                    f"[⬇ Download {basename}]({presigned_url})"
+                    if presigned_url
+                    else "(pre-signed URL generation failed)"
+                )
                 return (
                     f"⚠️ Configuration saved to S3 but DynamoDB indexing failed:\n"
-                    f"  • S3: s3://{bucket}/{s3_key}"
+                    f"  • S3: `s3://{bucket}/{s3_key}`\n"
+                    f"  • {download_link}"
                 )
             else:
                 return f"❌ Failed to save configuration to S3 - {bucket}"
@@ -443,9 +495,10 @@ class SFCFileOperations:
     ) -> str:
         """Save content to the S3 artifacts bucket and index it in DynamoDB.
 
-        The file is stored under results/<timestamp>_<filename> in S3. If a
-        config run name is provided, an additional copy is stored under
-        runs/<config_name>/<timestamp>_<filename>.
+        The file is stored under results/year=YYYY/month=MM/day=DD/hour=HH/<filename>
+        in S3. If a config run name is provided, an additional copy is stored under
+        runs/<config_name>/year=YYYY/month=MM/day=DD/hour=HH/<filename>.
+        A pre-signed download URL is returned as a markdown hyperlink.
 
         Args:
             content: Content to save
@@ -453,7 +506,7 @@ class SFCFileOperations:
             current_config_name: Current config run name (optional, creates a runs/ copy)
 
         Returns:
-            String result message indicating success or failure
+            String result message indicating success or failure, with a pre-signed download link
         """
         try:
             # Validate and normalize filename extension
@@ -465,7 +518,6 @@ class SFCFileOperations:
                 filename += ".txt"
 
             basename = os.path.basename(filename)
-            ts = _timestamp_prefix()
 
             # Determine content type
             ext = basename.rsplit(".", 1)[-1].lower()
@@ -477,8 +529,9 @@ class SFCFileOperations:
             }
             ct = content_types.get(ext, "text/plain")
 
-            # Primary S3 key under results/
-            s3_key = f"results/{ts}_{basename}"
+            # Build Hive-partitioned S3 key
+            partition = _hive_partition_prefix()
+            s3_key = f"results/{partition}/{basename}"
             s3_ok = _put_to_s3(s3_key, content, content_type=ct)
             ddb_ok = _put_to_ddb(
                 file_type="result",
@@ -492,7 +545,7 @@ class SFCFileOperations:
             run_s3_ok = False
             run_s3_key = None
             if current_config_name:
-                run_s3_key = f"runs/{current_config_name}/{ts}_{basename}"
+                run_s3_key = f"runs/{current_config_name}/{partition}/{basename}"
                 run_s3_ok = _put_to_s3(run_s3_key, content, content_type=ct)
                 if run_s3_ok:
                     _put_to_ddb(
@@ -506,18 +559,38 @@ class SFCFileOperations:
             # Build result message
             bucket = _resolve_s3_bucket()
             if s3_ok and ddb_ok:
+                presigned_url = _generate_presigned_url(s3_key)
+                download_link = (
+                    f"[⬇ Download {basename}]({presigned_url})"
+                    if presigned_url
+                    else "(pre-signed URL generation failed)"
+                )
                 msg = (
                     f"✅ Results saved successfully:\n"
-                    f"  • S3: s3://{bucket}/{s3_key}\n"
-                    f"  • DynamoDB: {_resolve_ddb_table()} (result/{basename})"
+                    f"  • S3: `s3://{bucket}/{s3_key}`\n"
+                    f"  • DynamoDB: {_resolve_ddb_table()} (result/{basename})\n"
+                    f"  • {download_link}"
                 )
                 if run_s3_ok and run_s3_key:
-                    msg += f"\n  • Run copy: s3://{bucket}/{run_s3_key}"
+                    run_presigned_url = _generate_presigned_url(run_s3_key)
+                    run_link = (
+                        f"[⬇ Download run copy]({run_presigned_url})"
+                        if run_presigned_url
+                        else "(pre-signed URL generation failed)"
+                    )
+                    msg += f"\n  • Run copy: `s3://{bucket}/{run_s3_key}` — {run_link}"
                 return msg
             elif s3_ok:
+                presigned_url = _generate_presigned_url(s3_key)
+                download_link = (
+                    f"[⬇ Download {basename}]({presigned_url})"
+                    if presigned_url
+                    else "(pre-signed URL generation failed)"
+                )
                 return (
                     f"⚠️ Results saved to S3 but DynamoDB indexing failed:\n"
-                    f"  • S3: s3://{bucket}/{s3_key}"
+                    f"  • S3: `s3://{bucket}/{s3_key}`\n"
+                    f"  • {download_link}"
                 )
             else:
                 return "❌ Failed to save results to S3"

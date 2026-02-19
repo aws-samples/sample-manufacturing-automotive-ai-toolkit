@@ -25,6 +25,8 @@ from src.tools.file_operations import (
     _resolve_ddb_table,
     _get_s3_client,
     _get_ddb_table,
+    _hive_partition_prefix,
+    _generate_presigned_url,
 )
 
 logger = logging.getLogger(__name__)
@@ -125,6 +127,9 @@ class PromptLogger:
     def _save_to_cloud(self, filename: str, content: str) -> Tuple[bool, str]:
         """Save conversation content to S3 and index in DynamoDB.
 
+        The file is stored under conversations/year=YYYY/month=MM/day=DD/hour=HH/<filename>
+        in S3. A pre-signed download URL is returned as a markdown hyperlink.
+
         Args:
             filename: Base filename for the conversation
             content: Markdown content to save
@@ -132,8 +137,8 @@ class PromptLogger:
         Returns:
             Tuple of (success, message)
         """
-        ts = _timestamp_prefix()
-        s3_key = f"conversations/{ts}_{filename}"
+        partition = _hive_partition_prefix()
+        s3_key = f"conversations/{partition}/{filename}"
         bucket = _resolve_s3_bucket()
 
         # Upload to S3
@@ -184,13 +189,29 @@ class PromptLogger:
         # Build result message
         table_name = _resolve_ddb_table()
         if s3_ok and ddb_ok:
+            presigned_url = _generate_presigned_url(s3_key)
+            download_link = (
+                f"[⬇ Download {filename}]({presigned_url})"
+                if presigned_url
+                else "(pre-signed URL generation failed)"
+            )
             return True, (
                 f"Conversation saved:\n"
-                f"  • S3: s3://{bucket}/{s3_key}\n"
-                f"  • DynamoDB: {table_name} (conversation/{filename})"
+                f"  • S3: `s3://{bucket}/{s3_key}`\n"
+                f"  • DynamoDB: {table_name} (conversation/{filename})\n"
+                f"  • {download_link}"
             )
         elif s3_ok:
-            return True, f"Conversation saved to S3: s3://{bucket}/{s3_key}"
+            presigned_url = _generate_presigned_url(s3_key)
+            download_link = (
+                f"[⬇ Download {filename}]({presigned_url})"
+                if presigned_url
+                else "(pre-signed URL generation failed)"
+            )
+            return True, (
+                f"Conversation saved to S3: `s3://{bucket}/{s3_key}`\n"
+                f"  • {download_link}"
+            )
         elif ddb_ok:
             return True, f"Conversation indexed in DynamoDB (S3 upload failed)"
         else:
