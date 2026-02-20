@@ -768,6 +768,8 @@ def get_core_doc_tool(doc_name: str) -> Dict[str, Any]:
         }
         ```
     """
+    if "/" in doc_name or "\\" in doc_name or ".." in doc_name:
+        return {"error": "Invalid document name", "status": 400}
     doc_path = os.path.join(REPO_PATH, "docs", "core", f"{doc_name}.md")
     return _get_markdown_content(doc_path, doc_name)
 
@@ -830,6 +832,8 @@ def get_adapter_doc_tool(doc_name: str) -> Dict[str, Any]:
         }
         ```
     """
+    if "/" in doc_name or "\\" in doc_name or ".." in doc_name:
+        return {"error": "Invalid document name", "status": 400}
     doc_path = os.path.join(REPO_PATH, "docs", "adapters", f"{doc_name}.md")
     return _get_markdown_content(doc_path, doc_name)
 
@@ -892,6 +896,8 @@ def get_target_doc_tool(doc_name: str) -> Dict[str, Any]:
         }
         ```
     """
+    if "/" in doc_name or "\\" in doc_name or ".." in doc_name:
+        return {"error": "Invalid document name", "status": 400}
     doc_path = os.path.join(REPO_PATH, "docs", "targets", f"{doc_name}.md")
     return _get_markdown_content(doc_path, doc_name)
 
@@ -1284,7 +1290,7 @@ def search_doc_content_tool(
                     # Find all matches
                     matches = []
                     for i, line in enumerate(lines):
-                        if re.search(search_text, line, flags):
+                        if re.search(re.escape(search_text), line, flags):
                             # Get context (3 lines before and after)
                             start = max(0, i - 3)
                             end = min(len(lines), i + 4)
