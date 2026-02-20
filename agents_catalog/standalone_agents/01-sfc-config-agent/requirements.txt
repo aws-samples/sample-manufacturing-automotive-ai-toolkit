@@ -1,0 +1,25 @@
+# Add your dependencies here
+
+# MCP Server deps
+fastmcp>=2.10.4
+black>=25.1.0
+
+# Agent deps
+bedrock-agentcore
+strands-agents
+strands-agents-tools
+python-dotenv
+boto3>=1.35.0
+black>=25.1.0
+jmespath
+markdown>=3.8.2
+mcp>=1.10.1
+PyPDF2>=3.0.0
+pandas>=2.0.0
+openpyxl>=3.1.0
+python-docx>=0.8.11
+striprtf>=0.0.22
+matplotlib>=3.10.3
+
+# Git operations
+GitPython>=3.1.0

@@ -1,0 +1,29 @@
+{
+  "group": ["Config Generation"],
+  "agents": [
+    {
+      "id": "sfc_config_agent",
+      "name": "SFC Config Generation Agent",
+      "version": "1.0.0",
+      "description": "SFC Config generation Agent - Accelerate Industrial Equipment Onboarding.",
+      "type": "agentcore",
+      "entrypoint": "src/agent.py",
+      "metadata": {
+        "authors": [
+          {
+            "name": "Hubert Asamer",
+            "organization": "AWS"
+          }
+        ],
+        "created_date": "2025-12-19",
+        "last_updated": "2025-12-19",
+        "maturity": "development"
+      }
+    }
+  ],
+  "infrastructure": {
+    "cdk": true,
+    "stack_class": "SfcConfigAgentStack",
+    "stack_path": "cdk/stack.py"
+  }
+}
