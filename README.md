@@ -1,18 +1,28 @@
-# Automotive & Manufacturing GenAI Demos
+# Automotive and Manufacturing GenAI Demo Library
 
-A collection of sample GenAI demos for Automotive and Manufacturing use cases.
+The demo library showcases innovative AWS solutions across manufacturing and automotive use cases.
 
-## Use Cases
+## Available Demos
 
-### 1. In Vehicle Agentic AI Agents (VISTA)
-A Multi-Agent Collaboration system with Supervisor Routing for vehicle service management. VISTA has two deployment options:
-1. [Bedrock Native Agents](agents_catalog/multi_agent_collaboration/00-vista-agents/)
-2. [Bedrock Agentcore](agents_catalog/multi_agent_collaboration/01-vista-agents-agentcore/)
+Explore individual demos using the links below, or follow the installation instructions at the bottom to deploy the entire library at once.
 
-### 2. Inventory Optimizer
-Description
+### [In-Vehicle Agentic AI Agents (VISTA)](agents_catalog/multi_agent_collaboration/01-vista-agents-agentcore)
+A multi-agent collaboration framework to improve the in-vehicle experience, with a focus on diagnostic trouble codes and service center interactions. Available in two implementations:
+- **[AgentCore Version](agents_catalog/multi_agent_collaboration/01-vista-agents-agentcore)**: Container-based deployment using Amazon Bedrock AgentCore
+- **[Bedrock Native Agents](agents_catalog/multi_agent_collaboration/00-vista-agents)**: Fully managed implementation using Amazon Bedrock Agents
 
+### [Inventory Optimizer](agents_catalog/multi_agent_collaboration/02-inventory-optimizer)
+An intelligent inventory management system for e-bike manufacturing using Amazon Bedrock AgentCore with the Strands framework. Analyzes production schedules, inventory levels, supplier information, and bill of materials to make informed inventory rebalancing and procurement decisions.
 
+### [Manufacturing Quality Inspection Multi-Agent System](agents_catalog/multi_agent_collaboration/03-quality-inspection)
+AI-powered quality inspection system using Amazon Nova Pro and multi-agent architecture for manufacturing defect detection and workflow automation.
+
+### [Vehicle Data Discovery](https://github.com/aws-samples/sample-manufacturing-automotive-ai-toolkit/tree/main/agents_catalog/multi_agent_collaboration/04-Vehicle_Data_Discovery)
+A multi-agent system for autonomous vehicle fleet data discovery and HIL (Hardware-in-the-Loop) testing optimization.
+
+---
+
+## Full Library Installation
 
 ## Prerequisites
 
@@ -52,14 +62,7 @@ cdk bootstrap aws://AWS-ACCOUNT-NUMBER/us-west-2
 
 >You can find your account number by running `aws sts get-caller-identity`.
 
-### 2. Bedrock Model Access
-Enable access to required models in your AWS account:
-- Go to AWS Bedrock Console → Model access
-- Request access to:
-  - `anthropic.claude-3-haiku-20240307-v1:0` (Used by VISTA agents, default for AgentCore)
-  - `us.anthropic.claude-3-7-sonnet-20250219-v1:0` (Used by the frontend UI)
-
-### 3. Setup Environment
+### 2. Setup Environment
 ```bash
 # Clone repository
 git clone git@github.com:aws-samples/sample-manufacturing-automotive-ai-toolkit.git
@@ -109,21 +112,6 @@ To destroy the deployed resources:
 cdk destroy --context region=us-east-1
 ```
 *Replace `us-east-1` with the region where you deployed the stack.*
-
-## Architecture
-
-The MA3T architecture consists of:
-
-1. **Agent Catalog**: A collection of agents implemented using various frameworks
-   - Standalone Agents: Individual agents for specific tasks
-   - Multi-Agent Collaborations: Groups of agents that work together
-
-2. **Agent Frameworks**:
-   - AWS Bedrock Agents: Native, managed Bedrock agents
-   - AgentCore Agents: Container-based agents using the Bedrock AgentCore framework
-      - Support for Strands, LangGraph, CrewAI, and LlamaIndex
-
-3. **Deployment Framework**: CDK for deploying agents to AWS
 
 ## Contributing
 
