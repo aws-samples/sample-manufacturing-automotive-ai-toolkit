@@ -1,3 +1,4 @@
 # CDK dependencies for SFC Config Agent infrastructure
 aws-cdk-lib>=2.150.0
 constructs>=10.0.0
+cdk-nag>=2.27.0
