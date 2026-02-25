@@ -1,0 +1,82 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --color-bg: #0f1117;
+  --color-surface: #181c27;
+  --color-border: #2a3044;
+  --color-text: #e2e8f0;
+  --color-muted: #64748b;
+  --color-accent: #38bdf8;
+  --color-ok: #4ade80;
+  --color-warn: #fbbf24;
+  --color-error: #f87171;
+}
+
+body {
+  background-color: var(--color-bg);
+  color: var(--color-text);
+  font-family: ui-sans-serif, system-ui, sans-serif;
+  font-size: 14px;
+  margin: 0;
+}
+
+/* Scrollbar */
+::-webkit-scrollbar { width: 6px; height: 6px; }
+::-webkit-scrollbar-track { background: var(--color-bg); }
+::-webkit-scrollbar-thumb { background: var(--color-border); border-radius: 3px; }
+
+/* Utility classes used across pages */
+.btn {
+  @apply inline-flex items-center gap-1.5 px-3 py-1.5 rounded text-sm font-medium transition-colors;
+}
+.btn-primary {
+  @apply bg-sky-600 hover:bg-sky-500 text-white;
+}
+.btn-secondary {
+  @apply bg-slate-700 hover:bg-slate-600 text-slate-200;
+}
+.btn-danger {
+  @apply bg-red-700 hover:bg-red-600 text-white;
+}
+.btn-ghost {
+  @apply bg-transparent hover:bg-slate-800 text-slate-300;
+}
+.btn:disabled {
+  @apply opacity-40 pointer-events-none;
+}
+.card {
+  @apply bg-[#181c27] border border-[#2a3044] rounded-lg p-4;
+}
+.badge {
+  @apply inline-flex items-center px-2 py-0.5 rounded text-xs font-medium;
+}
+.badge-ok    { @apply bg-green-900/60 text-green-300; }
+.badge-warn  { @apply bg-yellow-900/60 text-yellow-300; }
+.badge-error { @apply bg-red-900/60 text-red-300; }
+.badge-info  { @apply bg-sky-900/60 text-sky-300; }
+.badge-muted { @apply bg-slate-800 text-slate-400; }
+
+.table-base {
+  @apply w-full text-sm border-collapse;
+}
+.table-base th {
+  @apply px-3 py-2 text-left text-xs font-medium text-slate-400 border-b border-[#2a3044] whitespace-nowrap;
+}
+.table-base td {
+  @apply px-3 py-2.5 border-b border-[#1e2535] align-middle;
+}
+.table-base tr:last-child td { @apply border-b-0; }
+.table-base tbody tr:hover { @apply bg-slate-800/40; }
+
+/* Log line colours */
+.log-info  { @apply text-slate-300; }
+.log-warn  { @apply text-yellow-300; }
+.log-error { @apply text-red-400 font-medium; }
+.log-debug { @apply text-slate-500; }
+
+/* Spinner */
+.spinner {
+  @apply inline-block w-4 h-4 border-2 border-current border-t-transparent rounded-full animate-spin;
+}

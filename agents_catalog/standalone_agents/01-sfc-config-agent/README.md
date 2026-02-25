@@ -1,84 +1,153 @@
 # SFC Config Generation Agent
 
-Accelerate Industrial Equipment Onboarding by creating, validating, and running **Shop Floor Connectivity (SFC)** configurations using AI.
+AI-powered **Shop Floor Connectivity (SFC)** configuration assistant — create, validate, and remediate SFC configs via natural language, then deploy them as self-contained edge packages from the Control Plane UI.
 
-## Overview
+---
 
-This agent leverages Amazon Bedrock (Claude) and the Strands Agents SDK to assist with SFC configuration tasks. It exposes an MCP server (`sfc-spec-mcp-server.py`) as its primary knowledge source for validation and combines it with internal tools for file operations, conversation logging, and configuration analysis.
+## Invoke the Agent (AWS CLI)
 
-Short-term conversational memory is provided by **Amazon Bedrock AgentCore Memory**, allowing the agent to recall context within a session (e.g. previously discussed protocol choices, module constraints, or user preferences).
+The agent runs as an **Amazon Bedrock AgentCore Runtime**. After deployment via `scripts/build_launch_agentcore.py`, retrieve the runtime ARN and invoke it:
 
-## Key Capabilities
+```bash
+# 1. Get the AgentCore runtime ARN
+export AWS_REGION=<YOUR-REGION>
+AGENT_RUNTIME_ARN=$(aws bedrock-agentcore-control list-agent-runtimes \
+  --region $AWS_REGION \
+  --query "agentRuntimes[?agentRuntimeName=='sfc_config_agent'].agentRuntimeArn" \
+  --output text)
 
-- **Create** new SFC configuration JSON files from natural-language descriptions
-- **Validate** existing configurations against the SFC specification (via MCP tools)
-- **Read / Save** configurations and results to cloud storage (S3 + DynamoDB)
-- **Analyze** SFC modules and visualize data
-- **Remember** context within a session via AgentCore short-term memory
+echo  '{"prompt": "Create an OPC-UA SFC config for a press machine with two data sources"}' > input.json
+
+# 2. Invoke the agent
+aws bedrock-agentcore invoke-agent-runtime \
+  --agent-runtime-arn "$AGENT_RUNTIME_ARN" \
+  --runtime-session-id "sfc-agent-my-session-01-20260225-0001" \
+  --payload fileb://input.json \
+  --region $AWS_REGION \
+  --cli-read-timeout 0 \
+  --cli-connect-timeout 0 \
+  output.txt && cat output.txt
+```
+---
+
+## Start the Control Plane UI
+
+The **SFC Control Plane** is a Vite + React SPA served via **Amazon CloudFront**. In local dev, start it against the deployed API:
+
+```bash
+# Set the API URL from the CDK output
+echo "VITE_API_BASE_URL=<SfcControlPlaneApiUrl>" > ui/.env.local
+
+# Start the dev server
+cd ui && npm install && npm run dev
+# → http://localhost:5173
+```
+
+In production, open the `SfcControlPlaneUiUrl` CloudFront URL from the CDK output directly in a browser.
+
+### Primary operator workflow
+
+```
+Browse Config → Edit (Monaco JSON) → Set as Focus → Create Launch Package → Download to Edge → Monitor Logs
+```
+
+| UI Route | Purpose |
+|---|---|
+| `/` | Config File Browser |
+| `/configs/:configId` | Monaco JSON Editor — save versions, set focus, create package |
+| `/packages` | Launch Package List — live status LED, download, logs, AI-fix |
+| `/packages/:packageId` | Package Detail + Runtime Controls |
+| `/packages/:packageId/logs` | OTEL Log Viewer — ERROR-highlighted, "Fix with AI" CTA |
+
+---
+
+## Launch Packages
+
+A **Launch Package** is a self-contained zip assembled by the Control Plane — everything needed to run SFC on an edge host:
+
+```
+launch-package-{packageId}.zip
+├── sfc-config.json          # SFC config with IoT credential provider injected
+├── iot/                     # X.509 device cert, private key, Root CA, iot-config.json
+├── runner/                  # aws-sfc-runtime-agent (uv / Python 3.12)
+└── docker/                  # Optional Dockerfile + build script
+```
+
+**Run on the edge host:**
+
+```bash
+unzip launch-package-<id>.zip
+cd runner && uv run runner.py
+```
+
+The `aws-sfc-runtime-agent` handles IoT mTLS credential vending, SFC subprocess management, OTEL log shipping to CloudWatch, and the MQTT control channel back to the cloud.
+
+---
+
+## Runtime Controls & Monitoring
+
+Once a package is `READY`, operators control the live edge device from the Package Detail view:
+
+| Control | Description |
+|---|---|
+| **Telemetry on/off** | Enable/disable OTEL CloudWatch log shipping |
+| **Diagnostics on/off** | Switch SFC log level to TRACE |
+| **Push Config Update** | Send a new config version to the edge over MQTT |
+| **Restart SFC** | Graceful SFC subprocess restart |
+
+A live **status LED** (green `ACTIVE` / red `ERROR` / grey `INACTIVE`) reflects device heartbeat, polled every 10 s.
+
+---
+
+## AI-Assisted Remediation
+
+When ERROR-severity records appear in the log viewer:
+
+1. Click **"Fix with AI"** and select the error time window
+2. The backend invokes the **Bedrock AgentCore SFC Config Agent** with the error logs + current config
+3. A side-by-side diff of the corrected config is shown
+4. Click **"Create New Launch Package"** — deploys the fixed config as a new package
+
+---
+
+## Deployment
+
+```bash
+cd agents_catalog/standalone_agents/01-sfc-config-agent/cdk
+pip install -r requirements.txt
+cdk deploy
+```
+
+Key CDK outputs:
+
+| Output | Description |
+|---|---|
+| `SfcControlPlaneUiUrl` | CloudFront URL for the Control Plane SPA |
+| `SfcControlPlaneApiUrl` | API Gateway endpoint |
+| `SfcConfigBucketName` | S3 bucket (configs + packages) |
+| `AgentCoreMemoryId` | Short-term memory ID (also in SSM `/sfc-config-agent/memory-id`) |
+
+See the repository-level [deployment guide](../../../docs/deployment.md) for full instructions.
+
+---
 
 ## Project Structure
 
 ```
 01-sfc-config-agent/
-├── manifest.json            # Agent metadata & CDK infrastructure definition
-├── requirements.txt         # Python dependencies
-├── cdk/                     # CDK stack for deploying the agent infrastructure
-└── src/
-    ├── agent.py             # Main agent entry-point (AgentCore runtime)
-    ├── sfc-spec-mcp-server.py  # MCP server exposing SFC spec tools
-    ├── sfc-config-example.json # Example SFC configuration
-    └── tools/               # Internal agent tools
-        ├── data_visualizer.py
-        ├── file_operations.py
-        ├── prompt_logger.py
-        ├── sfc_knowledge.py
-        └── sfc_module_analyzer.py
-```
-
-## Prerequisites
-
-- Python 3.11+
-- AWS credentials with Amazon Bedrock access
-- Model access enabled for the configured model (default: `us.anthropic.claude-sonnet-4-5-20250929-v1:0`)
-
-## Quick Start
-
-```bash
-# Install dependencies
-pip install -r requirements.txt
-
-# Configure via environment variables
-export BEDROCK_MODEL_ID="us.anthropic.claude-sonnet-4-5-20250929-v1:0"
-export BEDROCK_REGION="us-east-1"
-export AGENTCORE_MEMORY_ID="<memory-id>"   # output of CDK deployment
-
-# Run the agent (exposes AgentCore API on port 8080)
-python -m src.agent
-```
-
-## AgentCore Memory (short-term)
-
-The CDK stack provisions a **basic AgentCore Memory** (no extraction strategies) via a Lambda-backed CloudFormation Custom Resource on first deploy. The memory ID is written to SSM parameter `/sfc-config-agent/memory-id` and must be injected into the container as the `AGENTCORE_MEMORY_ID` environment variable.
-
-Each HTTP request creates a fresh `AgentCoreMemorySessionManager` scoped to the `session_id` and `actor_id` from the request payload:
-
-| Payload key  | Required | Description |
-|---|---|---|
-| `prompt`     | yes | The user message |
-| `session_id` | no  | Stable identifier to continue a session across turns (auto-generated if omitted) |
-| `actor_id`   | no  | Stable user / actor identifier (defaults to `sfc-agent-user`) |
-
-Pass the same `session_id` on follow-up requests within a conversation to retain in-session context.
-
-## Deployment
-
-The agent includes a CDK stack (`cdk/stack.py`) for deploying supporting infrastructure:
-
-| Resource | Purpose |
-|---|---|
-| S3 Bucket | Stores agent-generated configs, results, and conversation logs |
-| DynamoDB Table | File metadata index and content cache |
-| AgentCore Memory | Short-term conversational memory (CloudFormation Custom Resource) |
-| SSM Parameters | Runtime resource discovery (`/sfc-config-agent/*`) |
-
-Refer to the repository-level [deployment guide](../../../docs/deployment.md) for full deployment instructions.
+├── manifest.json
+├── requirements.txt
+├── cdk/
+│   ├── stack.py                       # CDK stack
+│   ├── control-plane-design.md        # Architecture design document
+│   ├── openapi/control-plane-api.yaml # API spec (source of truth for API GW)
+│   └── constructs/                    # CDK constructs per subsystem
+├── src/
+│   ├── agent.py                       # AgentCore entry-point
+│   ├── sfc-spec-mcp-server.py         # MCP server (SFC spec validation tools)
+│   ├── lambda_handlers/               # Control Plane Lambda functions
+│   └── layer/sfc_cp_utils/            # Shared Lambda layer (DDB, S3, IoT helpers)
+└── ui/                                # Vite + React control plane SPA
+    └── src/
+        ├── pages/                     # ConfigBrowser, ConfigEditor, PackageList, LogViewer
+        └── components/                # MonacoJsonEditor, HeartbeatStatusLed, PackageControlPanel

@@ -142,8 +142,19 @@ def _hive_partition_prefix() -> str:
 def _generate_presigned_url(s3_key: str, expiration: int = 3600) -> Optional[str]:
     """Generate a pre-signed URL for an S3 object.
 
+    A **fresh** boto3 S3 client is created on every call with an explicit
+    ``region_name`` so that:
+      - Current STS temporary credentials are always captured (avoids
+        ``SignatureDoesNotMatch`` caused by stale credentials in a cached client).
+      - The signing region always matches the bucket's region.
+
+    The raw ``s3_key`` is passed directly to ``generate_presigned_url`` without
+    any prior URI-encoding. boto3 handles path encoding internally when building
+    the canonical request; pre-encoding the key would cause boto3 to look for a
+    literal key containing ``%3D`` (i.e. ``NoSuchKey``) instead of ``=``.
+
     Args:
-        s3_key: The S3 object key
+        s3_key: The S3 object key (raw, as stored in S3)
         expiration: URL expiration time in seconds (default: 1 hour)
 
     Returns:
@@ -154,7 +165,9 @@ def _generate_presigned_url(s3_key: str, expiration: int = 3600) -> Optional[str
         logger.error("S3 bucket name not available – cannot generate pre-signed URL")
         return None
     try:
-        url = _get_s3_client().generate_presigned_url(
+        region = os.environ.get("AWS_REGION", "eu-central-1")
+        presign_client = boto3.client("s3", region_name=region)
+        url = presign_client.generate_presigned_url(
             "get_object",
             Params={"Bucket": bucket, "Key": s3_key},
             ExpiresIn=expiration,

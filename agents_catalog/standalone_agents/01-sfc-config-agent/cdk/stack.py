@@ -19,7 +19,15 @@ from aws_cdk import (
     CfnOutput,
 )
 from cdk_nag import NagSuppressions
+import sys as _sys
+import os as _os
+_sys.path.insert(0, _os.path.join(_os.path.dirname(__file__), "constructs"))
+
 from constructs import Construct
+from launch_package_tables import LaunchPackageTables
+from control_plane_api import ControlPlaneApi
+from heartbeat_rule import SfcHeartbeatRule
+from ui_hosting import UiHosting
 
 
 class SfcConfigAgentStack(NestedStack):
@@ -144,6 +152,21 @@ class SfcConfigAgentStack(NestedStack):
             "        headers={'Content-Type': '', 'Content-Length': len(body)})\n"
             "    urllib.request.urlopen(req)\n"
             "\n"
+            "def find_existing_memory(client, name):\n"
+            "    \"\"\"Return memoryId of an existing memory with the given name, or None.\"\"\"\n"
+            "    paginator_kwargs = {}\n"
+            "    while True:\n"
+            "        resp = client.list_memories(**paginator_kwargs)\n"
+            "        for mem in resp.get('memories', []):\n"
+            "            mem_name = mem.get('name') or mem.get('memoryName', '')\n"
+            "            if mem_name == name:\n"
+            "                return mem.get('memoryId') or mem.get('id')\n"
+            "        next_token = resp.get('nextToken')\n"
+            "        if not next_token:\n"
+            "            break\n"
+            "        paginator_kwargs = {'nextToken': next_token}\n"
+            "    return None\n"
+            "\n"
             "def handler(event, context):\n"
             "    props  = event.get('ResourceProperties', {})\n"
             "    region = props.get('Region')\n"
@@ -153,34 +176,34 @@ class SfcConfigAgentStack(NestedStack):
             "        client = boto3.client('bedrock-agentcore-control',\n"
             "                              region_name=region)\n"
             "        if req_type == 'Create':\n"
-            "            resp = client.create_memory(\n"
-            "                name=props['MemoryName'],\n"
-            "                description=props['Description'],\n"
-            "                memoryExecutionRoleArn=props['MemoryExecutionRoleArn'],\n"
-            "                eventExpiryDuration=int(props.get('EventExpiryDuration', 90)),\n"
-            "                memoryStrategies=[{\n"
-            "                    'semanticMemoryStrategy': {\n"
-            "                        'name': 'sfc_semantic_memory',\n"
-            "                        'description': (\n"
-            "                            'Captures key SFC topology facts and '\n"
-            "                            'protocol preferences from conversations.'),\n"
-            "                    }\n"
-            "                }],\n"
-            "            )\n"
-            "            mem = resp.get('memory', resp)\n"
-            "            # API may return 'id' or 'memoryId' depending on SDK version\n"
-            "            memory_id = (mem.get('memoryId') or mem.get('id')\n"
-            "                         or resp.get('memoryId'))\n"
+            "            # Re-use an existing memory store with the same name if one\n"
+            "            # already exists (e.g. after a stack destroy/re-deploy cycle).\n"
+            "            memory_id = find_existing_memory(client, props['MemoryName'])\n"
             "            if not memory_id:\n"
-            "                raise KeyError('memoryId not found in response: ' + str(resp))\n"
+            "                resp = client.create_memory(\n"
+            "                    name=props['MemoryName'],\n"
+            "                    description=props['Description'],\n"
+            "                    memoryExecutionRoleArn=props['MemoryExecutionRoleArn'],\n"
+            "                    eventExpiryDuration=int(props.get('EventExpiryDuration', 90)),\n"
+            "                    memoryStrategies=[{\n"
+            "                        'semanticMemoryStrategy': {\n"
+            "                            'name': 'sfc_semantic_memory',\n"
+            "                            'description': (\n"
+            "                                'Captures key SFC topology facts and '\n"
+            "                                'protocol preferences from conversations.'),\n"
+            "                        }\n"
+            "                    }],\n"
+            "                )\n"
+            "                mem = resp.get('memory', resp)\n"
+            "                # API may return 'id' or 'memoryId' depending on SDK version\n"
+            "                memory_id = (mem.get('memoryId') or mem.get('id')\n"
+            "                             or resp.get('memoryId'))\n"
+            "                if not memory_id:\n"
+            "                    raise KeyError('memoryId not found in response: ' + str(resp))\n"
             "            send(event, context, SUCCESS,\n"
             "                 {'MemoryId': memory_id}, memory_id)\n"
             "        elif req_type == 'Delete':\n"
-            "            if physical_id and physical_id != 'pending':\n"
-            "                try:\n"
-            "                    client.delete_memory(memoryId=physical_id)\n"
-            "                except client.exceptions.ResourceNotFoundException:\n"
-            "                    pass  # already gone — not an error\n"
+            "            # Retain the memory store — do not delete it on stack teardown.\n"
             "            send(event, context, SUCCESS, {}, physical_id)\n"
             "        else:  # Update — no-op\n"
             "            send(event, context, SUCCESS, {}, physical_id)\n"
@@ -203,8 +226,8 @@ class SfcConfigAgentStack(NestedStack):
                 effect=iam.Effect.ALLOW,
                 actions=[
                     "bedrock-agentcore:CreateMemory",
-                    "bedrock-agentcore:DeleteMemory",
                     "bedrock-agentcore:GetMemory",
+                    "bedrock-agentcore:ListMemories",
                 ],
                 resources=["*"],
             )
@@ -225,6 +248,7 @@ class SfcConfigAgentStack(NestedStack):
         self.memory_resource = CustomResource(
             self, "SfcAgentCoreMemory",
             service_token=memory_handler_fn.function_arn,
+            removal_policy=RemovalPolicy.RETAIN,
             properties={
                 "Region": Stack.of(self).region,
                 "MemoryName": "sfc_config_agent_memory",
@@ -345,6 +369,44 @@ class SfcConfigAgentStack(NestedStack):
         )
 
         # ----------------------------------------------------------------
+        # WP-01: Control Plane DynamoDB Tables
+        # ----------------------------------------------------------------
+        self.cp_tables = LaunchPackageTables(self, "ControlPlaneTables")
+
+        # ----------------------------------------------------------------
+        # WP-03 / WP-04–10 / WP-12: Control Plane API (Lambda + API GW)
+        # Instantiated after tables so ARNs are available.
+        # ----------------------------------------------------------------
+        self.cp_api = ControlPlaneApi(
+            self,
+            "ControlPlaneApi",
+            configs_bucket=self.artifacts_bucket,
+            config_table=self.files_table,
+            launch_package_table=self.cp_tables.launch_package_table,
+            control_plane_state_table=self.cp_tables.control_plane_state_table,
+        )
+
+        # ----------------------------------------------------------------
+        # WP-08 (partial): IoT Heartbeat Rule
+        # ----------------------------------------------------------------
+        self.heartbeat_rule = SfcHeartbeatRule(
+            self,
+            "HeartbeatRule",
+            launch_package_table=self.cp_tables.launch_package_table,
+        )
+
+        # ----------------------------------------------------------------
+        # WP-18: CloudFront + S3 UI Hosting
+        # Disabled — using localhost app for development; re-enable for prod.
+        # ----------------------------------------------------------------
+        # self.ui_hosting = UiHosting(
+        #     self,
+        #     "UiHosting",
+        #     configs_bucket=self.artifacts_bucket,
+        #     http_api=self.cp_api.http_api,
+        # )
+
+        # ----------------------------------------------------------------
         # Outputs
         # ----------------------------------------------------------------
         CfnOutput(
@@ -366,4 +428,30 @@ class SfcConfigAgentStack(NestedStack):
             self, "SfcMemoryExecutionRoleArn",
             value=self.memory_execution_role.role_arn,
             description="IAM role ARN used by AgentCore Memory for consolidation",
+        )
+        # ── §14 CDK Outputs (control-plane-design.md) ──────────────────
+        CfnOutput(
+            self, "SfcControlPlaneApiUrl",
+            value=self.cp_api.http_api.attr_api_endpoint,
+            description="SFC Control Plane API Gateway HTTP API invoke URL",
+        )
+        # CfnOutput(
+        #     self, "SfcControlPlaneUiUrl",
+        #     value=self.ui_hosting.distribution.attr_domain_name,
+        #     description="SFC Control Plane CloudFront distribution URL",
+        # )
+        CfnOutput(
+            self, "SfcConfigBucketName",
+            value=self.artifacts_bucket.bucket_name,
+            description="S3 bucket holding configs, packages, and UI static assets",
+        )
+        CfnOutput(
+            self, "SfcLaunchPackageTableName",
+            value=self.cp_tables.launch_package_table.table_name,
+            description="DynamoDB LaunchPackageTable name",
+        )
+        CfnOutput(
+            self, "SfcControlPlaneStateTableName",
+            value=self.cp_tables.control_plane_state_table.table_name,
+            description="DynamoDB ControlPlaneStateTable name",
         )
