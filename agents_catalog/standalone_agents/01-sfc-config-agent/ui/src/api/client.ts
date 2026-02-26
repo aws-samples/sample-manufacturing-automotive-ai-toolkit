@@ -141,10 +141,13 @@ export const setFocus = (configId: string, version: string) =>
     .post<FocusState>(`/configs/${configId}/focus`, { version })
     .then((r) => r.data);
 
+export const clearFocus = () =>
+  api.delete<FocusState>("/configs/focus").then((r) => r.data);
+
 // ─── Package endpoints ───────────────────────────────────────────────────────
 
 export const listPackages = () =>
-  api.get<LaunchPackage[]>("/packages").then((r) => r.data);
+  api.get<{ packages: LaunchPackage[] }>("/packages").then((r) => r.data.packages ?? []);
 
 export const getPackage = (packageId: string) =>
   api.get<LaunchPackage>(`/packages/${packageId}`).then((r) => r.data);
@@ -161,8 +164,8 @@ export const deletePackage = (packageId: string) =>
 
 export const getPackageDownloadUrl = (packageId: string) =>
   api
-    .get<{ url: string }>(`/packages/${packageId}/download`)
-    .then((r) => r.data.url);
+    .get<{ downloadUrl: string }>(`/packages/${packageId}/download`)
+    .then((r) => r.data.downloadUrl);
 
 // ─── Logs endpoints ──────────────────────────────────────────────────────────
 

@@ -118,6 +118,24 @@ paths:
         httpMethod: POST
         uri: "${FnConfigsArn}"
         payloadFormatVersion: "2.0"
+    delete:
+      operationId: clearConfigFocus
+      summary: Clear the current config focus (no config in focus)
+      tags: [configs]
+      responses:
+        "200":
+          description: Focus cleared
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/FocusState"
+        "500":
+          $ref: "#/components/responses/InternalError"
+      x-amazon-apigateway-integration:
+        type: aws_proxy
+        httpMethod: POST
+        uri: "${FnConfigsArn}"
+        payloadFormatVersion: "2.0"
 
   /configs/{configId}:
     get:

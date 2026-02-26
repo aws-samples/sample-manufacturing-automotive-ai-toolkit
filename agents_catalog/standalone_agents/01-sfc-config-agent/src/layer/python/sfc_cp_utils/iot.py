@@ -191,28 +191,36 @@ def derive_iam_policy_statements(sfc_config: dict, package_id: str, region: str,
         targets = {t.get("Name", str(i)): t for i, t in enumerate(targets)}
 
     for _name, target in targets.items():
-        target_type = target.get("TargetType") or target.get("Type") or ""
-        if "IoTSiteWise" in target_type or "AwsSiteWise" in target_type:
+        if not isinstance(target, dict):
+            continue
+        target_type = (
+            target.get("TargetType")
+            or target.get("Type")
+            or target.get("targetType")
+            or ""
+        )
+        t = target_type.lower()
+        if any(k in t for k in ("sitewise", "iotsitewise", "awssitewise")):
             statements.append({
                 "Effect": "Allow",
                 "Action": ["iotsitewise:BatchPutAssetPropertyValue"],
                 "Resource": "*",
             })
-        elif "Kinesis" in target_type:
+        elif "kinesis" in t:
             stream_arn = target.get("StreamArn", f"arn:aws:kinesis:{region}:{account_id}:stream/*")
             statements.append({
                 "Effect": "Allow",
                 "Action": ["kinesis:PutRecord", "kinesis:PutRecords"],
                 "Resource": stream_arn,
             })
-        elif "S3" in target_type:
-            bucket_arn = target.get("BucketArn", f"arn:aws:s3:::*")
+        elif "s3" in t:
+            bucket_arn = target.get("BucketArn", "arn:aws:s3:::*")
             statements.append({
                 "Effect": "Allow",
                 "Action": ["s3:PutObject"],
                 "Resource": f"{bucket_arn}/*",
             })
-        elif "IoT" in target_type or "Mqtt" in target_type:
+        elif any(k in t for k in ("iotmqtt", "mqtt", "awsiot")):
             topic = target.get("TopicName", "*")
             topic_arn = f"arn:aws:iot:{region}:{account_id}:topic/{topic}"
             statements.append({
@@ -220,13 +228,18 @@ def derive_iam_policy_statements(sfc_config: dict, package_id: str, region: str,
                 "Action": ["iot:Publish"],
                 "Resource": topic_arn,
             })
+        elif "timestream" in t:
+            statements.append({
+                "Effect": "Allow",
+                "Action": [
+                    "timestream:WriteRecords",
+                    "timestream:DescribeEndpoints",
+                ],
+                "Resource": "*",
+            })
 
-    # IoT credential provider (always required for mTLS credential vending)
-    statements.append({
-        "Effect": "Allow",
-        "Action": ["iot:AssumeRoleWithCertificate"],
-        "Resource": f"arn:aws:iot:{region}:{account_id}:rolealias/sfc-role-alias-{package_id}",
-    })
+    # Note: iot:AssumeRoleWithCertificate is an IoT policy action (not IAM).
+    # It is added to the IoT device policy in _build_iot_policy(), NOT here.
 
     return statements
 
@@ -237,6 +250,7 @@ def derive_iam_policy_statements(sfc_config: dict, package_id: str, region: str,
 
 def _build_iot_policy(package_id: str, region: str, account_id: str) -> dict:
     thing_name = f"sfc-{package_id}"
+    role_alias_name = f"sfc-role-alias-{package_id}"
     return {
         "Version": "2012-10-17",
         "Statement": [
@@ -259,6 +273,13 @@ def _build_iot_policy(package_id: str, region: str, account_id: str) -> dict:
                 "Effect": "Allow",
                 "Action": "iot:Publish",
                 "Resource": f"arn:aws:iot:{region}:{account_id}:topic/sfc/{package_id}/heartbeat",
+            },
+            {
+                # Required for the IoT credential provider endpoint to accept
+                # the device certificate and vend temporary AWS credentials.
+                "Effect": "Allow",
+                "Action": "iot:AssumeRoleWithCertificate",
+                "Resource": f"arn:aws:iot:{region}:{account_id}:rolealias/{role_alias_name}",
             },
         ],
     }

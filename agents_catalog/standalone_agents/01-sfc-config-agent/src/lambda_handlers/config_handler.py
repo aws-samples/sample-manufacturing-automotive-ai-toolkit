@@ -73,6 +73,13 @@ def handler(event: dict, context) -> dict:
         if path == "/configs/focus" and method == "GET":
             return _get_focus()
 
+        if path == "/configs/focus" and method == "DELETE":
+            return _clear_focus()
+
+        if method == "DELETE" and config_id and not path.endswith("/focus"):
+            config_id = path_params.get("configId")
+            return _delete_config(config_id)
+
         if path.endswith("/focus") and method == "POST":
             config_id = path_params.get("configId")
             body = _parse_body(event)
@@ -117,10 +124,13 @@ def _list_configs() -> dict:
         ScanIndexForward=False,
     )
     all_items = resp.get("Items", [])
-    # De-duplicate: keep the newest version per configId
+    # De-duplicate: keep the newest version per configId.
+    # Skip items that lack configId — these are legacy agent base64-index records.
     latest: dict[str, dict] = {}
     for item in all_items:
-        cid = item.get("configId", "")
+        cid = item.get("configId")
+        if not cid:
+            continue
         existing = latest.get(cid)
         if existing is None or item.get("version", "") > existing.get("version", ""):
             latest[cid] = item
@@ -133,6 +143,17 @@ def _get_focus() -> dict:
     if not state:
         return _ok({"stateKey": "global", "focusedConfigId": None, "focusedConfigVersion": None})
     return _ok(state)
+
+
+def _clear_focus() -> dict:
+    """Clear the focused config — writes a state record with null focus fields."""
+    _state_table.put_item(Item={
+        "stateKey": "global",
+        "focusedConfigId": None,
+        "focusedConfigVersion": None,
+        "updatedAt": datetime.now(timezone.utc).isoformat(),
+    })
+    return _ok({"stateKey": "global", "focusedConfigId": None, "focusedConfigVersion": None})
 
 
 def _set_focus(config_id: str | None, version: str | None) -> dict:

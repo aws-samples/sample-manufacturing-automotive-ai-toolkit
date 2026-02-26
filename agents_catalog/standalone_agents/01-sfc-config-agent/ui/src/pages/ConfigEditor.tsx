@@ -33,6 +33,7 @@ export default function ConfigEditor() {
 
   const [content, setContent] = useState("{}");
   const [selectedVersion, setSelectedVersion] = useState("");
+  const [editingName, setEditingName] = useState("");
 
   useEffect(() => {
     if (cfg?.content != null) {
@@ -42,6 +43,7 @@ export default function ConfigEditor() {
       );
     }
     if (cfg?.version && !selectedVersion) setSelectedVersion(cfg.version);
+    if (cfg?.name && !editingName) setEditingName(cfg.name);
   }, [cfg]);
 
   // Load a specific version
@@ -56,7 +58,7 @@ export default function ConfigEditor() {
   const saveMut = useMutation({
     mutationFn: () =>
       saveConfig(configId!, {
-        name: cfg?.name ?? configId!,
+        name: editingName || cfg?.name || configId!,
         description: cfg?.description,
         content,
       }),
@@ -92,9 +94,16 @@ export default function ConfigEditor() {
     <div className="p-6 max-w-6xl mx-auto flex flex-col gap-4 h-[calc(100vh-7rem)]">
       {/* Toolbar */}
       <div className="flex items-center gap-3 flex-wrap">
-        <div>
-          <h1 className="text-base font-semibold">{cfg.name}</h1>
-          <p className="text-xs text-slate-500 font-mono">{configId}</p>
+        <div className="flex flex-col gap-1">
+          <input
+            className="bg-transparent border border-transparent hover:border-[#2a3044] focus:border-[#4a5568] rounded px-2 py-0.5 text-base font-semibold text-slate-100 outline-none transition-colors w-56"
+            value={editingName}
+            onChange={(e) => setEditingName(e.target.value)}
+            onBlur={() => { if (!editingName.trim()) setEditingName(cfg.name); }}
+            title="Click to edit config name"
+            placeholder="Config name"
+          />
+          <p className="text-xs text-slate-500 font-mono px-2">{configId}</p>
         </div>
 
         {/* Version picker */}
@@ -132,9 +141,10 @@ export default function ConfigEditor() {
           </button>
 
           <button
-            className="btn btn-secondary"
-            disabled={packageMut.isPending}
+            className="btn btn-secondary disabled:opacity-40 disabled:cursor-not-allowed"
+            disabled={packageMut.isPending || !isFocused}
             onClick={() => packageMut.mutate()}
+            title={isFocused ? "Create a launch package from this focused config version" : "Set this version as Focus first to create a launch package"}
           >
             {packageMut.isPending ? <span className="spinner" /> : "Create Launch Package"}
           </button>

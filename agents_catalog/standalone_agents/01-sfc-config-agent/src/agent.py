@@ -217,8 +217,9 @@ class SFCWizardAgent:
         def save_config_to_file(config_json: str, filename: str) -> str:
             """Save an SFC configuration as a JSON file to cloud storage (S3 bucket and DynamoDB index).
 
-            The file is uploaded to the S3 artifacts bucket under a date-partitioned prefix
-            (year=YYYY/month=MM/day=DD/hour=HH/) and indexed in the DynamoDB files table.
+            The file is uploaded to the S3 artifacts bucket under configs/YYYY/MM/DD/HH/<filename>
+            and a control-plane record (configId/version/name/s3Key) is written to DynamoDB so
+            the config appears in the Control Plane UI Config Browser.
             The tool returns a pre-signed S3 download URL as a markdown hyperlink.
             IMPORTANT: Always include the pre-signed download link from the tool response
             in your reply to the user so they can download the saved file directly.
@@ -233,8 +234,8 @@ class SFCWizardAgent:
         def save_results_to_file(content: str, filename: str) -> str:
             """Save content to cloud storage (S3 bucket and DynamoDB index) with specified extension (txt, vm, md).
 
-            The file is uploaded to the S3 artifacts bucket under a date-partitioned prefix
-            (year=YYYY/month=MM/day=DD/hour=HH/) and indexed in the DynamoDB files table.
+            The file is uploaded to the S3 artifacts bucket under results/YYYY/MM/DD/HH/<filename>
+            and indexed in the DynamoDB files table.
             The tool returns a pre-signed S3 download URL as a markdown hyperlink.
             IMPORTANT: Always include the pre-signed download link from the tool response
             in your reply to the user so they can download the saved file directly.
@@ -250,8 +251,8 @@ class SFCWizardAgent:
             """Save the last N conversation exchanges as markdown files to cloud storage (S3 and DynamoDB).
 
             Each file contains a user prompt and the agent's response, formatted in markdown.
-            Files are stored in the S3 artifacts bucket under a date-partitioned prefix
-            (year=YYYY/month=MM/day=DD/hour=HH/) and indexed in DynamoDB.
+            Files are stored in the S3 artifacts bucket under conversations/YYYY/MM/DD/HH/
+            and indexed in DynamoDB.
             The tool returns a pre-signed S3 download URL as a markdown hyperlink.
             IMPORTANT: Always include the pre-signed download link from the tool response
             in your reply to the user so they can download the saved file directly.
@@ -384,7 +385,10 @@ AGENT_SYSTEM_PROMPT = (
     "Always explain your reasoning and cite sources when possible. "
     "Keep your responses clean and professional. Do not use icons or emojis unless they are truly essential to convey meaning "
     "(e.g., a warning symbol for critical errors). Prefer plain text for clarity. "
-    "Do not use LLM knowledge."
+    "Do not use LLM knowledge. "
+    "CRITICAL: When a tool returns a pre-signed S3 URL or a markdown download link, you MUST copy it into your response "
+    "character-for-character, exactly as the tool returned it. Never rewrite, shorten, paraphrase, or reconstruct any URL — "
+    "any modification will break the cryptographic signature and make the link invalid."
 )
 
 

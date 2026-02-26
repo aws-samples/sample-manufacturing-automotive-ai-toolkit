@@ -1,6 +1,6 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "react-router-dom";
-import { listPackages, deletePackage, createGgComponent } from "../api/client";
+import { listPackages, deletePackage, createGgComponent, listConfigs } from "../api/client";
 import StatusBadge from "../components/StatusBadge";
 import HeartbeatStatusLed from "../components/HeartbeatStatusLed";
 
@@ -13,6 +13,15 @@ export default function PackageList() {
     queryFn: listPackages,
     refetchInterval: 15_000,
   });
+
+  const { data: configs } = useQuery({
+    queryKey: ["configs"],
+    queryFn: listConfigs,
+  });
+
+  const configNameMap = Object.fromEntries(
+    (configs ?? []).map((c) => [c.configId, c.name])
+  );
 
   const deleteMut = useMutation({
     mutationFn: (id: string) => deletePackage(id),
@@ -69,7 +78,14 @@ export default function PackageList() {
                     {pkg.packageId}
                   </td>
                   <td>
-                    <div className="text-sm">{pkg.configId}</div>
+                    {configNameMap[pkg.configId] && (
+                      <div className="text-sm font-medium text-slate-200">
+                        {configNameMap[pkg.configId]}
+                      </div>
+                    )}
+                    <div className="text-xs text-slate-500 font-mono truncate max-w-[160px]">
+                      {pkg.configId}
+                    </div>
                     <div className="text-xs text-slate-500 font-mono truncate max-w-[160px]">
                       {pkg.configVersion}
                     </div>

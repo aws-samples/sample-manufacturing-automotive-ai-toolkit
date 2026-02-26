@@ -1,6 +1,6 @@
 import { useParams, useNavigate } from "react-router-dom";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { getPackage, getPackageDownloadUrl, triggerRemediation } from "../api/client";
+import { getPackage, getPackageDownloadUrl, triggerRemediation, getConfig } from "../api/client";
 import StatusBadge from "../components/StatusBadge";
 import PackageControlPanel from "../components/PackageControlPanel";
 import { useState } from "react";
@@ -15,6 +15,12 @@ export default function PackageDetail() {
     queryFn: () => getPackage(packageId!),
     enabled: !!packageId,
     refetchInterval: 20_000,
+  });
+
+  const { data: configMeta } = useQuery({
+    queryKey: ["config", pkg?.configId],
+    queryFn: () => getConfig(pkg!.configId),
+    enabled: !!pkg?.configId,
   });
 
   const [remediating, setRemediating] = useState(false);
@@ -55,6 +61,9 @@ export default function PackageDetail() {
           {/* Info card */}
           <div className="card space-y-3">
             <p className="text-xs font-medium text-slate-500 mb-1">Package Info</p>
+            {configMeta?.name && configMeta.name !== pkg.configId && (
+              <Row label="Config Name" value={configMeta.name} />
+            )}
             <Row label="Config ID" value={pkg.configId} mono />
             <Row label="Config Version" value={pkg.configVersion} mono />
             <Row

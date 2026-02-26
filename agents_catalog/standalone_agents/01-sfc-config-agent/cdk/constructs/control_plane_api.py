@@ -144,6 +144,7 @@ class ControlPlaneApi(Construct):
         configs_bucket.grant_read_write(self.fn_launch_pkg)
         config_table.grant_read_data(self.fn_launch_pkg)
         launch_package_table.grant_read_write_data(self.fn_launch_pkg)
+        control_plane_state_table.grant_read_data(self.fn_launch_pkg)
         self._grant_iot_provisioning_permissions(self.fn_launch_pkg, region, account)
 
         # ----------------------------------------------------------------

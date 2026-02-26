@@ -87,6 +87,21 @@ def _create_package(body: dict) -> dict:
         config_id = state["focusedConfigId"]
         config_version = config_version or state.get("focusedConfigVersion")
 
+    # Enforce: only the currently focused config/version may create a package
+    focused_state = ddb_util.get_control_state(_state_table)
+    focused_id = (focused_state or {}).get("focusedConfigId")
+    focused_ver = (focused_state or {}).get("focusedConfigVersion")
+    if focused_id != config_id or (config_version and focused_ver != config_version):
+        return _error(
+            400,
+            "NOT_FOCUSED",
+            f"Only the focused config version can be used to create a launch package. "
+            f"Currently focused: {focused_id} @ {focused_ver}",
+        )
+    # Use the focused version if not explicitly overridden
+    if not config_version:
+        config_version = focused_ver
+
     # Load SFC config (using file_type/sort_key schema of SFC_Agent_Files table)
     cfg_item = _ddb_get_config(_cfg_table, config_id, config_version)
     if not cfg_item:

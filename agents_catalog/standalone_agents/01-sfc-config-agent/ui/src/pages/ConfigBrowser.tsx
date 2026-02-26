@@ -1,6 +1,6 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "react-router-dom";
-import { listConfigs, createConfig } from "../api/client";
+import { listConfigs, createConfig, getFocus } from "../api/client";
 import StatusBadge from "../components/StatusBadge";
 import { useState } from "react";
 
@@ -12,6 +12,13 @@ export default function ConfigBrowser() {
     queryFn: listConfigs,
   });
   const configs = Array.isArray(rawConfigs) ? rawConfigs : [];
+
+  const { data: focus } = useQuery({
+    queryKey: ["focus"],
+    queryFn: getFocus,
+    staleTime: 30_000,
+  });
+  const focusedConfigId = focus?.focusedConfigId;
 
   const [showNew, setShowNew] = useState(false);
   const [newName, setNewName] = useState("");
@@ -58,13 +65,22 @@ export default function ConfigBrowser() {
               </tr>
             </thead>
             <tbody>
-              {configs.map((c) => (
+              {configs.map((c) => {
+                const isFocused = c.configId === focusedConfigId;
+                return (
                 <tr
                   key={c.configId}
-                  className="cursor-pointer"
+                  className={`cursor-pointer ${isFocused ? "bg-sky-950/40 hover:bg-sky-950/60" : ""}`}
                   onClick={() => navigate(`/configs/${c.configId}`)}
                 >
-                  <td className="font-medium">{c.name}</td>
+                  <td className="font-medium flex items-center gap-2">
+                    {c.name}
+                    {isFocused && (
+                      <span className="text-[10px] font-mono font-semibold bg-sky-900/60 text-sky-300 border border-sky-700 rounded px-1.5 py-0.5 leading-none">
+                        FOCUS
+                      </span>
+                    )}
+                  </td>
                   <td className="font-mono text-xs text-slate-400">{c.configId}</td>
                   <td className="font-mono text-xs text-slate-400 max-w-[200px] truncate">
                     {c.version}
@@ -87,7 +103,8 @@ export default function ConfigBrowser() {
                     </button>
                   </td>
                 </tr>
-              ))}
+              );
+              })}
             </tbody>
           </table>
         </div>
