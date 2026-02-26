@@ -14,7 +14,7 @@ export default function MonacoJsonEditor({
   height = "500px",
 }: Props) {
   return (
-    <div className="rounded overflow-hidden border border-[#2a3044]">
+    <div className="h-full rounded overflow-hidden border border-[#2a3044]">
       <Editor
         height={height}
         language="json"

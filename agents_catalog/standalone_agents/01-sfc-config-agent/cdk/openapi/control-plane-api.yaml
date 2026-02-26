@@ -70,6 +70,32 @@ paths:
         httpMethod: POST
         uri: "${FnConfigsArn}"
         payloadFormatVersion: "2.0"
+    post:
+      operationId: createConfig
+      summary: Create a new SFC configuration
+      tags: [configs]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateConfigRequest"
+      responses:
+        "200":
+          description: Configuration created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ConfigSummary"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "500":
+          $ref: "#/components/responses/InternalError"
+      x-amazon-apigateway-integration:
+        type: aws_proxy
+        httpMethod: POST
+        uri: "${FnConfigsArn}"
+        payloadFormatVersion: "2.0"
 
   /configs/focus:
     get:
@@ -924,6 +950,18 @@ components:
           type: string
           format: date-time
       required: [stateKey]
+
+    CreateConfigRequest:
+      type: object
+      properties:
+        name:
+          type: string
+        description:
+          type: string
+        content:
+          type: object
+          additionalProperties: true
+      required: [name, content]
 
     SaveConfigRequest:
       type: object

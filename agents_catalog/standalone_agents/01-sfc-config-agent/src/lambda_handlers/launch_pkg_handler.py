@@ -4,7 +4,32 @@ from __future__ import annotations
 import io, json, logging, os, uuid, zipfile
 from datetime import datetime, timezone
 import boto3 #requests
+from boto3.dynamodb.conditions import Key
 from sfc_cp_utils import ddb as ddb_util, s3 as s3_util, iot as iot_util
+
+# SFC_Agent_Files table key helpers (PK=file_type, SK=sort_key)
+_FILE_TYPE_CONFIG = "config"
+
+def _config_sort_key(config_id: str, version: str) -> str:
+    return f"{config_id}#{version}"
+
+def _ddb_get_config(cfg_table, config_id: str, version: str | None = None) -> dict | None:
+    """Fetch a config item using the file_type/sort_key schema of SFC_Agent_Files."""
+    if version:
+        resp = cfg_table.get_item(
+            Key={"file_type": _FILE_TYPE_CONFIG, "sort_key": _config_sort_key(config_id, version)}
+        )
+        return resp.get("Item")
+    resp = cfg_table.query(
+        KeyConditionExpression=(
+            Key("file_type").eq(_FILE_TYPE_CONFIG)
+            & Key("sort_key").begins_with(f"{config_id}#")
+        ),
+        ScanIndexForward=False,
+        Limit=1,
+    )
+    items = resp.get("Items", [])
+    return items[0] if items else None
 
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
@@ -62,8 +87,8 @@ def _create_package(body: dict) -> dict:
         config_id = state["focusedConfigId"]
         config_version = config_version or state.get("focusedConfigVersion")
 
-    # Load SFC config
-    cfg_item = ddb_util.get_config(_cfg_table, config_id, config_version)
+    # Load SFC config (using file_type/sort_key schema of SFC_Agent_Files table)
+    cfg_item = _ddb_get_config(_cfg_table, config_id, config_version)
     if not cfg_item:
         return _error(404, "NOT_FOUND", f"Config {config_id}/{config_version} not found")
     s3_key = cfg_item.get("s3Key") or s3_util.config_s3_key(config_id, cfg_item["version"])

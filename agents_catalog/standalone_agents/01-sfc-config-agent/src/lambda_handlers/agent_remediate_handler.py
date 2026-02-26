@@ -14,7 +14,42 @@ from __future__ import annotations
 import json, logging, os, re, uuid
 from datetime import datetime, timezone
 import boto3
+from boto3.dynamodb.conditions import Key
 from sfc_cp_utils import ddb as ddb_util, s3 as s3_util
+
+# SFC_Agent_Files table key helpers (PK=file_type, SK=sort_key)
+_FILE_TYPE_CONFIG = "config"
+
+def _config_sort_key(config_id: str, version: str) -> str:
+    return f"{config_id}#{version}"
+
+def _ddb_get_config(cfg_table, config_id: str, version: str | None = None) -> dict | None:
+    """Fetch a config item using the file_type/sort_key schema of SFC_Agent_Files."""
+    if version:
+        resp = cfg_table.get_item(
+            Key={"file_type": _FILE_TYPE_CONFIG, "sort_key": _config_sort_key(config_id, version)}
+        )
+        return resp.get("Item")
+    resp = cfg_table.query(
+        KeyConditionExpression=(
+            Key("file_type").eq(_FILE_TYPE_CONFIG)
+            & Key("sort_key").begins_with(f"{config_id}#")
+        ),
+        ScanIndexForward=False,
+        Limit=1,
+    )
+    items = resp.get("Items", [])
+    return items[0] if items else None
+
+def _ddb_put_config(cfg_table, item: dict) -> None:
+    """Write a config item using the file_type/sort_key schema of SFC_Agent_Files."""
+    config_id = item["configId"]
+    version = item["version"]
+    cfg_table.put_item(Item={
+        "file_type": _FILE_TYPE_CONFIG,
+        "sort_key": _config_sort_key(config_id, version),
+        **item,
+    })
 
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
@@ -87,7 +122,7 @@ def _trigger_remediation(pkg: dict, body: dict) -> dict:
     # Fetch current SFC config
     config_id = pkg.get("configId", "")
     config_version = pkg.get("configVersion", "")
-    cfg_item = ddb_util.get_config(_cfg_table, config_id, config_version)
+    cfg_item = _ddb_get_config(_cfg_table, config_id, config_version)
     if not cfg_item:
         return _error(404, "NOT_FOUND", f"Config {config_id}/{config_version} not found")
     s3_key = cfg_item.get("s3Key") or s3_util.config_s3_key(config_id, cfg_item["version"])
@@ -114,7 +149,7 @@ def _trigger_remediation(pkg: dict, body: dict) -> dict:
     new_version = datetime.now(timezone.utc).isoformat()
     new_s3_key = s3_util.config_s3_key(config_id, new_version)
     s3_util.put_config_json(CONFIGS_BUCKET, new_s3_key, corrected_config)
-    ddb_util.put_config(_cfg_table, {
+    _ddb_put_config(_cfg_table, {
         "configId": config_id,
         "version": new_version,
         "name": cfg_item.get("name", config_id),

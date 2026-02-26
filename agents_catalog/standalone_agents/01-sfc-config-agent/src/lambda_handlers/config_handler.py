@@ -1,8 +1,9 @@
 """
 WP-04 — fn-configs Lambda handler.
 
-Covers all 7 config management endpoints:
+Covers all 8 config management endpoints:
   GET    /configs
+  POST   /configs
   GET    /configs/focus
   POST   /configs/{configId}/focus
   GET    /configs/{configId}
@@ -16,9 +17,12 @@ from __future__ import annotations
 import json
 import logging
 import os
+import uuid
 from datetime import datetime, timezone
 
 import boto3
+
+from boto3.dynamodb.conditions import Key
 
 from sfc_cp_utils import ddb as ddb_util
 from sfc_cp_utils import s3 as s3_util
@@ -34,6 +38,16 @@ STATE_TABLE_NAME = os.environ["STATE_TABLE_NAME"]
 _dynamodb = boto3.resource("dynamodb")
 _config_table = _dynamodb.Table(CONFIG_TABLE_NAME)
 _state_table = _dynamodb.Table(STATE_TABLE_NAME)
+
+# The SFC_Agent_Files table uses PK=file_type / SK=sort_key.
+# For configs we use:
+#   file_type = "config"
+#   sort_key  = "{configId}#{version}"
+# This allows querying all versions of a configId with begins_with.
+_FILE_TYPE_CONFIG = "config"
+
+def _config_sort_key(config_id: str, version: str) -> str:
+    return f"{config_id}#{version}"
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -51,6 +65,10 @@ def handler(event: dict, context) -> dict:
         # Route dispatch
         if path == "/configs" and method == "GET":
             return _list_configs()
+
+        if path == "/configs" and method == "POST":
+            body = _parse_body(event)
+            return _create_config(body)
 
         if path == "/configs/focus" and method == "GET":
             return _get_focus()
@@ -89,8 +107,16 @@ def handler(event: dict, context) -> dict:
 # ─────────────────────────────────────────────────────────────────────────────
 
 def _list_configs() -> dict:
-    """Return one summary entry per configId (latest version only)."""
-    all_items = ddb_util.list_configs(_config_table)
+    """Return one summary entry per configId (latest version only).
+    The underlying table is SFC_Agent_Files (PK=file_type, SK=sort_key).
+    We query by PK='config' to retrieve all config records, then
+    de-duplicate to keep the newest version per configId.
+    """
+    resp = _config_table.query(
+        KeyConditionExpression=Key("file_type").eq(_FILE_TYPE_CONFIG),
+        ScanIndexForward=False,
+    )
+    all_items = resp.get("Items", [])
     # De-duplicate: keep the newest version per configId
     latest: dict[str, dict] = {}
     for item in all_items:
@@ -98,7 +124,7 @@ def _list_configs() -> dict:
         existing = latest.get(cid)
         if existing is None or item.get("version", "") > existing.get("version", ""):
             latest[cid] = item
-    configs = [_strip_content(i) for i in latest.values()]
+    configs = [_strip_content(_to_api(i)) for i in latest.values()]
     return _ok({"configs": configs})
 
 
@@ -113,7 +139,7 @@ def _set_focus(config_id: str | None, version: str | None) -> dict:
     if not config_id or not version:
         return _error(400, "BAD_REQUEST", "configId path param and version body field are required")
     # Validate the config/version exists
-    item = ddb_util.get_config(_config_table, config_id, version)
+    item = _ddb_get_config(config_id, version)
     if not item:
         return _error(404, "NOT_FOUND", f"Config {config_id}/{version} not found")
     state = ddb_util.set_focused_config(_state_table, config_id, version)
@@ -121,39 +147,67 @@ def _set_focus(config_id: str | None, version: str | None) -> dict:
 
 
 def _get_config(config_id: str) -> dict:
-    item = ddb_util.get_config(_config_table, config_id)
+    item = _ddb_get_config(config_id)
     if not item:
         return _error(404, "NOT_FOUND", f"Config {config_id} not found")
-    # Fetch content from S3
-    s3_key = item.get("s3Key") or s3_util.config_s3_key(config_id, item["version"])
+    api_item = _to_api(item)
+    s3_key = api_item.get("s3Key") or s3_util.config_s3_key(config_id, api_item["version"])
     try:
         content = s3_util.get_config_json(CONFIGS_BUCKET, s3_key)
     except Exception:
         content = None
-    result = dict(item)
+    result = dict(api_item)
     result["content"] = content
     return _ok(result)
 
 
 def _list_config_versions(config_id: str) -> dict:
-    versions = ddb_util.list_config_versions(_config_table, config_id)
-    if not versions:
+    resp = _config_table.query(
+        KeyConditionExpression=(
+            Key("file_type").eq(_FILE_TYPE_CONFIG)
+            & Key("sort_key").begins_with(f"{config_id}#")
+        ),
+        ScanIndexForward=False,
+    )
+    items = resp.get("Items", [])
+    if not items:
         return _error(404, "NOT_FOUND", f"No versions found for configId {config_id}")
-    return _ok({"versions": [_strip_content(v) for v in versions]})
+    return _ok({"versions": [_strip_content(_to_api(i)) for i in items]})
 
 
 def _get_config_version(config_id: str, version: str) -> dict:
-    item = ddb_util.get_config(_config_table, config_id, version)
+    item = _ddb_get_config(config_id, version)
     if not item:
         return _error(404, "NOT_FOUND", f"Config {config_id}/{version} not found")
-    s3_key = item.get("s3Key") or s3_util.config_s3_key(config_id, version)
+    api_item = _to_api(item)
+    s3_key = api_item.get("s3Key") or s3_util.config_s3_key(config_id, version)
     try:
         content = s3_util.get_config_json(CONFIGS_BUCKET, s3_key)
     except Exception:
         content = None
-    result = dict(item)
+    result = dict(api_item)
     result["content"] = content
     return _ok(result)
+
+
+def _create_config(body: dict) -> dict:
+    """Create a new config with a freshly generated configId."""
+    name = body.get("name", "").strip()
+    if not name:
+        return _error(400, "BAD_REQUEST", "Request body must include 'name'")
+
+    raw_content = body.get("content", {})
+    # Accept a JSON string (e.g. "{}") or a dict
+    if isinstance(raw_content, str):
+        try:
+            raw_content = json.loads(raw_content)
+        except json.JSONDecodeError:
+            return _error(400, "BAD_REQUEST", "'content' must be a valid JSON object or JSON string")
+    if not isinstance(raw_content, dict):
+        return _error(400, "BAD_REQUEST", "'content' must be a JSON object")
+
+    config_id = str(uuid.uuid4())
+    return _save_config(config_id, {**body, "content": raw_content})
 
 
 def _save_config(config_id: str, body: dict) -> dict:
@@ -169,8 +223,10 @@ def _save_config(config_id: str, body: dict) -> dict:
     # Write to S3
     s3_util.put_config_json(CONFIGS_BUCKET, s3_key, content)
 
-    # Write metadata to DDB
+    # Write metadata to DDB using the file_type/sort_key schema
     item = {
+        "file_type": _FILE_TYPE_CONFIG,
+        "sort_key": _config_sort_key(config_id, version),
         "configId": config_id,
         "version": version,
         "name": body.get("name", config_id),
@@ -179,14 +235,50 @@ def _save_config(config_id: str, body: dict) -> dict:
         "status": "active",
         "createdAt": version,
     }
-    ddb_util.put_config(_config_table, item)
+    _config_table.put_item(Item=item)
 
-    return _ok(_strip_content(item))
+    return _ok(_strip_content(_to_api(item)))
 
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Helpers
 # ─────────────────────────────────────────────────────────────────────────────
+
+def _ddb_get_config(config_id: str, version: str | None = None) -> dict | None:
+    """
+    Fetch a config item from the SFC_Agent_Files table (PK=file_type, SK=sort_key).
+    If *version* is None, returns the latest version for the given configId.
+    """
+    if version:
+        resp = _config_table.get_item(
+            Key={
+                "file_type": _FILE_TYPE_CONFIG,
+                "sort_key": _config_sort_key(config_id, version),
+            }
+        )
+        return resp.get("Item")
+
+    # Query all versions for this configId (sort_key begins_with configId#),
+    # sorted descending so the first result is the latest.
+    resp = _config_table.query(
+        KeyConditionExpression=(
+            Key("file_type").eq(_FILE_TYPE_CONFIG)
+            & Key("sort_key").begins_with(f"{config_id}#")
+        ),
+        ScanIndexForward=False,
+        Limit=1,
+    )
+    items = resp.get("Items", [])
+    return items[0] if items else None
+
+
+def _to_api(item: dict) -> dict:
+    """
+    Strip internal DynamoDB key fields (file_type, sort_key) from a table item
+    so the API response only contains the logical config fields.
+    """
+    return {k: v for k, v in item.items() if k not in ("file_type", "sort_key")}
+
 
 def _parse_body(event: dict) -> dict:
     raw = event.get("body") or "{}"

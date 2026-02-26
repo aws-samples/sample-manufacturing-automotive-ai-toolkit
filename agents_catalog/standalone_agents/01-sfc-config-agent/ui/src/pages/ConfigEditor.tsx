@@ -35,14 +35,22 @@ export default function ConfigEditor() {
   const [selectedVersion, setSelectedVersion] = useState("");
 
   useEffect(() => {
-    if (cfg?.content) setContent(cfg.content);
+    if (cfg?.content != null) {
+      const raw = cfg.content;
+      setContent(
+        typeof raw === "string" ? raw : JSON.stringify(raw, null, 2)
+      );
+    }
     if (cfg?.version && !selectedVersion) setSelectedVersion(cfg.version);
   }, [cfg]);
 
   // Load a specific version
   const loadVersionMut = useMutation({
     mutationFn: (v: string) => getConfigVersion(configId!, v),
-    onSuccess: (data) => setContent(data.content),
+    onSuccess: (data) => {
+      const raw = data.content;
+      setContent(typeof raw === "string" ? raw : JSON.stringify(raw, null, 2));
+    },
   });
 
   const saveMut = useMutation({

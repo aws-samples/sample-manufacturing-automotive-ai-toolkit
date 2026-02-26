@@ -87,13 +87,13 @@ export interface RemediationResponse {
 // ─── Config endpoints ────────────────────────────────────────────────────────
 
 export const listConfigs = () =>
-  api.get<ConfigItem[]>("/configs").then((r) => r.data);
+  api.get<{ configs: ConfigItem[] }>("/configs").then((r) => r.data.configs ?? []);
 
 export const getConfig = (configId: string) =>
   api.get<ConfigItem & { content?: string }>(`/configs/${configId}`).then((r) => r.data);
 
 export const listConfigVersions = (configId: string) =>
-  api.get<ConfigItem[]>(`/configs/${configId}/versions`).then((r) => r.data);
+  api.get<{ versions: ConfigItem[] }>(`/configs/${configId}/versions`).then((r) => r.data.versions ?? []);
 
 export const getConfigVersion = (configId: string, version: string) =>
   api
@@ -105,13 +105,33 @@ export const getConfigVersion = (configId: string, version: string) =>
 export const saveConfig = (
   configId: string,
   body: { name: string; description?: string; content: string }
-) => api.put<ConfigItem>(`/configs/${configId}`, body).then((r) => r.data);
+) => {
+  let parsedContent: unknown;
+  try {
+    parsedContent = JSON.parse(body.content);
+  } catch {
+    parsedContent = {};
+  }
+  return api
+    .put<ConfigItem>(`/configs/${configId}`, { ...body, content: parsedContent })
+    .then((r) => r.data);
+};
 
 export const createConfig = (body: {
   name: string;
   description?: string;
   content: string;
-}) => api.post<ConfigItem>("/configs", body).then((r) => r.data);
+}) => {
+  let parsedContent: unknown;
+  try {
+    parsedContent = JSON.parse(body.content);
+  } catch {
+    parsedContent = {};
+  }
+  return api
+    .post<ConfigItem>("/configs", { ...body, content: parsedContent })
+    .then((r) => r.data);
+};
 
 export const getFocus = () =>
   api.get<FocusState>("/configs/focus").then((r) => r.data);
