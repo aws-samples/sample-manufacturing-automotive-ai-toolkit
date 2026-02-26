@@ -87,61 +87,61 @@ export interface RemediationResponse {
 // ─── Config endpoints ────────────────────────────────────────────────────────
 
 export const listConfigs = () =>
-  api.get<ConfigItem[]>("/api/configs").then((r) => r.data);
+  api.get<ConfigItem[]>("/configs").then((r) => r.data);
 
 export const getConfig = (configId: string) =>
-  api.get<ConfigItem & { content?: string }>(`/api/configs/${configId}`).then((r) => r.data);
+  api.get<ConfigItem & { content?: string }>(`/configs/${configId}`).then((r) => r.data);
 
 export const listConfigVersions = (configId: string) =>
-  api.get<ConfigItem[]>(`/api/configs/${configId}/versions`).then((r) => r.data);
+  api.get<ConfigItem[]>(`/configs/${configId}/versions`).then((r) => r.data);
 
 export const getConfigVersion = (configId: string, version: string) =>
   api
     .get<ConfigItem & { content: string }>(
-      `/api/configs/${configId}/versions/${encodeURIComponent(version)}`
+      `/configs/${configId}/versions/${encodeURIComponent(version)}`
     )
     .then((r) => r.data);
 
 export const saveConfig = (
   configId: string,
   body: { name: string; description?: string; content: string }
-) => api.put<ConfigItem>(`/api/configs/${configId}`, body).then((r) => r.data);
+) => api.put<ConfigItem>(`/configs/${configId}`, body).then((r) => r.data);
 
 export const createConfig = (body: {
   name: string;
   description?: string;
   content: string;
-}) => api.post<ConfigItem>("/api/configs", body).then((r) => r.data);
+}) => api.post<ConfigItem>("/configs", body).then((r) => r.data);
 
 export const getFocus = () =>
-  api.get<FocusState>("/api/configs/focus").then((r) => r.data);
+  api.get<FocusState>("/configs/focus").then((r) => r.data);
 
 export const setFocus = (configId: string, version: string) =>
   api
-    .post<FocusState>(`/api/configs/${configId}/focus`, { version })
+    .post<FocusState>(`/configs/${configId}/focus`, { version })
     .then((r) => r.data);
 
 // ─── Package endpoints ───────────────────────────────────────────────────────
 
 export const listPackages = () =>
-  api.get<LaunchPackage[]>("/api/packages").then((r) => r.data);
+  api.get<LaunchPackage[]>("/packages").then((r) => r.data);
 
 export const getPackage = (packageId: string) =>
-  api.get<LaunchPackage>(`/api/packages/${packageId}`).then((r) => r.data);
+  api.get<LaunchPackage>(`/packages/${packageId}`).then((r) => r.data);
 
 export const createPackage = (body: {
   configId: string;
   configVersion: string;
   region?: string;
   sourcePackageId?: string;
-}) => api.post<LaunchPackage>("/api/packages", body).then((r) => r.data);
+}) => api.post<LaunchPackage>("/packages", body).then((r) => r.data);
 
 export const deletePackage = (packageId: string) =>
-  api.delete(`/api/packages/${packageId}`).then((r) => r.data);
+  api.delete(`/packages/${packageId}`).then((r) => r.data);
 
 export const getPackageDownloadUrl = (packageId: string) =>
   api
-    .get<{ url: string }>(`/api/packages/${packageId}/download`)
+    .get<{ url: string }>(`/packages/${packageId}/download`)
     .then((r) => r.data.url);
 
 // ─── Logs endpoints ──────────────────────────────────────────────────────────
@@ -158,7 +158,7 @@ export const getLogs = (
 ) =>
   api
     .get<LogsResponse>(
-      `/api/packages/${packageId}/logs${params.errorsOnly ? "/errors" : ""}`,
+      `/packages/${packageId}/logs${params.errorsOnly ? "/errors" : ""}`,
       { params }
     )
     .then((r) => r.data);
@@ -167,17 +167,17 @@ export const getLogs = (
 
 export const getControlState = (packageId: string) =>
   api
-    .get<ControlState>(`/api/packages/${packageId}/control`)
+    .get<ControlState>(`/packages/${packageId}/control`)
     .then((r) => r.data);
 
 export const setTelemetry = (packageId: string, enabled: boolean) =>
   api
-    .put(`/api/packages/${packageId}/control/telemetry`, { enabled })
+    .put(`/packages/${packageId}/control/telemetry`, { enabled })
     .then((r) => r.data);
 
 export const setDiagnostics = (packageId: string, enabled: boolean) =>
   api
-    .put(`/api/packages/${packageId}/control/diagnostics`, { enabled })
+    .put(`/packages/${packageId}/control/diagnostics`, { enabled })
     .then((r) => r.data);
 
 export const pushConfigUpdate = (
@@ -186,7 +186,7 @@ export const pushConfigUpdate = (
   configVersion: string
 ) =>
   api
-    .post(`/api/packages/${packageId}/control/config-update`, {
+    .post(`/packages/${packageId}/control/config-update`, {
       configId,
       configVersion,
     })
@@ -194,25 +194,25 @@ export const pushConfigUpdate = (
 
 export const restartSfc = (packageId: string) =>
   api
-    .post(`/api/packages/${packageId}/control/restart`, {})
+    .post(`/packages/${packageId}/control/restart`, {})
     .then((r) => r.data);
 
 export const getHeartbeat = (packageId: string) =>
   api
-    .get<HeartbeatStatus>(`/api/packages/${packageId}/heartbeat`)
+    .get<HeartbeatStatus>(`/packages/${packageId}/heartbeat`)
     .then((r) => r.data);
 
 // ─── Greengrass endpoints ────────────────────────────────────────────────────
 
 export const createGgComponent = (packageId: string) =>
   api
-    .post<{ ggComponentArn: string }>(`/api/packages/${packageId}/greengrass`)
+    .post<{ ggComponentArn: string }>(`/packages/${packageId}/greengrass`)
     .then((r) => r.data);
 
 export const getGgComponent = (packageId: string) =>
   api
     .get<{ ggComponentArn?: string; deploymentStatus?: string }>(
-      `/api/packages/${packageId}/greengrass`
+      `/packages/${packageId}/greengrass`
     )
     .then((r) => r.data);
 
@@ -224,7 +224,7 @@ export const triggerRemediation = (
   errorWindowEnd: string
 ) =>
   api
-    .post<RemediationResponse>(`/api/packages/${packageId}/remediate`, {
+    .post<RemediationResponse>(`/packages/${packageId}/remediate`, {
       errorWindowStart,
       errorWindowEnd,
     })
@@ -233,6 +233,6 @@ export const triggerRemediation = (
 export const pollRemediation = (packageId: string, sessionId: string) =>
   api
     .get<RemediationResponse>(
-      `/api/packages/${packageId}/remediate/${encodeURIComponent(sessionId)}`
+      `/packages/${packageId}/remediate/${encodeURIComponent(sessionId)}`
     )
     .then((r) => r.data);

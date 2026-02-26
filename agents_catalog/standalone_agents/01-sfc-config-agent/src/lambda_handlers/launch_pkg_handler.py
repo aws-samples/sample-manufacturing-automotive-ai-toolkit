@@ -3,7 +3,7 @@
 from __future__ import annotations
 import io, json, logging, os, uuid, zipfile
 from datetime import datetime, timezone
-import boto3, requests
+import boto3 #requests
 from sfc_cp_utils import ddb as ddb_util, s3 as s3_util, iot as iot_util
 
 logger = logging.getLogger(__name__)
@@ -181,9 +181,9 @@ def _inject_iot_credentials(sfc_config: dict, package_id: str, prov: dict) -> di
 
 def _fetch_root_ca() -> str:
     try:
-        resp = requests.get(_AMAZON_ROOT_CA_URL, timeout=10)
-        resp.raise_for_status()
-        return resp.text
+        #resp = requests.get(_AMAZON_ROOT_CA_URL, timeout=10)
+        #resp.raise_for_status()
+        return "TBD"
     except Exception:
         logger.warning("Failed to download Root CA; using placeholder")
         return "# Amazon Root CA 1 — download from https://www.amazontrust.com/repository/AmazonRootCA1.pem\n"

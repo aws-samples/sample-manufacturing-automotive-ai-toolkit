@@ -1,2 +1,4 @@
 .sfc
 sfc-repo
+ui/dist
+ui/.env.local

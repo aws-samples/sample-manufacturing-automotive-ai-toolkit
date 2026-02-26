@@ -9,8 +9,7 @@ info:
 
 x-amazon-apigateway-cors:
   allowOrigins:
-    - "http://localhost:5173"
-    - "${CloudFrontOrigin}"
+    - "*"
   allowMethods:
     - GET
     - POST
@@ -22,6 +21,7 @@ x-amazon-apigateway-cors:
     - Authorization
     - X-Amz-Date
     - X-Api-Key
+    - X-Amz-Security-Token
   maxAge: 300
 
 tags:
