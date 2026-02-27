@@ -372,6 +372,7 @@ class ControlPlaneApi(Construct):
         fn.add_to_role_policy(iam.PolicyStatement(
             actions=[
                 "logs:CreateLogGroup",
+                "logs:DeleteLogGroup",
             ],
             resources=[
                 f"arn:aws:logs:{region}:{account}:log-group:/sfc/launch-packages/*",

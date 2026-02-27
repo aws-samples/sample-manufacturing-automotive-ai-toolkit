@@ -1,8 +1,15 @@
 import { useParams, useNavigate } from "react-router-dom";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { getPackage, getPackageDownloadUrl, triggerRemediation, getConfig } from "../api/client";
+import {
+  getPackage,
+  getPackageDownloadUrl,
+  triggerRemediation,
+  getConfig,
+  deepDeletePackage,
+} from "../api/client";
 import StatusBadge from "../components/StatusBadge";
 import PackageControlPanel from "../components/PackageControlPanel";
+import ConfirmDialog from "../components/ConfirmDialog";
 import { useState } from "react";
 
 export default function PackageDetail() {
@@ -25,6 +32,15 @@ export default function PackageDetail() {
 
   const [remediating, setRemediating] = useState(false);
   const [remediationResult, setRemediationResult] = useState<string | null>(null);
+  const [confirmDelete, setConfirmDelete] = useState(false);
+
+  const deleteMut = useMutation({
+    mutationFn: () => deepDeletePackage(packageId!),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["packages"] });
+      navigate("/packages");
+    },
+  });
 
   const remediateMut = useMutation({
     mutationFn: () => {
@@ -46,90 +62,126 @@ export default function PackageDetail() {
   if (!pkg) return <p className="p-6 text-slate-500 text-sm">Package not found.</p>;
 
   return (
-    <div className="p-6 max-w-7xl mx-auto">
-      <div className="flex items-center gap-3 mb-6 flex-wrap">
-        <button className="btn btn-ghost text-xs" onClick={() => navigate("/packages")}>
-          ← Packages
-        </button>
-        <h1 className="text-base font-semibold font-mono">{pkg.packageId}</h1>
-        <StatusBadge status={pkg.status} />
-      </div>
+    <>
+      <div className="p-8 max-w-[1440px] mx-auto">
+        <div className="flex items-center gap-3 mb-6 flex-wrap">
+          <button className="btn btn-ghost text-xs" onClick={() => navigate("/packages")}>
+            ← Packages
+          </button>
+          <h1 className="text-base font-semibold font-mono">{pkg.packageId}</h1>
+          <StatusBadge status={pkg.status} />
+        </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        {/* Left: metadata */}
-        <div className="lg:col-span-2 space-y-4">
-          {/* Info card */}
-          <div className="card space-y-3">
-            <p className="text-xs font-medium text-slate-500 mb-1">Package Info</p>
-            {configMeta?.name && configMeta.name !== pkg.configId && (
-              <Row
-                label="Config Name"
-                value={configMeta.name}
-                onClick={() => navigate(`/configs/${pkg.configId}`)}
-              />
-            )}
-            <Row label="Config ID" value={pkg.configId} mono />
-            <Row label="Config Version" value={pkg.configVersion} mono />
-            <Row
-              label="Created"
-              value={new Date(pkg.createdAt).toLocaleString()}
-            />
-            {pkg.iotThingName && <Row label="IoT Thing" value={pkg.iotThingName} mono />}
-            {pkg.iamRoleArn && <Row label="IAM Role" value={pkg.iamRoleArn} mono />}
-            {pkg.logGroupName && <Row label="Log Group" value={pkg.logGroupName} mono />}
-            {pkg.ggComponentArn && (
-              <Row label="GG Component" value={pkg.ggComponentArn} mono />
-            )}
-          </div>
-
-          {/* Download card */}
-          {pkg.s3ZipKey && (
-            <div className="card flex items-center justify-between">
-              <div>
-                <p className="text-sm font-medium">Launch Bundle</p>
-                <p className="text-xs text-slate-500 font-mono">{pkg.s3ZipKey}</p>
-              </div>
-              <DownloadButton packageId={pkg.packageId} />
-            </div>
-          )}
-
-          {/* AI Remediation */}
-          <div className="card space-y-3">
-            <p className="text-xs font-medium text-slate-500">AI-Assisted Remediation</p>
-            <p className="text-xs text-slate-400">
-              Triggers the Bedrock agent to analyse the last 15 minutes of error logs
-              and produce a corrected SFC config version.
-            </p>
-            {remediationResult && (
-              <p className="text-xs text-green-400">{remediationResult}</p>
-            )}
-            {remediateMut.isError && (
-              <p className="text-xs text-red-400">Remediation failed.</p>
-            )}
-            <button
-              className="btn btn-primary"
-              disabled={remediating || remediateMut.isPending}
-              onClick={() => {
-                setRemediating(true);
-                setRemediationResult(null);
-                remediateMut.mutate();
-              }}
-            >
-              {remediateMut.isPending ? (
-                <span className="spinner" />
-              ) : (
-                "Run AI Remediation"
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+          {/* Left: metadata */}
+          <div className="lg:col-span-2 space-y-4">
+            {/* Info card */}
+            <div className="card space-y-3">
+              <p className="text-xs font-medium text-slate-500 mb-1">Package Info</p>
+              {configMeta?.name && configMeta.name !== pkg.configId && (
+                <Row
+                  label="Config Name"
+                  value={configMeta.name}
+                  onClick={() => navigate(`/configs/${pkg.configId}`)}
+                />
               )}
-            </button>
+              <Row label="Config ID" value={pkg.configId} mono />
+              <Row label="Config Version" value={pkg.configVersion} mono />
+              <Row label="Created" value={new Date(pkg.createdAt).toLocaleString()} />
+              {pkg.iotThingName && <Row label="IoT Thing" value={pkg.iotThingName} mono />}
+              {pkg.iamRoleArn && <Row label="IAM Role" value={pkg.iamRoleArn} mono />}
+              {pkg.logGroupName && <Row label="Log Group" value={pkg.logGroupName} mono />}
+              {pkg.ggComponentArn && (
+                <Row label="GG Component" value={pkg.ggComponentArn} mono />
+              )}
+            </div>
+
+            {/* Download card */}
+            {pkg.s3ZipKey && (
+              <div className="card flex items-center justify-between">
+                <div>
+                  <p className="text-sm font-medium">Launch Bundle</p>
+                  <p className="text-xs text-slate-500 font-mono">{pkg.s3ZipKey}</p>
+                </div>
+                <DownloadButton packageId={pkg.packageId} />
+              </div>
+            )}
+
+            {/* AI Remediation */}
+            <div className="card space-y-3">
+              <p className="text-xs font-medium text-slate-500">AI-Assisted Remediation</p>
+              <p className="text-xs text-slate-400">
+                Triggers the Bedrock agent to analyse the last 15 minutes of error logs
+                and produce a corrected SFC config version.
+              </p>
+              {remediationResult && (
+                <p className="text-xs text-green-400">{remediationResult}</p>
+              )}
+              {remediateMut.isError && (
+                <p className="text-xs text-red-400">Remediation failed.</p>
+              )}
+              <button
+                className="btn btn-primary"
+                disabled={remediating || remediateMut.isPending}
+                onClick={() => {
+                  setRemediating(true);
+                  setRemediationResult(null);
+                  remediateMut.mutate();
+                }}
+              >
+                {remediateMut.isPending ? <span className="spinner" /> : "Run AI Remediation"}
+              </button>
+            </div>
+
+            {/* Danger Zone */}
+            <div className="border border-red-900/50 rounded-lg overflow-hidden">
+              <div className="px-4 py-3 bg-red-950/30 flex items-center gap-2">
+                <span className="text-sm font-semibold text-red-400">⚠ Danger Zone</span>
+              </div>
+              <div className="p-4 space-y-3 bg-red-950/10">
+                <p className="text-xs text-slate-400">
+                  Permanently destroys <strong className="text-slate-300">all AWS resources</strong> provisioned
+                  for this package and removes the database record:{" "}
+                  IoT Thing &amp; certificate, IoT policy, role alias, IAM edge role,
+                  CloudWatch log group. S3 assets are retained.
+                </p>
+                <button
+                  className="btn btn-ghost text-xs text-red-300 hover:text-red-200 border border-red-700/70 bg-red-950/30"
+                  onClick={() => setConfirmDelete(true)}
+                >
+                  🗑 Delete Package
+                </button>
+              </div>
+            </div>
+          </div>
+
+          {/* Right: control panel */}
+          <div>
+            <PackageControlPanel pkg={pkg} />
           </div>
         </div>
-
-        {/* Right: control panel */}
-        <div>
-          <PackageControlPanel pkg={pkg} />
-        </div>
       </div>
-    </div>
+
+      {/* Delete confirmation dialog */}
+      {confirmDelete && (
+        <ConfirmDialog
+          title="Delete Package"
+          message={
+            `This will permanently destroy all AWS resources for package "${pkg.packageId}":\n\n` +
+            `• IoT Thing & certificate\n` +
+            `• IoT policy\n` +
+            `• IoT role alias\n` +
+            `• IAM edge role\n` +
+            `• CloudWatch log group\n\n` +
+            `The DynamoDB record will also be removed. S3 assets are kept. This action cannot be undone.`
+          }
+          confirmLabel={deleteMut.isPending ? "Deleting resources…" : "Delete Package"}
+          danger
+          onConfirm={() => deleteMut.mutate()}
+          onCancel={() => setConfirmDelete(false)}
+        />
+      )}
+    </>
   );
 }
 

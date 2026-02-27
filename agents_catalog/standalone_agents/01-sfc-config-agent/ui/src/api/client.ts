@@ -165,6 +165,9 @@ export const createPackage = (body: {
 export const deletePackage = (packageId: string) =>
   api.delete(`/packages/${packageId}`).then((r) => r.data);
 
+export const deepDeletePackage = (packageId: string) =>
+  api.delete(`/packages/${packageId}?deep=true`).then((r) => r.data);
+
 export const getPackageDownloadUrl = (packageId: string) =>
   api
     .get<{ downloadUrl: string }>(`/packages/${packageId}/download`)

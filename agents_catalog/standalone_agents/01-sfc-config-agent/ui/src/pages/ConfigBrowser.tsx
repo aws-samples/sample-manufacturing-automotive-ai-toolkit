@@ -3,12 +3,13 @@ import { useNavigate } from "react-router-dom";
 import { listConfigs, listPackages, createConfig, getFocus, deleteConfig } from "../api/client";
 import StatusBadge from "../components/StatusBadge";
 import ConfirmDialog from "../components/ConfirmDialog";
+import RefreshButton from "../components/RefreshButton";
 import { useState } from "react";
 
 export default function ConfigBrowser() {
   const navigate = useNavigate();
   const qc = useQueryClient();
-  const { data: rawConfigs, isLoading } = useQuery({
+  const { data: rawConfigs, isLoading, refetch: refetchConfigs, isFetching: isFetchingConfigs } = useQuery({
     queryKey: ["configs"],
     queryFn: listConfigs,
   });
@@ -53,12 +54,19 @@ export default function ConfigBrowser() {
   });
 
   return (
-    <div className="p-6 max-w-5xl mx-auto">
+    <div className="p-8 max-w-[1440px] mx-auto">
       <div className="flex items-center justify-between mb-5">
         <h1 className="text-lg font-semibold">SFC Configurations</h1>
-        <button className="btn btn-primary" onClick={() => setShowNew(true)}>
-          + New Config
-        </button>
+        <div className="flex items-center gap-2">
+          <RefreshButton
+            onClick={() => refetchConfigs()}
+            loading={isFetchingConfigs}
+            title="Refresh configs"
+          />
+          <button className="btn btn-primary" onClick={() => setShowNew(true)}>
+            + New Config
+          </button>
+        </div>
       </div>
 
       {isLoading && <p className="text-slate-500 text-sm">Loading…</p>}

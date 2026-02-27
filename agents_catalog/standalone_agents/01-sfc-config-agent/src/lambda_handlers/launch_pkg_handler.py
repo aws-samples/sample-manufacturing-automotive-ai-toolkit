@@ -67,7 +67,8 @@ def handler(event: dict, context) -> dict:
             if method == "GET":
                 return _get_package(package_id)
             if method == "DELETE":
-                return _delete_package(package_id)
+                deep = (event.get("queryStringParameters") or {}).get("deep", "false").lower() == "true"
+                return _delete_package(package_id, deep=deep)
         return _error(404, "NOT_FOUND", "Route not matched")
     except Exception as exc:
         logger.exception("Unhandled error")
@@ -182,10 +183,36 @@ def _get_package(package_id: str) -> dict:
     return _ok(pkg)
 
 
-def _delete_package(package_id: str) -> dict:
+def _delete_package(package_id: str, deep: bool = False) -> dict:
     pkg = ddb_util.get_package(_pkg_table, package_id)
     if not pkg:
         return _error(404, "NOT_FOUND", f"Package {package_id} not found")
+
+    if deep:
+        # ── Tear down IoT / IAM / CloudWatch resources ────────────────────
+        thing_name  = pkg.get("iotThingName", f"sfc-{package_id}")
+        cert_arn    = pkg.get("iotCertArn", "")
+        role_alias_arn = pkg.get("iotRoleAliasArn", "")
+        role_alias_name = role_alias_arn.split("/")[-1] if role_alias_arn else f"sfc-role-alias-{package_id}"
+        iam_role_name   = f"sfc-edge-role-{package_id}"
+
+        try:
+            iot_util.revoke_and_delete_thing(
+                thing_name, cert_arn, role_alias_name, iam_role_name, _region
+            )
+            logger.info("Deep-deleted IoT/IAM resources for package %s", package_id)
+        except Exception as exc:
+            logger.warning("Partial failure during deep-delete of %s: %s", package_id, exc)
+
+        # ── Delete CloudWatch log group ───────────────────────────────────
+        log_group = pkg.get("logGroupName", f"/sfc/launch-packages/{package_id}")
+        try:
+            logs_client = boto3.client("logs", region_name=_region)
+            logs_client.delete_log_group(logGroupName=log_group)
+            logger.info("Deleted log group %s", log_group)
+        except Exception as exc:
+            logger.warning("Could not delete log group %s: %s", log_group, exc)
+
     ddb_util.delete_package(_pkg_table, package_id, pkg["createdAt"])
     return {"statusCode": 204, "body": ""}
 
