@@ -160,6 +160,30 @@ paths:
         httpMethod: POST
         uri: "${FnConfigsArn}"
         payloadFormatVersion: "2.0"
+    delete:
+      operationId: deleteConfig
+      summary: Soft-delete a config (marks all versions as deleted in DDB; no data removed)
+      tags: [configs]
+      parameters:
+        - $ref: "#/components/parameters/configId"
+      responses:
+        "200":
+          description: Config soft-deleted
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MessageResponse"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "500":
+          $ref: "#/components/responses/InternalError"
+      x-amazon-apigateway-integration:
+        type: aws_proxy
+        httpMethod: POST
+        uri: "${FnConfigsArn}"
+        payloadFormatVersion: "2.0"
     put:
       operationId: saveConfig
       summary: Save a new version of a config

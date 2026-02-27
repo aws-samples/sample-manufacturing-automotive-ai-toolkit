@@ -111,6 +111,15 @@ def config_s3_key(config_id: str, version: str) -> str:
     return f"configs/{config_id}/{version}/config.json"
 
 
-def package_zip_s3_key(package_id: str) -> str:
-    """Return the S3 key for a launch package zip."""
-    return f"packages/{package_id}/launch-package.zip"
+def package_zip_s3_key(package_id: str, timestamp: str | None = None) -> str:
+    """Return the S3 key for a launch package zip.
+
+    Args:
+        package_id: The unique package identifier (UUID).
+        timestamp:  Optional compact UTC timestamp string (e.g. ``"20260226T160622Z"``).
+                    When provided it is appended to the zip file name so that
+                    successive packages for the same device are easy to distinguish
+                    in S3.  Format: ``YYYYMMDDTHHmmSSZ``.
+    """
+    suffix = f"-{timestamp}" if timestamp else ""
+    return f"packages/{package_id}/launch-package{suffix}.zip"

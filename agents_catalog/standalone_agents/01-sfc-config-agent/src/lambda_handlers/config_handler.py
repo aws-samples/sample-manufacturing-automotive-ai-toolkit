@@ -1,15 +1,17 @@
 """
 WP-04 — fn-configs Lambda handler.
 
-Covers all 8 config management endpoints:
+Covers all config management endpoints:
   GET    /configs
   POST   /configs
   GET    /configs/focus
+  DELETE /configs/focus
   POST   /configs/{configId}/focus
   GET    /configs/{configId}
+  PUT    /configs/{configId}
+  DELETE /configs/{configId}
   GET    /configs/{configId}/versions
   GET    /configs/{configId}/versions/{version}
-  PUT    /configs/{configId}
 """
 
 from __future__ import annotations
@@ -76,10 +78,6 @@ def handler(event: dict, context) -> dict:
         if path == "/configs/focus" and method == "DELETE":
             return _clear_focus()
 
-        if method == "DELETE" and config_id and not path.endswith("/focus"):
-            config_id = path_params.get("configId")
-            return _delete_config(config_id)
-
         if path.endswith("/focus") and method == "POST":
             config_id = path_params.get("configId")
             body = _parse_body(event)
@@ -101,6 +99,8 @@ def handler(event: dict, context) -> dict:
             if method == "PUT":
                 body = _parse_body(event)
                 return _save_config(config_id, body)
+            if method == "DELETE":
+                return _delete_config(config_id)
 
         return _error(404, "NOT_FOUND", f"No route matched: {method} {path}")
 
@@ -126,10 +126,13 @@ def _list_configs() -> dict:
     all_items = resp.get("Items", [])
     # De-duplicate: keep the newest version per configId.
     # Skip items that lack configId — these are legacy agent base64-index records.
+    # Skip soft-deleted configs entirely.
     latest: dict[str, dict] = {}
     for item in all_items:
         cid = item.get("configId")
         if not cid:
+            continue
+        if item.get("deleted"):
             continue
         existing = latest.get(cid)
         if existing is None or item.get("version", "") > existing.get("version", ""):
@@ -229,6 +232,48 @@ def _create_config(body: dict) -> dict:
 
     config_id = str(uuid.uuid4())
     return _save_config(config_id, {**body, "content": raw_content})
+
+
+def _delete_config(config_id: str) -> dict:
+    """Soft-delete all versions of a config by setting deleted=True in DDB.
+
+    Refuses to delete a config that is currently in focus.
+    No DDB items or S3 objects are physically removed.
+    """
+    # Guard: refuse to delete the focused config
+    state = ddb_util.get_control_state(_state_table)
+    if state and state.get("focusedConfigId") == config_id:
+        return _error(
+            409,
+            "CONFLICT",
+            f"Config {config_id} is currently in focus and cannot be deleted. "
+            "Clear the focus first.",
+        )
+
+    # Query all versions for this configId
+    resp = _config_table.query(
+        KeyConditionExpression=(
+            Key("file_type").eq(_FILE_TYPE_CONFIG)
+            & Key("sort_key").begins_with(f"{config_id}#")
+        ),
+    )
+    items = resp.get("Items", [])
+    if not items:
+        return _error(404, "NOT_FOUND", f"Config {config_id} not found")
+
+    deleted_at = datetime.now(timezone.utc).isoformat()
+    for item in items:
+        _config_table.update_item(
+            Key={
+                "file_type": item["file_type"],
+                "sort_key": item["sort_key"],
+            },
+            UpdateExpression="SET deleted = :t, deletedAt = :ts",
+            ExpressionAttributeValues={":t": True, ":ts": deleted_at},
+        )
+
+    logger.info("Soft-deleted config %s (%d versions)", config_id, len(items))
+    return _ok({"message": f"Config {config_id} deleted ({len(items)} version(s) marked)"})
 
 
 def _save_config(config_id: str, body: dict) -> dict:

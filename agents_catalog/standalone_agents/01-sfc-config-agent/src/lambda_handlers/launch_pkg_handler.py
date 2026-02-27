@@ -1,9 +1,9 @@
 """WP-06 — fn-launch-pkg: Launch package assembly + list/get/delete/download."""
 
 from __future__ import annotations
-import io, json, logging, os, uuid, zipfile
+import io, json, logging, os, uuid, urllib.request, zipfile
 from datetime import datetime, timezone
-import boto3 #requests
+import boto3
 from boto3.dynamodb.conditions import Key
 from sfc_cp_utils import ddb as ddb_util, s3 as s3_util, iot as iot_util
 
@@ -111,7 +111,10 @@ def _create_package(body: dict) -> dict:
     config_version = cfg_item["version"]
 
     package_id = str(uuid.uuid4())
-    created_at = datetime.now(timezone.utc).isoformat()
+    now_utc = datetime.now(timezone.utc)
+    created_at = now_utc.isoformat()
+    # Compact timestamp suffix for the zip file name, e.g. "20260226T160622Z"
+    zip_timestamp = now_utc.strftime("%Y%m%dT%H%M%SZ")
 
     # Write PROVISIONING record
     ddb_util.put_package(_pkg_table, {
@@ -144,8 +147,8 @@ def _create_package(body: dict) -> dict:
     # Assemble zip in memory
     zip_bytes = _build_zip(package_id, rewritten, iot_config, prov, root_ca)
 
-    # Upload zip
-    zip_key = s3_util.package_zip_s3_key(package_id)
+    # Upload zip (file name includes a timestamp suffix for uniqueness)
+    zip_key = s3_util.package_zip_s3_key(package_id, timestamp=zip_timestamp)
     s3_util.put_zip(CONFIGS_BUCKET, zip_key, zip_bytes)
 
     # Store certs in S3 (private assets — not included in API response)
@@ -221,9 +224,9 @@ def _inject_iot_credentials(sfc_config: dict, package_id: str, prov: dict) -> di
 
 def _fetch_root_ca() -> str:
     try:
-        #resp = requests.get(_AMAZON_ROOT_CA_URL, timeout=10)
-        #resp.raise_for_status()
-        return "TBD"
+        req = urllib.request.Request(_AMAZON_ROOT_CA_URL, headers={"User-Agent": "sfc-control-plane/1.0"})
+        with urllib.request.urlopen(req, timeout=10) as resp:
+            return resp.read().decode("utf-8")
     except Exception:
         logger.warning("Failed to download Root CA; using placeholder")
         return "# Amazon Root CA 1 — download from https://www.amazontrust.com/repository/AmazonRootCA1.pem\n"

@@ -62,7 +62,11 @@ export default function PackageDetail() {
           <div className="card space-y-3">
             <p className="text-xs font-medium text-slate-500 mb-1">Package Info</p>
             {configMeta?.name && configMeta.name !== pkg.configId && (
-              <Row label="Config Name" value={configMeta.name} />
+              <Row
+                label="Config Name"
+                value={configMeta.name}
+                onClick={() => navigate(`/configs/${pkg.configId}`)}
+              />
             )}
             <Row label="Config ID" value={pkg.configId} mono />
             <Row label="Config Version" value={pkg.configVersion} mono />
@@ -133,19 +137,33 @@ function Row({
   label,
   value,
   mono = false,
+  onClick,
 }: {
   label: string;
   value: string;
   mono?: boolean;
+  onClick?: () => void;
 }) {
   return (
     <div className="flex items-start gap-2 text-sm">
       <span className="w-32 shrink-0 text-slate-500 text-xs pt-0.5">{label}</span>
-      <span
-        className={`break-all ${mono ? "font-mono text-xs text-slate-300" : "text-slate-200"}`}
-      >
-        {value}
-      </span>
+      {onClick ? (
+        <button
+          type="button"
+          onClick={onClick}
+          className={`break-all text-left cursor-pointer text-sky-400 hover:text-sky-300 hover:underline transition-colors ${
+            mono ? "font-mono text-xs" : ""
+          }`}
+        >
+          {value}
+        </button>
+      ) : (
+        <span
+          className={`break-all ${mono ? "font-mono text-xs text-slate-300" : "text-slate-200"}`}
+        >
+          {value}
+        </span>
+      )}
     </div>
   );
 }

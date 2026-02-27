@@ -1,7 +1,8 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "react-router-dom";
-import { listConfigs, createConfig, getFocus } from "../api/client";
+import { listConfigs, listPackages, createConfig, getFocus, deleteConfig } from "../api/client";
 import StatusBadge from "../components/StatusBadge";
+import ConfirmDialog from "../components/ConfirmDialog";
 import { useState } from "react";
 
 export default function ConfigBrowser() {
@@ -13,6 +14,14 @@ export default function ConfigBrowser() {
   });
   const configs = Array.isArray(rawConfigs) ? rawConfigs : [];
 
+  const { data: rawPackages } = useQuery({
+    queryKey: ["packages"],
+    queryFn: listPackages,
+  });
+  const usedConfigIds = new Set(
+    (Array.isArray(rawPackages) ? rawPackages : []).map((p) => p.configId)
+  );
+
   const { data: focus } = useQuery({
     queryKey: ["focus"],
     queryFn: getFocus,
@@ -23,6 +32,7 @@ export default function ConfigBrowser() {
   const [showNew, setShowNew] = useState(false);
   const [newName, setNewName] = useState("");
   const [newDesc, setNewDesc] = useState("");
+  const [deleteTarget, setDeleteTarget] = useState<{ configId: string; name: string } | null>(null);
 
   const createMut = useMutation({
     mutationFn: () =>
@@ -31,6 +41,14 @@ export default function ConfigBrowser() {
       qc.invalidateQueries({ queryKey: ["configs"] });
       setShowNew(false);
       navigate(`/configs/${cfg.configId}`);
+    },
+  });
+
+  const deleteMut = useMutation({
+    mutationFn: (configId: string) => deleteConfig(configId),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["configs"] });
+      setDeleteTarget(null);
     },
   });
 
@@ -68,46 +86,79 @@ export default function ConfigBrowser() {
               {configs.map((c) => {
                 const isFocused = c.configId === focusedConfigId;
                 return (
-                <tr
-                  key={c.configId}
-                  className={`cursor-pointer ${isFocused ? "bg-sky-950/40 hover:bg-sky-950/60" : ""}`}
-                  onClick={() => navigate(`/configs/${c.configId}`)}
-                >
-                  <td className="font-medium flex items-center gap-2">
-                    {c.name}
-                    {isFocused && (
-                      <span className="text-[10px] font-mono font-semibold bg-sky-900/60 text-sky-300 border border-sky-700 rounded px-1.5 py-0.5 leading-none">
-                        FOCUS
-                      </span>
-                    )}
-                  </td>
-                  <td className="font-mono text-xs text-slate-400">{c.configId}</td>
-                  <td className="font-mono text-xs text-slate-400 max-w-[200px] truncate">
-                    {c.version}
-                  </td>
-                  <td>
-                    <StatusBadge status={c.status} />
-                  </td>
-                  <td className="text-xs text-slate-500">
-                    {new Date(c.createdAt).toLocaleDateString()}
-                  </td>
-                  <td>
-                    <button
-                      className="btn btn-ghost text-xs"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        navigate(`/configs/${c.configId}`);
-                      }}
-                    >
-                      Edit
-                    </button>
-                  </td>
-                </tr>
-              );
+                  <tr
+                    key={c.configId}
+                    className={`cursor-pointer ${isFocused ? "bg-sky-950/40 hover:bg-sky-950/60" : ""}`}
+                    onClick={() => navigate(`/configs/${c.configId}`)}
+                  >
+                    <td className="font-medium flex items-center gap-2">
+                      {c.name}
+                      {isFocused && (
+                        <span className="text-[10px] font-mono font-semibold bg-sky-900/60 text-sky-300 border border-sky-700 rounded px-1.5 py-0.5 leading-none">
+                          FOCUS
+                        </span>
+                      )}
+                    </td>
+                    <td className="font-mono text-xs text-slate-400">{c.configId}</td>
+                    <td className="font-mono text-xs text-slate-400 max-w-[200px] truncate">
+                      {c.version}
+                    </td>
+                    <td>
+                      <StatusBadge status={c.status} />
+                    </td>
+                    <td className="text-xs text-slate-500">
+                      {new Date(c.createdAt).toLocaleDateString()}
+                    </td>
+                    <td className="flex items-center gap-1">
+                      <button
+                        className="btn btn-ghost text-xs"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          navigate(`/configs/${c.configId}`);
+                        }}
+                      >
+                        Edit
+                      </button>
+                      {!isFocused && (
+                        usedConfigIds.has(c.configId) ? (
+                          <span
+                            title="This config is used by one or more launch packages and cannot be deleted."
+                            className="btn btn-ghost text-xs text-slate-600 cursor-not-allowed opacity-50"
+                            onClick={(e) => e.stopPropagation()}
+                          >
+                            Delete
+                          </span>
+                        ) : (
+                          <button
+                            className="btn btn-ghost text-xs text-red-400 hover:text-red-300"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setDeleteTarget({ configId: c.configId, name: c.name });
+                            }}
+                          >
+                            Delete
+                          </button>
+                        )
+                      )}
+                    </td>
+                  </tr>
+                );
               })}
             </tbody>
           </table>
         </div>
+      )}
+
+      {/* Delete confirmation dialog */}
+      {deleteTarget && (
+        <ConfirmDialog
+          title="Delete Configuration"
+          message={`Are you sure you want to delete "${deleteTarget.name}"? This will mark all versions as deleted. The data is not permanently removed.`}
+          confirmLabel={deleteMut.isPending ? "Deleting…" : "Delete"}
+          danger
+          onConfirm={() => deleteMut.mutate(deleteTarget.configId)}
+          onCancel={() => setDeleteTarget(null)}
+        />
       )}
 
       {/* New config modal */}

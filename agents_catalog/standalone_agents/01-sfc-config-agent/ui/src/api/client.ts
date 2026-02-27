@@ -144,6 +144,9 @@ export const setFocus = (configId: string, version: string) =>
 export const clearFocus = () =>
   api.delete<FocusState>("/configs/focus").then((r) => r.data);
 
+export const deleteConfig = (configId: string) =>
+  api.delete<{ message: string }>(`/configs/${configId}`).then((r) => r.data);
+
 // ─── Package endpoints ───────────────────────────────────────────────────────
 
 export const listPackages = () =>

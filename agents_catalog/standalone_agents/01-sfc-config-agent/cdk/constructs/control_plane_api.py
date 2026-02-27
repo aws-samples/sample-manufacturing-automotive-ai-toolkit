@@ -33,7 +33,7 @@ from constructs import Construct
 # Relative path to the layer source (resolved at synth time)
 _HERE = os.path.dirname(__file__)
 _LAYER_SRC = os.path.join(_HERE, "..", "..", "src", "layer")
-_HANDLERS_SRC = os.path.join(_HERE, "..", "..", "src", "lambda_handlers")
+_HANDLERS_SRC = os.path.join(_HERE, "..", "..", "src")
 _OPENAPI_PATH = os.path.join(_HERE, "..", "openapi", "control-plane-api.yaml")
 
 
@@ -96,7 +96,7 @@ class ControlPlaneApi(Construct):
                 fn_id,
                 function_name=fn_id.lower().replace("fn", "fn"),
                 runtime=lambda_.Runtime.PYTHON_3_12,
-                handler=f"{handler_file}.{handler_fn}",
+                handler=f"lambda_handlers.{handler_file}.{handler_fn}",
                 code=lambda_.Code.from_asset(_HANDLERS_SRC),
                 layers=[self.layer],
                 memory_size=memory_mb,

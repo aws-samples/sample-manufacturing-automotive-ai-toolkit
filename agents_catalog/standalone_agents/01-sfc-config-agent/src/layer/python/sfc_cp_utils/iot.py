@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import json
 import logging
+from enum import Enum
 from typing import Any
 
 import boto3
@@ -164,16 +165,50 @@ def get_iot_data_endpoint(region: str) -> str:
     return resp["endpointAddress"]
 
 
+class SfcTargetType(str, Enum):
+    """
+    Canonical SFC TargetType identifiers for **service targets** as documented at
+    https://github.com/awslabs/industrial-shopfloor-connect/blob/main/docs/targets/README.md#service-targets
+
+    These are the exact strings that must appear in ``Targets[name].TargetType``
+    inside an SFC configuration file.
+    """
+    # AWS IoT
+    IOT_CORE  = "AWS-IOT-CORE"
+    # AWS storage / streaming
+    S3        = "AWS-S3"
+    S3_TABLES = "AWS-S3-TABLES"
+    FIREHOSE  = "AWS-FIREHOSE"
+    MSK       = "AWS-MSK"
+    # AWS analytics
+    SITEWISE  = "AWS-SITEWISE"
+    # AWS messaging
+    SNS       = "AWS-SNS"
+    SQS       = "AWS-SQS"
+    LAMBDA    = "AWS-LAMBDA"
+
+
 def derive_iam_policy_statements(sfc_config: dict, package_id: str, region: str, account_id: str) -> list[dict]:
     """
-    Inspect the SFC config *targets* section and return minimal IAM policy
-    statements required for the edge device role.
-    Always includes the CloudWatch OTEL log statements.
+    Inspect the SFC config ``Targets`` section and return the minimal IAM
+    policy statements required for the edge device role.
+
+    Matching is performed by exact comparison of ``Targets[name].TargetType``
+    against the ``SfcTargetType`` enum values.  Where an SFC config references
+    a resource ARN or name directly (e.g. ``BucketName``, ``StreamArn``) that
+    value is used; otherwise a least-privilege wildcard scoped to the account
+    and region is used.
+
+    CloudWatch Logs (OTEL) is always appended — it is required for structured
+    edge-device logging regardless of which targets are configured.
+
+    Note: ``iot:AssumeRoleWithCertificate`` is an IoT *device* policy action
+    and is emitted by ``_build_iot_policy()``, not here.
     """
     statements: list[dict] = []
     log_group_arn = f"arn:aws:logs:{region}:{account_id}:log-group:/sfc/launch-packages/{package_id}*"
 
-    # CloudWatch OTEL (always required)
+    # ── CloudWatch Logs / OTEL (always required) ─────────────────────────────
     statements.append({
         "Effect": "Allow",
         "Action": [
@@ -186,60 +221,175 @@ def derive_iam_policy_statements(sfc_config: dict, package_id: str, region: str,
         "Resource": log_group_arn,
     })
 
+    # ── Normalise Targets to a dict ───────────────────────────────────────────
     targets = sfc_config.get("Targets", {})
     if isinstance(targets, list):
         targets = {t.get("Name", str(i)): t for i, t in enumerate(targets)}
 
+    # Deduplicate: one statement per service category
+    added: set[str] = set()
+
+    def _add(category: str, stmt: dict) -> None:
+        if category not in added:
+            statements.append(stmt)
+            added.add(category)
+
     for _name, target in targets.items():
         if not isinstance(target, dict):
             continue
-        target_type = (
-            target.get("TargetType")
-            or target.get("Type")
-            or target.get("targetType")
-            or ""
-        )
-        t = target_type.lower()
-        if any(k in t for k in ("sitewise", "iotsitewise", "awssitewise")):
-            statements.append({
+
+        # Strip leading '#' (SFC convention for temporarily disabled targets)
+        raw_type = (target.get("TargetType") or "").lstrip("#")
+
+        try:
+            tt = SfcTargetType(raw_type)
+        except ValueError:
+            # Local / non-AWS / unknown target type — no IAM statement needed
+            logger.debug("Skipping non-service TargetType %r for target %r", raw_type, _name)
+            continue
+
+        # ── AWS-IOT-CORE ─────────────────────────────────────────────────────
+        if tt == SfcTargetType.IOT_CORE:
+            topic = target.get("TopicName", "*")
+            topic_arn = f"arn:aws:iot:{region}:{account_id}:topic/{topic}"
+            _add("iot-core", {
                 "Effect": "Allow",
-                "Action": ["iotsitewise:BatchPutAssetPropertyValue"],
-                "Resource": "*",
+                "Action": [
+                    "iot:Connect",
+                    "iot:DescribeEndpoint",
+                    "iot:Publish",
+                    "iot:RetainPublish",
+                ],
+                "Resource": topic_arn,
             })
-        elif "kinesis" in t:
-            stream_arn = target.get("StreamArn", f"arn:aws:kinesis:{region}:{account_id}:stream/*")
-            statements.append({
-                "Effect": "Allow",
-                "Action": ["kinesis:PutRecord", "kinesis:PutRecords"],
-                "Resource": stream_arn,
-            })
-        elif "s3" in t:
-            bucket_arn = target.get("BucketArn", "arn:aws:s3:::*")
-            statements.append({
+
+        # ── AWS-S3 ───────────────────────────────────────────────────────────
+        elif tt == SfcTargetType.S3:
+            bucket_name = target.get("BucketName") or target.get("Bucket")
+            bucket_arn = (
+                f"arn:aws:s3:::{bucket_name}" if bucket_name
+                else target.get("BucketArn", "arn:aws:s3:::*")
+            )
+            _add("s3", {
                 "Effect": "Allow",
                 "Action": ["s3:PutObject"],
                 "Resource": f"{bucket_arn}/*",
             })
-        elif any(k in t for k in ("iotmqtt", "mqtt", "awsiot")):
-            topic = target.get("TopicName", "*")
-            topic_arn = f"arn:aws:iot:{region}:{account_id}:topic/{topic}"
-            statements.append({
-                "Effect": "Allow",
-                "Action": ["iot:Publish"],
-                "Resource": topic_arn,
-            })
-        elif "timestream" in t:
-            statements.append({
+
+        # ── AWS-S3-TABLES ────────────────────────────────────────────────────
+        elif tt == SfcTargetType.S3_TABLES:
+            bucket_name = target.get("BucketName") or target.get("TableBucket")
+            bucket_arn = (
+                f"arn:aws:s3tables:{region}:{account_id}:bucket/{bucket_name}" if bucket_name
+                else f"arn:aws:s3tables:{region}:{account_id}:bucket/*"
+            )
+            _add("s3-tables", {
                 "Effect": "Allow",
                 "Action": [
-                    "timestream:WriteRecords",
-                    "timestream:DescribeEndpoints",
+                    "s3tables:ListNamespaces",
+                    "s3tables:ListTables",
+                    "s3tables:ListTableBuckets",
+                    "s3tables:CreateTableBucket",
+                    "s3tables:CreateNamespace",
+                    "s3tables:CreateTable",
+                    "s3tables:GetTableBucket",
+                    "s3tables:GetTableData",
+                    "s3tables:GetTable",
+                    "s3tables:GetTableMetadataLocation",
+                    "s3tables:PutTableData",
+                    "s3tables:UpdateTableMetadataLocation",
+                ],
+                "Resource": f"{bucket_arn}/*",
+            })
+
+        # ── AWS-FIREHOSE ─────────────────────────────────────────────────────
+        elif tt == SfcTargetType.FIREHOSE:
+            stream_name = target.get("StreamName") or target.get("DeliveryStreamName")
+            stream_arn = (
+                f"arn:aws:firehose:{region}:{account_id}:deliverystream/{stream_name}"
+                if stream_name
+                else target.get("StreamArn", f"arn:aws:firehose:{region}:{account_id}:deliverystream/*")
+            )
+            _add("firehose", {
+                "Effect": "Allow",
+                # firehose:PutRecord kept for compatibility alongside the batch API
+                "Action": [
+                    "firehose:PutRecord",
+                    "firehose:PutRecordBatch",
+                ],
+                "Resource": stream_arn,
+            })
+
+        # ── AWS-MSK ──────────────────────────────────────────────────────────
+        elif tt == SfcTargetType.MSK:
+            cluster_arn = target.get("ClusterArn", f"arn:aws:kafka:{region}:{account_id}:cluster/*/*")
+            topic = target.get("TopicName", "*")
+            _add("msk", {
+                "Effect": "Allow",
+                "Action": [
+                    "kafka-cluster:Connect",
+                    "kafka-cluster:CreateTopic",
+                    "kafka-cluster:DescribeTopic",
+                    "kafka-cluster:WriteData",
+                    "kafka-cluster:WriteDataIdempotently",
+                ],
+                "Resource": [
+                    cluster_arn,
+                    f"arn:aws:kafka:{region}:{account_id}:topic/*/*/{topic}",
+                ],
+            })
+
+        # ── AWS-SITEWISE ─────────────────────────────────────────────────────
+        elif tt == SfcTargetType.SITEWISE:
+            _add("sitewise", {
+                "Effect": "Allow",
+                "Action": [
+                    "iotsitewise:BatchPutAssetPropertyValue",
+                    "iotsitewise:CreateAsset",
+                    "iotsitewise:CreateAssetModel",
+                    "iotsitewise:DescribeAsset",
+                    "iotsitewise:DescribeAssetModel",
+                    "iotsitewise:DescribeEndpoint",
+                    "iotsitewise:ListAssetModels",
+                    "iotsitewise:ListAssetModelProperties",
+                    "iotsitewise:ListAssets",
+                    "iotsitewise:UpdateAssetModel",
+                    "iotsitewise:UpdateAssetModelProperty",
+                    "iotsitewise:TagResource",
                 ],
                 "Resource": "*",
             })
 
-    # Note: iot:AssumeRoleWithCertificate is an IoT policy action (not IAM).
-    # It is added to the IoT device policy in _build_iot_policy(), NOT here.
+        # ── AWS-SNS ──────────────────────────────────────────────────────────
+        elif tt == SfcTargetType.SNS:
+            topic_arn = target.get("TopicArn", f"arn:aws:sns:{region}:{account_id}:*")
+            _add("sns", {
+                "Effect": "Allow",
+                "Action": ["sns:Publish"],
+                "Resource": topic_arn,
+            })
+
+        # ── AWS-SQS ──────────────────────────────────────────────────────────
+        elif tt == SfcTargetType.SQS:
+            queue_arn = target.get("QueueArn", f"arn:aws:sqs:{region}:{account_id}:*")
+            _add("sqs", {
+                "Effect": "Allow",
+                # sqs:SendMessage kept alongside the batch API for compatibility
+                "Action": [
+                    "sqs:SendMessage",
+                    "sqs:SendMessageBatch",
+                ],
+                "Resource": queue_arn,
+            })
+
+        # ── AWS-LAMBDA ───────────────────────────────────────────────────────
+        elif tt == SfcTargetType.LAMBDA:
+            fn_arn = target.get("FunctionArn", f"arn:aws:lambda:{region}:{account_id}:function:*")
+            _add("lambda", {
+                "Effect": "Allow",
+                "Action": ["lambda:InvokeFunction"],
+                "Resource": fn_arn,
+            })
 
     return statements
 
