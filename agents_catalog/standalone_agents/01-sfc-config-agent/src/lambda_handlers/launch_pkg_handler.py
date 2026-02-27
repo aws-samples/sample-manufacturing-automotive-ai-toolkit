@@ -260,9 +260,9 @@ def _inject_iot_credentials(sfc_config: dict, package_id: str, prov: dict) -> di
         "IotCredentialEndpoint": prov["iotEndpoint"],
         "RoleAlias": prov["roleAliasName"],
         "ThingName": prov["thingName"],
-        "CertificateFile": "../../iot/device.cert.pem",
-        "PrivateKeyFile": "../../iot/device.private.key",
-        "RootCa": "../../iot/AmazonRootCA1.pem",
+        "CertificateFile": "../iot/device.cert.pem",
+        "PrivateKeyFile": "../iot/device.private.key",
+        "RootCa": "../iot/AmazonRootCA1.pem",
     }
     # Patch all AWS targets to reference the credential provider
     targets = cfg.get("Targets", {})

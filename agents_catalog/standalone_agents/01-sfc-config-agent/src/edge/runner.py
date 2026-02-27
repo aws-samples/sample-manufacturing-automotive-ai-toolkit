@@ -298,7 +298,7 @@ def _capture_stream(stream, no_otel: bool) -> None:
             line = line.rstrip()
             with _recent_logs_lock:
                 _recent_logs.append(line)
-            print(line, flush=True)
+            #print(line, flush=True)
             if not no_otel:
                 _emit_otel_log(line)
     except Exception as exc:
