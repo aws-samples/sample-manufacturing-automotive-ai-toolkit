@@ -4,7 +4,30 @@ import { listConfigs, listPackages, createConfig, getFocus, deleteConfig } from 
 import StatusBadge from "../components/StatusBadge";
 import ConfirmDialog from "../components/ConfirmDialog";
 import RefreshButton from "../components/RefreshButton";
-import { useState } from "react";
+import SortableHeader from "../components/SortableHeader";
+import TagFilter from "../components/TagFilter";
+import { useSortable } from "../hooks/useSortable";
+import { useState, useMemo } from "react";
+
+type ConfigRow = {
+  configId: string;
+  version: string;
+  name: string;
+  description?: string;
+  status: string;
+  createdAt: string;
+  tags?: string[];
+};
+
+function getValue(item: ConfigRow, column: string): string | number | undefined {
+  switch (column) {
+    case "name":    return item.name?.toLowerCase();
+    case "version": return item.version;
+    case "status":  return item.status;
+    case "created": return item.createdAt;
+    default:        return undefined;
+  }
+}
 
 export default function ConfigBrowser() {
   const navigate = useNavigate();
@@ -13,7 +36,7 @@ export default function ConfigBrowser() {
     queryKey: ["configs"],
     queryFn: listConfigs,
   });
-  const configs = Array.isArray(rawConfigs) ? rawConfigs : [];
+  const configs: ConfigRow[] = Array.isArray(rawConfigs) ? rawConfigs : [];
 
   const { data: rawPackages } = useQuery({
     queryKey: ["packages"],
@@ -34,6 +57,35 @@ export default function ConfigBrowser() {
   const [newName, setNewName] = useState("");
   const [newDesc, setNewDesc] = useState("");
   const [deleteTarget, setDeleteTarget] = useState<{ configId: string; name: string } | null>(null);
+
+  function deriveConfigStatus(configId: string): string {
+    if (configId === focusedConfigId) return "focused";
+    if (usedConfigIds.has(configId)) return "deployed";
+    return "unused";
+  }
+
+  const { sort, toggle, sorted } = useSortable(configs, "created", "desc", getValue);
+
+  // ── Tag filter ───────────────────────────────────────────────────────────
+  const [activeTags, setActiveTags] = useState<string[]>([]);
+  const allTags = useMemo(() => {
+    const s = new Set<string>();
+    configs.forEach((c) => (c.tags ?? []).forEach((t) => s.add(t)));
+    return Array.from(s).sort();
+  }, [configs]);
+
+  const tagFiltered = useMemo(() => {
+    if (activeTags.length === 0) return sorted;
+    return sorted.filter((c) =>
+      activeTags.every((t) => (c.tags ?? []).includes(t))
+    );
+  }, [sorted, activeTags]);
+
+  function toggleTag(tag: string) {
+    setActiveTags((prev) =>
+      prev.includes(tag) ? prev.filter((t) => t !== tag) : [...prev, tag]
+    );
+  }
 
   const createMut = useMutation({
     mutationFn: () =>
@@ -71,27 +123,40 @@ export default function ConfigBrowser() {
 
       {isLoading && <p className="text-slate-500 text-sm">Loading…</p>}
 
-      {configs && configs.length === 0 && (
+      {configs.length === 0 && !isLoading && (
         <p className="text-slate-500 text-sm italic">
           No configurations yet. Create one to get started.
         </p>
       )}
 
-      {configs && configs.length > 0 && (
+      {sorted.length > 0 && allTags.length > 0 && (
+        <div className="mb-3">
+          <TagFilter
+            allTags={allTags}
+            activeTags={activeTags}
+            onToggle={toggleTag}
+            onClear={() => setActiveTags([])}
+            total={sorted.length}
+            filtered={tagFiltered.length}
+          />
+        </div>
+      )}
+
+      {sorted.length > 0 && (
         <div className="card overflow-hidden p-0">
           <table className="table-base">
             <thead>
               <tr>
-                <th>Name</th>
+                <SortableHeader column="name"    label="Name"    sort={sort} onToggle={toggle} />
                 <th>Config ID</th>
-                <th>Version</th>
-                <th>Status</th>
-                <th>Created</th>
+                <SortableHeader column="version" label="Version" sort={sort} onToggle={toggle} />
+                <SortableHeader column="status"  label="Status"  sort={sort} onToggle={toggle} />
+                <SortableHeader column="created" label="Created" sort={sort} onToggle={toggle} />
                 <th></th>
               </tr>
             </thead>
             <tbody>
-              {configs.map((c) => {
+              {tagFiltered.map((c) => {
                 const isFocused = c.configId === focusedConfigId;
                 return (
                   <tr
@@ -99,20 +164,60 @@ export default function ConfigBrowser() {
                     className={`cursor-pointer ${isFocused ? "bg-sky-950/40 hover:bg-sky-950/60" : ""}`}
                     onClick={() => navigate(`/configs/${c.configId}`)}
                   >
-                    <td className="font-medium flex items-center gap-2">
-                      {c.name}
-                      {isFocused && (
-                        <span className="text-[10px] font-mono font-semibold bg-sky-900/60 text-sky-300 border border-sky-700 rounded px-1.5 py-0.5 leading-none">
-                          FOCUS
-                        </span>
+                    <td>
+                      <div className="font-medium flex items-center gap-2 flex-wrap">
+                        {c.name}
+                        {isFocused && (
+                          <span className="text-[10px] font-mono font-semibold bg-sky-900/60 text-sky-300 border border-sky-700 rounded px-1.5 py-0.5 leading-none">
+                            FOCUS
+                          </span>
+                        )}
+                      </div>
+                      {c.tags && c.tags.length > 0 && (
+                        <div className="flex flex-wrap gap-1 mt-1">
+                          {c.tags.map((tag) => (
+                            <span
+                              key={tag}
+                              className="inline-flex px-1.5 py-0.5 rounded bg-sky-900/30 text-sky-400 text-[10px] font-medium ring-1 ring-sky-800/40"
+                            >
+                              {tag}
+                            </span>
+                          ))}
+                        </div>
                       )}
                     </td>
                     <td className="font-mono text-xs text-slate-400">{c.configId}</td>
                     <td className="font-mono text-xs text-slate-400 max-w-[200px] truncate">
                       {c.version}
                     </td>
-                    <td>
-                      <StatusBadge status={c.status} />
+                    <td onClick={(e) => e.stopPropagation()}>
+                      {(() => {
+                        const derived = deriveConfigStatus(c.configId);
+                        if (derived === "deployed") {
+                          const pkgs = (Array.isArray(rawPackages) ? rawPackages : []).filter(
+                            (p) => p.configId === c.configId
+                          );
+                          const dest =
+                            pkgs.length === 1
+                              ? `/packages/${pkgs[0].packageId}`
+                              : `/packages?configId=${c.configId}`;
+                          return (
+                            <button
+                              type="button"
+                              className="cursor-pointer hover:opacity-80 transition-opacity"
+                              onClick={() => navigate(dest)}
+                              title={
+                                pkgs.length === 1
+                                  ? `Go to package ${pkgs[0].packageId}`
+                                  : `Show ${pkgs.length} packages for this config`
+                              }
+                            >
+                              <StatusBadge status="deployed" />
+                            </button>
+                          );
+                        }
+                        return <StatusBadge status={derived} />;
+                      })()}
                     </td>
                     <td className="text-xs text-slate-500">
                       {new Date(c.createdAt).toLocaleDateString()}
@@ -130,7 +235,7 @@ export default function ConfigBrowser() {
                       {!isFocused && (
                         usedConfigIds.has(c.configId) ? (
                           <span
-                            title="This config is used by one or more launch packages and cannot be deleted."
+                            title="Used by one or more launch packages — cannot be deleted."
                             className="btn btn-ghost text-xs text-slate-600 cursor-not-allowed opacity-50"
                             onClick={(e) => e.stopPropagation()}
                           >
@@ -157,11 +262,11 @@ export default function ConfigBrowser() {
         </div>
       )}
 
-      {/* Delete confirmation dialog */}
+      {/* Delete confirmation */}
       {deleteTarget && (
         <ConfirmDialog
           title="Delete Configuration"
-          message={`Are you sure you want to delete "${deleteTarget.name}"? This will mark all versions as deleted. The data is not permanently removed.`}
+          message={`Are you sure you want to delete "${deleteTarget.name}"? All versions will be marked as deleted.`}
           confirmLabel={deleteMut.isPending ? "Deleting…" : "Delete"}
           danger
           onConfirm={() => deleteMut.mutate(deleteTarget.configId)}

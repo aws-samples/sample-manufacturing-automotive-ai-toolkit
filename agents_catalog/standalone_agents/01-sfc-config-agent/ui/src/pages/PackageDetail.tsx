@@ -6,11 +6,13 @@ import {
   triggerRemediation,
   getConfig,
   deepDeletePackage,
+  updatePackageTags,
 } from "../api/client";
 import StatusBadge from "../components/StatusBadge";
 import PackageControlPanel from "../components/PackageControlPanel";
 import ConfirmDialog from "../components/ConfirmDialog";
-import { useState } from "react";
+import TagEditor from "../components/TagEditor";
+import { useState, useEffect, useRef } from "react";
 
 export default function PackageDetail() {
   const { packageId } = useParams<{ packageId: string }>();
@@ -33,6 +35,20 @@ export default function PackageDetail() {
   const [remediating, setRemediating] = useState(false);
   const [remediationResult, setRemediationResult] = useState<string | null>(null);
   const [confirmDelete, setConfirmDelete] = useState(false);
+  const [tags, setTags] = useState<string[]>([]);
+  const tagsInitialized = useRef(false);
+
+  useEffect(() => {
+    if (pkg && !tagsInitialized.current) {
+      setTags((pkg as { tags?: string[] }).tags ?? []);
+      tagsInitialized.current = true;
+    }
+  }, [pkg]);
+
+  function handleTagChange(newTags: string[]) {
+    setTags(newTags);
+    updatePackageTags(packageId!, newTags).catch(console.error);
+  }
 
   const deleteMut = useMutation({
     mutationFn: () => deepDeletePackage(packageId!),
@@ -77,16 +93,38 @@ export default function PackageDetail() {
           <div className="lg:col-span-2 space-y-4">
             {/* Info card */}
             <div className="card space-y-3">
-              <p className="text-xs font-medium text-slate-500 mb-1">Package Info</p>
+              <div className="flex items-center justify-between mb-2">
+                <p className="text-xs font-medium text-slate-500">Package Info</p>
+              </div>
+              <div className="mb-3">
+                <p className="text-xs text-slate-500 mb-1">Tags</p>
+                <TagEditor tags={tags} onChange={handleTagChange} placeholder="Add tag…" />
+              </div>
               {configMeta?.name && configMeta.name !== pkg.configId && (
                 <Row
                   label="Config Name"
                   value={configMeta.name}
-                  onClick={() => navigate(`/configs/${pkg.configId}`)}
+                  onClick={() =>
+                    navigate(
+                      `/configs/${pkg.configId}?version=${encodeURIComponent(pkg.configVersion)}`
+                    )
+                  }
+                  title="Open the exact config version snapshotted into this zip"
                 />
               )}
               <Row label="Config ID" value={pkg.configId} mono />
-              <Row label="Config Version" value={pkg.configVersion} mono />
+              <Row
+                label="Config Version"
+                value={pkg.configVersion}
+                mono
+                sublabel="snapshotted into zip"
+                onClick={() =>
+                  navigate(
+                    `/configs/${pkg.configId}?version=${encodeURIComponent(pkg.configVersion)}`
+                  )
+                }
+                title="Open this exact config version in the editor"
+              />
               <Row label="Created" value={new Date(pkg.createdAt).toLocaleString()} />
               {pkg.iotThingName && <Row label="IoT Thing" value={pkg.iotThingName} mono />}
               {pkg.iamRoleArn && <Row label="IAM Role" value={pkg.iamRoleArn} mono />}
@@ -190,32 +228,42 @@ function Row({
   value,
   mono = false,
   onClick,
+  title,
+  sublabel,
 }: {
   label: string;
   value: string;
   mono?: boolean;
   onClick?: () => void;
+  title?: string;
+  sublabel?: string;
 }) {
   return (
     <div className="flex items-start gap-2 text-sm">
       <span className="w-32 shrink-0 text-slate-500 text-xs pt-0.5">{label}</span>
-      {onClick ? (
-        <button
-          type="button"
-          onClick={onClick}
-          className={`break-all text-left cursor-pointer text-sky-400 hover:text-sky-300 hover:underline transition-colors ${
-            mono ? "font-mono text-xs" : ""
-          }`}
-        >
-          {value}
-        </button>
-      ) : (
-        <span
-          className={`break-all ${mono ? "font-mono text-xs text-slate-300" : "text-slate-200"}`}
-        >
-          {value}
-        </span>
-      )}
+      <div className="flex flex-col gap-0.5 min-w-0">
+        {onClick ? (
+          <button
+            type="button"
+            onClick={onClick}
+            title={title}
+            className={`break-all text-left cursor-pointer text-sky-400 hover:text-sky-300 hover:underline transition-colors ${
+              mono ? "font-mono text-xs" : ""
+            }`}
+          >
+            {value}
+          </button>
+        ) : (
+          <span
+            className={`break-all ${mono ? "font-mono text-xs text-slate-300" : "text-slate-200"}`}
+          >
+            {value}
+          </span>
+        )}
+        {sublabel && (
+          <span className="text-[10px] text-slate-500 italic">{sublabel}</span>
+        )}
+      </div>
     </div>
   );
 }

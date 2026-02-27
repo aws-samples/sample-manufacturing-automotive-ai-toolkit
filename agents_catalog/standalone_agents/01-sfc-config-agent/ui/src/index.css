@@ -70,6 +70,8 @@ code, pre, kbd, .font-mono {
 .badge-warn  { @apply bg-amber-900/50 text-amber-300 ring-1 ring-amber-700/40; }
 .badge-error { @apply bg-red-900/50 text-red-300 ring-1 ring-red-700/40; }
 .badge-info  { @apply bg-sky-900/50 text-sky-300 ring-1 ring-sky-700/40; }
+.badge-sky   { @apply bg-sky-900/60 text-sky-200 ring-1 ring-sky-500/50 font-semibold; }
+.badge-teal  { @apply bg-teal-900/50 text-teal-300 ring-1 ring-teal-700/40; }
 .badge-muted { @apply bg-slate-800/80 text-slate-400 ring-1 ring-slate-700/30; }
 
 /* ── Tables ──────────────────────────────────────────────────────────────── */

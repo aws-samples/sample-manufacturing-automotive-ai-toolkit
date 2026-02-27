@@ -63,6 +63,8 @@ def handler(event: dict, context) -> dict:
                 return _list_packages()
         if package_id and path.endswith("/download"):
             return _get_download_url(package_id)
+        if package_id and path.endswith("/tags") and method == "PATCH":
+            return _update_package_tags(package_id, _parse_body(event))
         if package_id:
             if method == "GET":
                 return _get_package(package_id)
@@ -102,6 +104,17 @@ def _create_package(body: dict) -> dict:
     # Use the focused version if not explicitly overridden
     if not config_version:
         config_version = focused_ver
+
+    # Enforce one package per config version
+    existing = ddb_util.list_packages(_pkg_table)
+    for pkg in existing:
+        if pkg.get("configId") == config_id and pkg.get("configVersion") == config_version:
+            return _error(
+                409,
+                "ALREADY_EXISTS",
+                f"A launch package already exists for config {config_id} version {config_version} "
+                f"(packageId: {pkg['packageId']}). Each config version may only have one package.",
+            )
 
     # Load SFC config (using file_type/sort_key schema of SFC_Agent_Files table)
     cfg_item = _ddb_get_config(_cfg_table, config_id, config_version)
@@ -215,6 +228,17 @@ def _delete_package(package_id: str, deep: bool = False) -> dict:
 
     ddb_util.delete_package(_pkg_table, package_id, pkg["createdAt"])
     return {"statusCode": 204, "body": ""}
+
+
+def _update_package_tags(package_id: str, body: dict) -> dict:
+    pkg = ddb_util.get_package(_pkg_table, package_id)
+    if not pkg:
+        return _error(404, "NOT_FOUND", f"Package {package_id} not found")
+    tags = body.get("tags", [])
+    if not isinstance(tags, list):
+        return _error(400, "BAD_REQUEST", "'tags' must be a list of strings")
+    ddb_util.update_package(_pkg_table, package_id, pkg["createdAt"], {"tags": tags})
+    return _ok({"packageId": package_id, "tags": tags})
 
 
 def _get_download_url(package_id: str) -> dict:

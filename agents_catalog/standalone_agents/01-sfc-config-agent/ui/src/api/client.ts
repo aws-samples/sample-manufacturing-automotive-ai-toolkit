@@ -104,7 +104,7 @@ export const getConfigVersion = (configId: string, version: string) =>
 
 export const saveConfig = (
   configId: string,
-  body: { name: string; description?: string; content: string }
+  body: { name: string; description?: string; content: string; tags?: string[] }
 ) => {
   let parsedContent: unknown;
   try {
@@ -167,6 +167,12 @@ export const deletePackage = (packageId: string) =>
 
 export const deepDeletePackage = (packageId: string) =>
   api.delete(`/packages/${packageId}?deep=true`).then((r) => r.data);
+
+export const updatePackageTags = (packageId: string, tags: string[]) =>
+  api.patch<{ tags: string[] }>(`/packages/${packageId}/tags`, { tags }).then((r) => r.data);
+
+export const updateConfigTags = (configId: string, tags: string[]) =>
+  api.patch<{ tags: string[] }>(`/configs/${configId}/tags`, { tags }).then((r) => r.data);
 
 export const getPackageDownloadUrl = (packageId: string) =>
   api

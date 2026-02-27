@@ -101,6 +101,8 @@ def handler(event: dict, context) -> dict:
                 return _save_config(config_id, body)
             if method == "DELETE":
                 return _delete_config(config_id)
+            if method == "PATCH" and path.endswith("/tags"):
+                return _update_config_tags(config_id, _parse_body(event))
 
         return _error(404, "NOT_FOUND", f"No route matched: {method} {path}")
 
@@ -276,6 +278,25 @@ def _delete_config(config_id: str) -> dict:
     return _ok({"message": f"Config {config_id} deleted ({len(items)} version(s) marked)"})
 
 
+def _update_config_tags(config_id: str, body: dict) -> dict:
+    """PATCH /configs/{configId}/tags — update tags on the latest version."""
+    item = _ddb_get_config(config_id)
+    if not item:
+        return _error(404, "NOT_FOUND", f"Config {config_id} not found")
+    tags = body.get("tags", [])
+    if not isinstance(tags, list):
+        return _error(400, "BAD_REQUEST", "'tags' must be a list of strings")
+    _config_table.update_item(
+        Key={
+            "file_type": item["file_type"],
+            "sort_key": item["sort_key"],
+        },
+        UpdateExpression="SET tags = :t",
+        ExpressionAttributeValues={":t": tags},
+    )
+    return _ok({"configId": config_id, "tags": tags})
+
+
 def _save_config(config_id: str, body: dict) -> dict:
     content = body.get("content")
     if content is None:
@@ -290,6 +311,7 @@ def _save_config(config_id: str, body: dict) -> dict:
     s3_util.put_config_json(CONFIGS_BUCKET, s3_key, content)
 
     # Write metadata to DDB using the file_type/sort_key schema
+    tags = body.get("tags")
     item = {
         "file_type": _FILE_TYPE_CONFIG,
         "sort_key": _config_sort_key(config_id, version),
@@ -301,6 +323,8 @@ def _save_config(config_id: str, body: dict) -> dict:
         "status": "active",
         "createdAt": version,
     }
+    if isinstance(tags, list):
+        item["tags"] = tags
     _config_table.put_item(Item=item)
 
     return _ok(_strip_content(_to_api(item)))

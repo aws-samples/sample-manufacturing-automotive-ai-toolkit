@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { useParams, useNavigate } from "react-router-dom";
+import { useParams, useNavigate, useSearchParams } from "react-router-dom";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import {
   getConfig,
@@ -9,14 +9,20 @@ import {
   getConfigVersion,
   createPackage,
   getFocus,
+  updateConfigTags,
+  listPackages,
 } from "../api/client";
 import MonacoJsonEditor from "../components/MonacoJsonEditor";
 import StatusBadge from "../components/StatusBadge";
+import TagEditor from "../components/TagEditor";
+import { useRef } from "react";
 
 export default function ConfigEditor() {
   const { configId } = useParams<{ configId: string }>();
   const navigate = useNavigate();
   const qc = useQueryClient();
+  const [searchParams] = useSearchParams();
+  const versionParam = searchParams.get("version") ?? undefined;
 
   const { data: cfg, isLoading } = useQuery({
     queryKey: ["config", configId],
@@ -25,6 +31,7 @@ export default function ConfigEditor() {
   });
 
   const { data: focus } = useQuery({ queryKey: ["focus"], queryFn: getFocus });
+  const { data: packages } = useQuery({ queryKey: ["packages"], queryFn: listPackages });
   const { data: versions } = useQuery({
     queryKey: ["configVersions", configId],
     queryFn: () => listConfigVersions(configId!),
@@ -32,19 +39,16 @@ export default function ConfigEditor() {
   });
 
   const [content, setContent] = useState("{}");
-  const [selectedVersion, setSelectedVersion] = useState("");
+  const [selectedVersion, setSelectedVersion] = useState(versionParam ?? "");
   const [editingName, setEditingName] = useState("");
+  const [tags, setTags] = useState<string[]>([]);
+  const tagsRef = useRef<string[]>([]);
 
-  useEffect(() => {
-    if (cfg?.content != null) {
-      const raw = cfg.content;
-      setContent(
-        typeof raw === "string" ? raw : JSON.stringify(raw, null, 2)
-      );
-    }
-    if (cfg?.version && !selectedVersion) setSelectedVersion(cfg.version);
-    if (cfg?.name && !editingName) setEditingName(cfg.name);
-  }, [cfg]);
+  function handleTagChange(newTags: string[]) {
+    setTags(newTags);
+    tagsRef.current = newTags;
+    if (configId) updateConfigTags(configId, newTags).catch(console.error);
+  }
 
   // Load a specific version
   const loadVersionMut = useMutation({
@@ -55,12 +59,41 @@ export default function ConfigEditor() {
     },
   });
 
+  // When a ?version= param is present, load that specific snapshot immediately
+  const versionLoadedRef = useRef(false);
+  useEffect(() => {
+    if (versionParam && !versionLoadedRef.current && configId) {
+      versionLoadedRef.current = true;
+      setSelectedVersion(versionParam);
+      loadVersionMut.mutate(versionParam);
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [versionParam, configId]);
+
+  useEffect(() => {
+    // Skip setting content from latest-version query if we're loading a specific version
+    if (cfg?.content != null && !versionParam) {
+      const raw = cfg.content;
+      setContent(
+        typeof raw === "string" ? raw : JSON.stringify(raw, null, 2)
+      );
+    }
+    if (cfg?.version && !selectedVersion) setSelectedVersion(cfg.version);
+    if (cfg?.name && !editingName) setEditingName(cfg.name);
+    if (cfg && !tagsRef.current.length && (cfg as { tags?: string[] }).tags?.length) {
+      const t = (cfg as { tags?: string[] }).tags!;
+      setTags(t);
+      tagsRef.current = t;
+    }
+  }, [cfg]);
+
   const saveMut = useMutation({
     mutationFn: () =>
       saveConfig(configId!, {
         name: editingName || cfg?.name || configId!,
         description: cfg?.description,
         content,
+        tags,
       }),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["config", configId] });
@@ -87,6 +120,19 @@ export default function ConfigEditor() {
     focus?.focusedConfigId === configId &&
     focus?.focusedConfigVersion === (selectedVersion || cfg?.version);
 
+  const isDeployed = (packages ?? []).some((p) => p.configId === configId);
+
+  // Check if a package already exists for the currently selected version
+  const existingPackageForVersion = (packages ?? []).find(
+    (p) => p.configId === configId && p.configVersion === (selectedVersion || cfg?.version)
+  );
+
+  function deriveConfigStatus(): string {
+    if (focus?.focusedConfigId === configId) return "focused";
+    if (isDeployed) return "deployed";
+    return "unused";
+  }
+
   if (isLoading) return <p className="p-6 text-slate-500 text-sm">Loading…</p>;
   if (!cfg) return <p className="p-6 text-slate-500 text-sm">Config not found.</p>;
 
@@ -104,6 +150,11 @@ export default function ConfigEditor() {
             placeholder="Config name"
           />
           <p className="text-xs text-slate-500 font-mono px-2">{configId}</p>
+        </div>
+
+        {/* Tags */}
+        <div className="w-64">
+          <TagEditor tags={tags} onChange={handleTagChange} placeholder="Add tag…" />
         </div>
 
         {/* Version picker */}
@@ -125,11 +176,26 @@ export default function ConfigEditor() {
         )}
 
         <div className="flex items-center gap-2 ml-auto flex-wrap">
-          <StatusBadge status={cfg.status} />
-
-          {isFocused && (
-            <span className="badge badge-info">In Focus</span>
-          )}
+          {(() => {
+            const s = deriveConfigStatus();
+            if (s === "deployed") {
+              const pkgs = (packages ?? []).filter((p) => p.configId === configId);
+              const dest = pkgs.length === 1
+                ? `/packages/${pkgs[0].packageId}`
+                : `/packages?configId=${configId}`;
+              return (
+                <button
+                  type="button"
+                  className="hover:opacity-80 transition-opacity"
+                  onClick={() => navigate(dest)}
+                  title={pkgs.length === 1 ? `Go to package` : `Show ${pkgs.length} packages`}
+                >
+                  <StatusBadge status="deployed" />
+                </button>
+              );
+            }
+            return <StatusBadge status={s} />;
+          })()}
 
           <button
             className="btn btn-secondary"
@@ -140,14 +206,25 @@ export default function ConfigEditor() {
             {focusMut.isPending ? <span className="spinner" /> : "Set as Focus"}
           </button>
 
-          <button
-            className="btn btn-secondary disabled:opacity-40 disabled:cursor-not-allowed"
-            disabled={packageMut.isPending || !isFocused}
-            onClick={() => packageMut.mutate()}
-            title={isFocused ? "Create a launch package from this focused config version" : "Set this version as Focus first to create a launch package"}
-          >
-            {packageMut.isPending ? <span className="spinner" /> : "Create Launch Package"}
-          </button>
+          {existingPackageForVersion ? (
+            <button
+              type="button"
+              className="btn btn-secondary text-teal-300 border-teal-700/50"
+              onClick={() => navigate(`/packages/${existingPackageForVersion.packageId}`)}
+              title={`Package already exists for this config version — click to open`}
+            >
+              Package exists ↗
+            </button>
+          ) : (
+            <button
+              className="btn btn-secondary disabled:opacity-40 disabled:cursor-not-allowed"
+              disabled={packageMut.isPending || !isFocused}
+              onClick={() => packageMut.mutate()}
+              title={isFocused ? "Create a launch package from this focused config version" : "Set this version as Focus first to create a launch package"}
+            >
+              {packageMut.isPending ? <span className="spinner" /> : "Create Launch Package"}
+            </button>
+          )}
 
           <button
             className="btn btn-primary"

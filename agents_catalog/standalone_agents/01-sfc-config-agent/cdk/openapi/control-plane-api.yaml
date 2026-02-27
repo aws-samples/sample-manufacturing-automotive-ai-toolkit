@@ -14,6 +14,7 @@ x-amazon-apigateway-cors:
     - GET
     - POST
     - PUT
+    - PATCH
     - DELETE
     - OPTIONS
   allowHeaders:
@@ -213,6 +214,51 @@ paths:
         uri: "${FnConfigsArn}"
         payloadFormatVersion: "2.0"
 
+  /configs/{configId}/tags:
+    patch:
+      operationId: updateConfigTags
+      summary: Update tags on a config (latest version)
+      tags: [configs]
+      parameters:
+        - $ref: "#/components/parameters/configId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                tags:
+                  type: array
+                  items:
+                    type: string
+              required: [tags]
+      responses:
+        "200":
+          description: Tags updated
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  configId:
+                    type: string
+                  tags:
+                    type: array
+                    items:
+                      type: string
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "500":
+          $ref: "#/components/responses/InternalError"
+      x-amazon-apigateway-integration:
+        type: aws_proxy
+        httpMethod: POST
+        uri: "${FnConfigsArn}"
+        payloadFormatVersion: "2.0"
+
   /configs/{configId}/focus:
     post:
       operationId: setConfigFocus
@@ -384,6 +430,51 @@ paths:
       responses:
         "204":
           description: Package deleted
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "500":
+          $ref: "#/components/responses/InternalError"
+      x-amazon-apigateway-integration:
+        type: aws_proxy
+        httpMethod: POST
+        uri: "${FnLaunchPkgArn}"
+        payloadFormatVersion: "2.0"
+
+  /packages/{packageId}/tags:
+    patch:
+      operationId: updatePackageTags
+      summary: Update tags on a launch package
+      tags: [packages]
+      parameters:
+        - $ref: "#/components/parameters/packageId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                tags:
+                  type: array
+                  items:
+                    type: string
+              required: [tags]
+      responses:
+        "200":
+          description: Tags updated
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  packageId:
+                    type: string
+                  tags:
+                    type: array
+                    items:
+                      type: string
+        "400":
+          $ref: "#/components/responses/BadRequest"
         "404":
           $ref: "#/components/responses/NotFound"
         "500":
