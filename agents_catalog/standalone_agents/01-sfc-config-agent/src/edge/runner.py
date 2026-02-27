@@ -6,7 +6,7 @@ Edge agent that:
   1. Bootstraps SFC binary (downloads from GitHub if needed) and Java
   2. Vends AWS credentials via IoT mTLS role alias
   3. Launches SFC as a subprocess with captured stdout/stderr
-  4. Ships OTEL log records to CloudWatch
+  4. Ships OTEL log records to CloudWatch (SigV4-signed)
   5. Maintains an MQTT5 control channel (telemetry, diagnostics, config-update, restart)
   6. Publishes heartbeat every 5 s on sfc/{packageId}/heartbeat
   7. Refreshes IoT credentials every 50 min
@@ -27,6 +27,7 @@ import platform
 import signal
 import subprocess
 import sys
+import tarfile
 import threading
 import time
 import urllib.request
@@ -56,6 +57,9 @@ _CREDENTIAL_REFRESH_INTERVAL_S = 50 * 60  # 50 minutes
 _RECENT_LOG_RING_SIZE = 3
 _CREDENTIAL_ENDPOINT_TEMPLATE = (
     "https://{iotEndpoint}/role-aliases/{roleAlias}/credentials"
+)
+_GITHUB_RELEASE_BASE = (
+    "https://github.com/awslabs/industrial-shopfloor-connect/releases/download/v{version}/{artifact}"
 )
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -90,7 +94,34 @@ def _load_sfc_config() -> dict:
 
 
 def _detect_sfc_version(sfc_config: dict) -> str:
-    return sfc_config.get("$sfc-version", "1.7.1")
+    return sfc_config.get("$sfc-version", "1.10.8")
+
+
+def _detect_sfc_modules(sfc_config: dict) -> list[str]:
+    """
+    Parse AdapterTypes and TargetTypes JarFiles entries to derive module names.
+
+    Each JarFiles entry follows the pattern: ${MODULES_DIR}/{module-name}/lib
+    The middle path segment is the module tar.gz name (without .tar.gz).
+
+    Returns a deduplicated list of module names, e.g. ['simulator', 'debug-target'].
+    """
+    modules: set[str] = set()
+    for section_key in ("AdapterTypes", "TargetTypes"):
+        for _type_name, type_cfg in sfc_config.get(section_key, {}).items():
+            for jar_path in type_cfg.get("JarFiles", []):
+                # Normalise: replace backslashes, split on '/'
+                parts = jar_path.replace("\\", "/").split("/")
+                # Pattern: ['${MODULES_DIR}', '{module}', 'lib']
+                # Find the part after ${MODULES_DIR}
+                try:
+                    idx = next(i for i, p in enumerate(parts) if "MODULES_DIR" in p)
+                    module_name = parts[idx + 1]
+                    if module_name:
+                        modules.add(module_name)
+                except (StopIteration, IndexError):
+                    logger.warning("Could not parse module name from JarFiles entry: %s", jar_path)
+    return sorted(modules)
 
 
 def _ensure_java(sfc_bin_dir: Path) -> str:
@@ -120,22 +151,70 @@ def _ensure_java(sfc_bin_dir: Path) -> str:
     raise RuntimeError("Java extraction failed — java binary not found")
 
 
-def _download_sfc_binaries(version: str, sfc_bin_dir: Path) -> Path:
-    """Download SFC release jar from GitHub and return path to executable."""
+def _download_and_extract(artifact: str, version: str, sfc_bin_dir: Path) -> None:
+    """
+    Download {artifact}.tar.gz from the SFC GitHub release and extract into sfc_bin_dir.
+    Skips if the artifact directory already exists (idempotent).
+    """
+    extract_marker = sfc_bin_dir / artifact
+    if extract_marker.exists():
+        logger.info("SFC artifact already present: %s", extract_marker)
+        return
+
+    url = _GITHUB_RELEASE_BASE.format(version=version, artifact=f"{artifact}.tar.gz")
+    dest = sfc_bin_dir / f"{artifact}.tar.gz"
+    logger.info("Downloading SFC artifact %s from %s …", artifact, url)
+    try:
+        urllib.request.urlretrieve(url, dest)
+    except Exception as exc:
+        raise RuntimeError(f"Failed to download {artifact}.tar.gz: {exc}") from exc
+
+    logger.info("Extracting %s …", dest)
+    try:
+        with tarfile.open(dest, "r:gz") as tf:
+            tf.extractall(path=sfc_bin_dir)
+    except Exception as exc:
+        raise RuntimeError(f"Failed to extract {dest}: {exc}") from exc
+    finally:
+        # Remove the archive after extraction regardless of outcome
+        try:
+            dest.unlink(missing_ok=True)
+        except Exception:
+            pass
+
+    logger.info("SFC artifact %s ready at %s", artifact, extract_marker)
+
+
+def _ensure_sfc_artifacts(version: str, sfc_cfg: dict, sfc_bin_dir: Path) -> Path:
+    """
+    Ensure all required SFC artifacts are downloaded and extracted.
+
+    Always downloads sfc-main.  Additionally downloads every module referenced
+    in AdapterTypes / TargetTypes JarFiles entries.
+
+    Returns the path to the sfc-main launcher jar.
+    """
     sfc_bin_dir.mkdir(parents=True, exist_ok=True)
-    jar_name = f"sfc-{version}-all.jar"
-    jar_path = sfc_bin_dir / jar_name
-    if jar_path.exists():
-        logger.info("SFC jar already present: %s", jar_path)
-        return jar_path
-    url = (
-        f"https://github.com/aws-samples/shopfloor-connectivity/releases/download/"
-        f"v{version}/{jar_name}"
-    )
-    logger.info("Downloading SFC %s from %s …", version, url)
-    urllib.request.urlretrieve(url, jar_path)
-    logger.info("Downloaded SFC jar: %s", jar_path)
-    return jar_path
+
+    # 1. Always ensure sfc-main
+    _download_and_extract("sfc-main", version, sfc_bin_dir)
+
+    # 2. Derive and ensure module artifacts from sfc-config
+    modules = _detect_sfc_modules(sfc_cfg)
+    logger.info("SFC modules required by config: %s", modules)
+    for module in modules:
+        _download_and_extract(module, version, sfc_bin_dir)
+
+    # 3. Locate the sfc-main binary
+    sfc_binary = sfc_bin_dir / "sfc-main" / "bin" / "sfc-main"
+    if not sfc_binary.exists():
+        raise RuntimeError(
+            f"SFC binary not found at {sfc_binary}. "
+            "Check the extracted sfc-main artifact structure."
+        )
+    sfc_binary.chmod(sfc_binary.stat().st_mode | 0o111)
+    logger.info("SFC binary: %s", sfc_binary)
+    return sfc_binary
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -177,6 +256,7 @@ def _credential_refresh_loop(iot_cfg: dict) -> None:
             creds = _fetch_credentials(iot_cfg)
             with _credentials_lock:
                 _aws_credentials = creds
+                os.environ.update(creds)
                 if _sfc_proc and _sfc_proc.poll() is None:
                     for k, v in creds.items():
                         _sfc_proc.env = getattr(_sfc_proc, "env", os.environ.copy())
@@ -191,16 +271,19 @@ def _credential_refresh_loop(iot_cfg: dict) -> None:
 # 3. SFC subprocess
 # ─────────────────────────────────────────────────────────────────────────────
 
-def _start_sfc(java_bin: str, jar_path: Path, sfc_config_path: Path) -> subprocess.Popen:
+def _start_sfc(sfc_binary: Path, sfc_config_path: Path, sfc_bin_dir: Path) -> subprocess.Popen:
     env = {**os.environ}
     with _credentials_lock:
         env.update(_aws_credentials)
-    cmd = [java_bin, "-jar", str(jar_path), "-config", str(sfc_config_path)]
+    # MODULES_DIR must resolve ${MODULES_DIR} references in sfc-config JarFiles
+    env["MODULES_DIR"] = str(sfc_bin_dir)
+    cmd = [str(sfc_binary), "-config", str(sfc_config_path)]
     logger.info("Launching SFC: %s", " ".join(cmd))
+    logger.info("MODULES_DIR=%s", env["MODULES_DIR"])
     proc = subprocess.Popen(
         cmd,
         stdout=subprocess.PIPE,
-        stderr=subprocess.STDOUT,
+        stderr=subprocess.PIPE,
         env=env,
         text=True,
         bufsize=1,
@@ -208,29 +291,43 @@ def _start_sfc(java_bin: str, jar_path: Path, sfc_config_path: Path) -> subproce
     return proc
 
 
-def _capture_sfc_output(proc: subprocess.Popen, no_otel: bool) -> None:
-    """Read SFC stdout line-by-line; update ring buffer; ship to OTEL."""
-    global _sfc_running
-    _sfc_running.set()
+def _capture_stream(stream, no_otel: bool) -> None:
+    """Drain one stream (stdout or stderr) line-by-line; print locally; ship to OTEL."""
     try:
-        for line in proc.stdout:  # type: ignore[union-attr]
+        for line in stream:
             line = line.rstrip()
             with _recent_logs_lock:
                 _recent_logs.append(line)
-            if no_otel:
-                print(line, flush=True)
-            else:
+            print(line, flush=True)
+            if not no_otel:
                 _emit_otel_log(line)
     except Exception as exc:
-        logger.warning("SFC output capture ended: %s", exc)
+        logger.warning("SFC stream capture ended: %s", exc)
+
+
+def _capture_sfc_output(proc: subprocess.Popen, no_otel: bool) -> None:
+    """Read SFC stdout+stderr line-by-line; print locally; ship to OTEL."""
+    global _sfc_running
+    _sfc_running.set()
+    # Drain stderr in a sibling thread so neither stream blocks the other
+    stderr_thread = threading.Thread(
+        target=_capture_stream,
+        args=(proc.stderr, no_otel),
+        daemon=True,
+        name="sfc-stderr",
+    )
+    stderr_thread.start()
+    try:
+        _capture_stream(proc.stdout, no_otel)  # type: ignore[arg-type]
     finally:
+        stderr_thread.join(timeout=5)
         _sfc_running.clear()
         logger.info("SFC process output stream ended (pid=%s)", proc.pid)
         # Publish final heartbeat with sfcRunning=false
         _publish_heartbeat_now(iot_cfg=None, sfc_pid=proc.pid, running=False)
 
 
-def _restart_sfc(java_bin: str, jar_path: Path, sfc_config_path: Path) -> None:
+def _restart_sfc(sfc_binary: Path, sfc_config_path: Path, sfc_bin_dir: Path) -> None:
     global _sfc_proc
     if _sfc_proc and _sfc_proc.poll() is None:
         logger.info("Terminating existing SFC process (pid=%s) for restart …", _sfc_proc.pid)
@@ -239,7 +336,7 @@ def _restart_sfc(java_bin: str, jar_path: Path, sfc_config_path: Path) -> None:
             _sfc_proc.wait(timeout=10)
         except subprocess.TimeoutExpired:
             _sfc_proc.kill()
-    _sfc_proc = _start_sfc(java_bin, jar_path, sfc_config_path)
+    _sfc_proc = _start_sfc(sfc_binary, sfc_config_path, sfc_bin_dir)
     t = threading.Thread(
         target=_capture_sfc_output,
         args=(_sfc_proc, False),
@@ -251,28 +348,126 @@ def _restart_sfc(java_bin: str, jar_path: Path, sfc_config_path: Path) -> None:
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# 4. OTEL log shipping
+# 4. OTEL log shipping (SigV4-signed for CloudWatch)
 # ─────────────────────────────────────────────────────────────────────────────
+
+class _SigV4OTLPLogExporter:
+    """
+    Wrapper around OTLPLogExporter that signs every HTTP export request with
+    AWS SigV4 using the IoT-vended credentials held in _aws_credentials.
+
+    botocore is a transitive dependency of boto3 (already in pyproject.toml).
+    """
+
+    def __init__(self, endpoint: str, headers: dict, region: str):
+        from opentelemetry.exporter.otlp.proto.http._log_exporter import OTLPLogExporter
+        self._region = region
+        self._endpoint = endpoint
+        self._base_headers = headers
+        self._exporter = OTLPLogExporter(
+            endpoint=endpoint,
+            headers=headers,
+        )
+        # Monkey-patch the session's send to inject SigV4 headers
+        self._patch_session()
+
+    def _patch_session(self) -> None:
+        """Wrap the underlying requests Session.send to inject SigV4 headers."""
+        exporter = self._exporter
+        region = self._region
+        endpoint = self._endpoint
+
+        # The OTLPLogExporter uses a requests.Session stored at _session
+        session = getattr(exporter, "_session", None)
+        if session is None:
+            logger.warning("Could not locate OTLPLogExporter._session; SigV4 signing disabled")
+            return
+
+        original_send = session.send
+
+        def _signed_send(prepared_request, **kwargs):
+            try:
+                import botocore.auth
+                import botocore.awsrequest
+                import botocore.credentials
+                with _credentials_lock:
+                    creds = dict(_aws_credentials)
+                if creds:
+                    bc_creds = botocore.credentials.Credentials(
+                        access_key=creds["AWS_ACCESS_KEY_ID"],
+                        secret_key=creds["AWS_SECRET_ACCESS_KEY"],
+                        token=creds.get("AWS_SESSION_TOKEN"),
+                    )
+                    aws_req = botocore.awsrequest.AWSRequest(
+                        method=prepared_request.method,
+                        url=prepared_request.url,
+                        data=prepared_request.body,
+                        headers=dict(prepared_request.headers),
+                    )
+                    signer = botocore.auth.SigV4Auth(bc_creds, "logs", region)
+                    signer.add_auth(aws_req)
+                    # Inject signed headers back into the prepared request
+                    for key, value in aws_req.headers.items():
+                        prepared_request.headers[key] = value
+            except Exception as exc:
+                logger.debug("SigV4 signing failed: %s", exc)
+            return original_send(prepared_request, **kwargs)
+
+        session.send = _signed_send
+        logger.debug("SigV4 signing patch applied to OTLPLogExporter session")
+
+    # Delegate all OTLPLogExporter interface methods
+    def export(self, batch):
+        return self._exporter.export(batch)
+
+    def shutdown(self):
+        return self._exporter.shutdown()
+
+    def force_flush(self, timeout_millis=30000):
+        return self._exporter.force_flush(timeout_millis)
+
+
+def _ensure_cloudwatch_log_stream(region: str, log_group: str, log_stream: str) -> None:
+    """Create the CloudWatch log stream if it does not already exist."""
+    import boto3
+    from botocore.exceptions import ClientError
+    client = boto3.client("logs", region_name=region)
+    try:
+        client.create_log_stream(logGroupName=log_group, logStreamName=log_stream)
+        logger.info("Created CloudWatch log stream: %s in %s", log_stream, log_group)
+    except ClientError as exc:
+        if exc.response["Error"]["Code"] == "ResourceAlreadyExistsException":
+            logger.debug("CloudWatch log stream already exists: %s", log_stream)
+        else:
+            logger.warning("Could not create log stream %s: %s", log_stream, exc)
+
 
 def _init_otel(iot_cfg: dict) -> bool:
     """Initialise OTEL SDK targeting CloudWatch OTLP endpoint. Returns True on success."""
     global _otel_processor, _logger_provider
     try:
         from opentelemetry._logs import set_logger_provider
-        from opentelemetry.sdk._logs import LoggerProvider
+        from opentelemetry.sdk._logs import LoggerProvider, LoggingHandler
         from opentelemetry.sdk._logs.export import BatchLogRecordProcessor
-        from opentelemetry.exporter.otlp.proto.http._log_exporter import OTLPLogExporter
         from opentelemetry.sdk.resources import Resource
 
         region = iot_cfg.get("region", "us-east-1")
         log_group = iot_cfg.get("logGroupName", f"/sfc/launch-packages/{iot_cfg['packageId']}")
         endpoint = f"https://logs.{region}.amazonaws.com/v1/logs"
 
-        exporter = OTLPLogExporter(
+        log_stream = iot_cfg.get("thingName", iot_cfg.get("packageId", "sfc-agent"))
+        # Ensure the log stream exists before sending any records
+        _ensure_cloudwatch_log_stream(region, log_group, log_stream)
+        # Use SigV4-signing wrapper around OTLPLogExporter
+        sig_exporter = _SigV4OTLPLogExporter(
             endpoint=endpoint,
-            headers={"x-aws-log-group": log_group},
+            headers={
+                "x-aws-log-group": log_group,
+                "x-aws-log-stream": log_stream,
+            },
+            region=region,
         )
-        processor = BatchLogRecordProcessor(exporter)
+        processor = BatchLogRecordProcessor(sig_exporter)
         resource = Resource.create({
             "service.name": "aws-sfc-runtime-agent",
             "sfc.package_id": iot_cfg.get("packageId", ""),
@@ -282,43 +477,47 @@ def _init_otel(iot_cfg: dict) -> bool:
         set_logger_provider(provider)
         _otel_processor = processor
         _logger_provider = provider
-        logger.info("OTEL initialised → %s", endpoint)
+
+        # Bridge Python root logger → OTEL so runner.py's own log lines are shipped
+        otel_handler = LoggingHandler(level=logging.DEBUG, logger_provider=provider)
+        logging.getLogger().addHandler(otel_handler)
+
+        logger.info(
+            "OTEL initialised → %s (log-group: %s, log-stream: %s)",
+            endpoint, log_group, log_stream,
+        )
         return True
     except ImportError as exc:
         logger.warning("OTEL SDK not available (%s); logs will not be shipped", exc)
         return False
+    except Exception as exc:
+        logger.error("OTEL init failed: %s", exc)
+        return False
 
 
 def _emit_otel_log(line: str) -> None:
-    global _telemetry_enabled
+    """
+    Forward a raw SFC subprocess output line to CloudWatch via the Python
+    logging → OTEL bridge installed by _init_otel().
+
+    Severity is inferred by keyword scan; all plain/no-prefix lines default to INFO.
+    Exceptions are surfaced at WARNING so they are not silently swallowed.
+    """
     if not _telemetry_enabled or not _logger_provider:
         return
     try:
-        from opentelemetry._logs import get_logger
-        from opentelemetry._logs.severity import SeverityNumber
-        otel_logger = get_logger("sfc-subprocess")
+        sub_logger = logging.getLogger("sfc-subprocess")
         upper = line.upper()
         if "ERROR" in upper:
-            sev_text, sev_num = "ERROR", SeverityNumber.ERROR
+            sub_logger.error(line)
         elif "WARN" in upper:
-            sev_text, sev_num = "WARN", SeverityNumber.WARN
+            sub_logger.warning(line)
         elif "DEBUG" in upper:
-            sev_text, sev_num = "DEBUG", SeverityNumber.DEBUG
+            sub_logger.debug(line)
         else:
-            sev_text, sev_num = "INFO", SeverityNumber.INFO
-        from opentelemetry.sdk._logs import LogRecord
-        from opentelemetry.util.types import Attributes
-        record = LogRecord(
-            timestamp=int(time.time_ns()),
-            observed_timestamp=int(time.time_ns()),
-            severity_text=sev_text,
-            severity_number=sev_num,
-            body=line,
-            resource=_logger_provider.resource,
-        )
-        otel_logger.emit(record)
+            sub_logger.info(line)
     except Exception as exc:
-        logger.debug("OTEL emit failed: %s", exc)
+        logger.warning("OTEL emit failed: %s", exc)
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -329,11 +528,9 @@ def _connect_mqtt(iot_cfg: dict):
     """Connect to IoT broker via mTLS and subscribe to control topics."""
     global _mqtt_connection
     try:
-        from awsiot import mqtt5_client, mqtt_connection_builder
+        from awsiot import mqtt_connection_builder
+        from awscrt.mqtt import QoS as MqttQoS
 
-        endpoint = iot_cfg["iotEndpoint"].replace(
-            "credentials.", ""
-        ).replace("/role-aliases", "")
         # Use data endpoint if it looks like a credentials endpoint
         if "credentials.iot" in iot_cfg["iotEndpoint"]:
             import boto3
@@ -359,7 +556,7 @@ def _connect_mqtt(iot_cfg: dict):
         topic_prefix = iot_cfg.get("topicPrefix", f"sfc/{iot_cfg['packageId']}/control")
         subscribe_future, _ = conn.subscribe(
             topic=f"{topic_prefix}/#",
-            qos=mqtt5_client.QoS.AT_LEAST_ONCE,
+            qos=MqttQoS.AT_LEAST_ONCE,
             callback=lambda topic, payload, **_: _dispatch_control(
                 topic, payload, iot_cfg
             ),
@@ -382,8 +579,6 @@ def _dispatch_control(topic: str, payload: bytes, iot_cfg: dict) -> None:
 
         if suffix == "telemetry":
             _telemetry_enabled = bool(msg.get("enabled", True))
-            if not _telemetry_enabled and _otel_processor:
-                pass  # processor remains; we gate at emit time
             logger.info("Telemetry set to %s", _telemetry_enabled)
 
         elif suffix == "diagnostics":
@@ -401,10 +596,10 @@ def _dispatch_control(topic: str, payload: bytes, iot_cfg: dict) -> None:
             if msg.get("restart"):
                 logger.info("Restart command received")
                 sfc_bin_dir = _HERE / ".sfc-bin"
-                sfc_version = _detect_sfc_version(_load_sfc_config())
-                jar_path = sfc_bin_dir / f"sfc-{sfc_version}-all.jar"
-                java_bin = _ensure_java(sfc_bin_dir)
-                _restart_sfc(java_bin, jar_path, _SFC_CONFIG_PATH)
+                sfc_cfg = _load_sfc_config()
+                sfc_version = _detect_sfc_version(sfc_cfg)
+                sfc_binary = _ensure_sfc_artifacts(sfc_version, sfc_cfg, sfc_bin_dir)
+                _restart_sfc(sfc_binary, _SFC_CONFIG_PATH, sfc_bin_dir)
 
     except Exception as exc:
         logger.error("Control dispatch error: %s", exc)
@@ -420,9 +615,8 @@ def _apply_config_update(presigned_url: str, iot_cfg: dict) -> None:
         logger.info("Config updated from presigned URL; restarting SFC …")
         sfc_version = _detect_sfc_version(new_config)
         sfc_bin_dir = _HERE / ".sfc-bin"
-        jar_path = sfc_bin_dir / f"sfc-{sfc_version}-all.jar"
-        java_bin = _ensure_java(sfc_bin_dir)
-        _restart_sfc(java_bin, jar_path, _SFC_CONFIG_PATH)
+        sfc_binary = _ensure_sfc_artifacts(sfc_version, new_config, sfc_bin_dir)
+        _restart_sfc(sfc_binary, _SFC_CONFIG_PATH, sfc_bin_dir)
     except Exception as exc:
         logger.error("Config update failed: %s", exc)
 
@@ -455,7 +649,6 @@ def _publish_heartbeat_now(iot_cfg: dict | None, sfc_pid: int | None = None, run
     })
     topic = f"sfc/{cfg['packageId']}/heartbeat"
     try:
-        from awsiot.mqtt_connection_builder import _MqttConnection
         _mqtt_connection.publish(
             topic=topic,
             payload=payload,
@@ -539,7 +732,7 @@ def main() -> None:
         sfc_version,
     )
 
-    # Step 2: Fetch initial credentials
+    # Step 2: Fetch initial credentials (must happen before OTEL so SigV4 signing works)
     try:
         creds = _fetch_credentials(iot_cfg)
         with _credentials_lock:
@@ -549,16 +742,15 @@ def main() -> None:
         logger.error("Initial credential fetch failed: %s", exc)
         sys.exit(1)
 
-    # Step 4: Init OTEL (unless --no-otel)
+    # Step 4: Init OTEL (unless --no-otel) — after credentials are available
     if not args.no_otel:
         _init_otel(iot_cfg)
 
-    # Step 1: Ensure Java + SFC binary
-    java_bin = _ensure_java(sfc_bin_dir)
-    jar_path = _download_sfc_binaries(sfc_version, sfc_bin_dir)
+    # Step 1: Ensure SFC artifacts (sfc-main binary + all modules from config)
+    sfc_binary = _ensure_sfc_artifacts(sfc_version, sfc_cfg, sfc_bin_dir)
 
     # Step 3: Start SFC subprocess
-    _sfc_proc = _start_sfc(java_bin, jar_path, _SFC_CONFIG_PATH)
+    _sfc_proc = _start_sfc(sfc_binary, _SFC_CONFIG_PATH, sfc_bin_dir)
     output_thread = threading.Thread(
         target=_capture_sfc_output,
         args=(_sfc_proc, args.no_otel),
@@ -597,6 +789,12 @@ def main() -> None:
         time.sleep(1)
 
     _shutdown.set()
+    # Drain any buffered OTEL records (e.g. SFC subprocess stdout captured before exit)
+    if _logger_provider:
+        try:
+            _logger_provider.force_flush(timeout_millis=5000)
+        except Exception:
+            pass
 
 
 if __name__ == "__main__":

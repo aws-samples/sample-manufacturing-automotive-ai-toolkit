@@ -221,6 +221,17 @@ def derive_iam_policy_statements(sfc_config: dict, package_id: str, region: str,
         "Resource": log_group_arn,
     })
 
+    # ── IoT DescribeEndpoint (always required) ────────────────────────────────
+    # runner.py calls iot:DescribeEndpoint(iot:Data-ATS) to resolve the MQTT
+    # broker address from the IoT credentials endpoint stored in iot-config.json.
+    # This permission must be present regardless of which SFC targets are
+    # configured, because it is exercised unconditionally at runner startup.
+    statements.append({
+        "Effect": "Allow",
+        "Action": "iot:DescribeEndpoint",
+        "Resource": "*",
+    })
+
     # ── Normalise Targets to a dict ───────────────────────────────────────────
     targets = sfc_config.get("Targets", {})
     if isinstance(targets, list):
