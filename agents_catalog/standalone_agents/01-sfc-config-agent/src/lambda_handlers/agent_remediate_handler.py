@@ -205,8 +205,8 @@ def _invoke_agentcore(prompt: str, session_id: str) -> dict | None:
         }).encode()
 
         resp = client.invoke_agent_runtime(
-            agentRuntimeId=runtime_id,
-            sessionId=session_id,
+            agentRuntimeArn=runtime_id,
+            runtimeSessionId=session_id,
             payload=payload,
             contentType="application/json",
             accept="application/json",

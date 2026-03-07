@@ -368,6 +368,22 @@ class SfcConfigAgentStack(NestedStack):
             description="AgentCore Memory store ID for SFC Config Agent",
         )
 
+        # AgentCore runtime ID — written here as a placeholder so the SSM
+        # parameter always exists. build_launch_agentcore.py overwrites it with
+        # the real agent runtime ARN after a successful AgentCore deployment
+        # (via the ssm_parameter_mapping in manifest.json).
+        # Both fn-agent-remediate and fn-agent-create-config read this path at
+        # cold-start to resolve the agentRuntimeId for invoke_agent_runtime().
+        ssm.StringParameter(
+            self, "SfcAgentCoreRuntimeIdParameter",
+            parameter_name="/sfc-config-agent/agentcore-runtime-id",
+            string_value="NOT_DEPLOYED_YET",
+            description=(
+                "AgentCore runtime ID for the SFC Config Agent. "
+                "Overwritten by build_launch_agentcore.py after deployment."
+            ),
+        )
+
         # ----------------------------------------------------------------
         # WP-01: Control Plane DynamoDB Tables
         # ----------------------------------------------------------------

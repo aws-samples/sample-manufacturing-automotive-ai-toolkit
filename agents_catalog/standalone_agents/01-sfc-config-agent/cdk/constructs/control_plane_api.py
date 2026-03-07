@@ -203,13 +203,47 @@ class ControlPlaneApi(Construct):
         ))
 
         # ----------------------------------------------------------------
+        # WP-10b — fn-agent-create-config
+        # ----------------------------------------------------------------
+        self.fn_agent_create_config = _fn(
+            "fn-agent-create-config",
+            "agent_create_config_handler",
+            memory_mb=256,
+            timeout_s=300,  # agent may take up to 5 min
+        )
+        configs_bucket.grant_read_write(self.fn_agent_create_config)
+        config_table.grant_read_write_data(self.fn_agent_create_config)
+        control_plane_state_table.grant_read_write_data(self.fn_agent_create_config)
+        # AgentCore invoke_agent_runtime permission
+        self.fn_agent_create_config.add_to_role_policy(iam.PolicyStatement(
+            actions=["bedrock-agentcore:InvokeAgentRuntime"],
+            resources=["*"],
+        ))
+        # Allow SSM read to resolve agentcore-runtime-id at cold-start
+        self.fn_agent_create_config.add_to_role_policy(iam.PolicyStatement(
+            actions=["ssm:GetParameter"],
+            resources=[
+                f"arn:aws:ssm:{region}:{account}:parameter/sfc-config-agent/agentcore-runtime-id",
+            ],
+        ))
+        # Self-invoke permission (async job dispatch).
+        # Use a literal ARN to avoid a CFN circular-dependency
+        # (function_arn token → role → function → cycle).
+        self.fn_agent_create_config.add_to_role_policy(iam.PolicyStatement(
+            actions=["lambda:InvokeFunction"],
+            resources=[
+                f"arn:aws:lambda:{region}:{account}:function:fn-agent-create-config",
+            ],
+        ))
+
+        # ----------------------------------------------------------------
         # WP-10 — fn-agent-remediate
         # ----------------------------------------------------------------
         self.fn_agent_remediate = _fn(
             "fn-agent-remediate",
             "agent_remediate_handler",
             memory_mb=256,
-            timeout_s=120,
+            timeout_s=300,  # agent may take up to 5 min
         )
         configs_bucket.grant_read_write(self.fn_agent_remediate)
         config_table.grant_read_write_data(self.fn_agent_remediate)
@@ -256,6 +290,7 @@ class ControlPlaneApi(Construct):
             "FnLogsArn": _lambda_integration_uri(self.fn_logs),
             "FnGgCompArn": _lambda_integration_uri(self.fn_gg_comp),
             "FnIotControlArn": _lambda_integration_uri(self.fn_iot_control),
+            "FnAgentCreateConfigArn": _lambda_integration_uri(self.fn_agent_create_config),
             "FnAgentRemediateArn": _lambda_integration_uri(self.fn_agent_remediate),
             # CloudFront origin placeholder — filled at deploy time via stack output
             "CloudFrontOrigin": "https://placeholder.cloudfront.net",
@@ -303,6 +338,7 @@ class ControlPlaneApi(Construct):
             self.fn_logs,
             self.fn_gg_comp,
             self.fn_iot_control,
+            self.fn_agent_create_config,
             self.fn_agent_remediate,
         ]:
             fn.add_permission(

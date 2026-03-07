@@ -84,6 +84,43 @@ export interface RemediationResponse {
   correctedConfig: Record<string, unknown>;
 }
 
+export interface GenerateConfigRequest {
+  name: string;
+  description?: string;
+  /** One or more SFC protocol adapter ids, e.g. ["OPCUA", "Modbus TCP"] */
+  protocol_adapters: string[];
+  /** Free-text connection strings / endpoint URLs (one per line or list item) */
+  source_endpoints: string[];
+  /** One or more SFC target ids, e.g. ["AWS IoT Core", "Debug"] */
+  sfc_targets: string[];
+  channels_description: string;
+  sampling_interval_ms: number;
+  additional_context?: string;
+}
+
+/** Returned immediately by POST /configs/generate (202 Accepted) */
+export interface GenerateConfigJobAccepted {
+  jobId: string;
+  status: "PENDING";
+}
+
+/** Returned by GET /configs/generate/{jobId} */
+export interface GenerateConfigJobStatus {
+  jobId: string;
+  status: "PENDING" | "COMPLETE" | "FAILED";
+  configId?: string;
+  version?: string;
+  name?: string;
+  error?: string;
+}
+
+/** Kept for backwards compat — shape returned when job is COMPLETE */
+export interface GenerateConfigResponse {
+  configId: string;
+  version: string;
+  name: string;
+}
+
 // ─── Config endpoints ────────────────────────────────────────────────────────
 
 export const listConfigs = () =>
@@ -250,6 +287,43 @@ export const getGgComponent = (packageId: string) =>
       `/packages/${packageId}/greengrass`
     )
     .then((r) => r.data);
+
+// ─── AI-guided config generation endpoint (async) ────────────────────────────
+
+/** POST /configs/generate → 202 { jobId } */
+export const startGenerateConfig = (body: GenerateConfigRequest) =>
+  api
+    .post<GenerateConfigJobAccepted>("/configs/generate", body)
+    .then((r) => r.data);
+
+/** GET /configs/generate/{jobId} → job status */
+export const pollGenerateConfig = (jobId: string) =>
+  api
+    .get<GenerateConfigJobStatus>(`/configs/generate/${encodeURIComponent(jobId)}`)
+    .then((r) => r.data);
+
+/**
+ * Convenience: start generation and poll until COMPLETE or FAILED.
+ * Calls onPending on every pending poll (optional).
+ * Resolves with the completed job or rejects on FAILED/timeout.
+ */
+export const generateConfig = async (
+  body: GenerateConfigRequest,
+  opts: { pollIntervalMs?: number; timeoutMs?: number; onPending?: () => void } = {}
+): Promise<GenerateConfigJobStatus> => {
+  const { pollIntervalMs = 5000, timeoutMs = 360_000, onPending } = opts;
+  const { jobId } = await startGenerateConfig(body);
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    await new Promise((r) => setTimeout(r, pollIntervalMs));
+    const status = await pollGenerateConfig(jobId);
+    if (status.status === "COMPLETE") return status;
+    if (status.status === "FAILED")
+      throw new Error(status.error ?? "AI config generation failed");
+    onPending?.();
+  }
+  throw new Error("AI config generation timed out");
+};
 
 // ─── Remediation endpoints ───────────────────────────────────────────────────
 

@@ -898,6 +898,66 @@ paths:
         payloadFormatVersion: "2.0"
 
   # ────────────────────────────────────────────────────────────────
+  # AI-Guided Config Generation
+  # ────────────────────────────────────────────────────────────────
+
+  /configs/generate:
+    post:
+      operationId: generateConfig
+      summary: Start AI-guided SFC config generation (async — returns 202 + jobId)
+      tags: [configs]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/GenerateConfigRequest"
+      responses:
+        "202":
+          description: Generation job accepted — poll GET /configs/generate/{jobId} for status
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/GenerateConfigJobAccepted"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "500":
+          $ref: "#/components/responses/InternalError"
+      x-amazon-apigateway-integration:
+        type: aws_proxy
+        httpMethod: POST
+        uri: "${FnAgentCreateConfigArn}"
+        payloadFormatVersion: "2.0"
+
+  /configs/generate/{jobId}:
+    get:
+      operationId: pollGenerateConfig
+      summary: Poll the status of an AI config generation job
+      tags: [configs]
+      parameters:
+        - name: jobId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Job status (PENDING / COMPLETE / FAILED)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/GenerateConfigJobStatus"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "500":
+          $ref: "#/components/responses/InternalError"
+      x-amazon-apigateway-integration:
+        type: aws_proxy
+        httpMethod: POST
+        uri: "${FnAgentCreateConfigArn}"
+        payloadFormatVersion: "2.0"
+
+  # ────────────────────────────────────────────────────────────────
   # AI Remediation
   # ────────────────────────────────────────────────────────────────
 
@@ -1327,6 +1387,97 @@ components:
           type: string
           enum: [ACTIVE, ERROR, INACTIVE]
       required: [packageId, liveStatus]
+
+    # ── AI-Guided Config Generation ───────────────────────────────
+
+    GenerateConfigRequest:
+      type: object
+      properties:
+        name:
+          type: string
+          description: Human-readable name for the new config
+        description:
+          type: string
+          description: Optional description
+        protocol:
+          type: string
+          description: Industrial protocol (e.g. OPC-UA, Modbus TCP, MQTT, S7)
+          default: OPC-UA
+        targets:
+          type: array
+          description: List of host/endpoint connections
+          items:
+            type: object
+            properties:
+              host:
+                type: string
+                description: Hostname, IP address, or endpoint URL
+              port:
+                type: integer
+                description: TCP port number
+        channels_description:
+          type: string
+          description: Free-text description of the data channels to collect
+        sampling_interval_ms:
+          type: integer
+          description: Sampling interval in milliseconds
+          default: 1000
+        additional_context:
+          type: string
+          description: >
+            Any extra free-text requirements, constraints, or notes that do not fit
+            the structured fields above (e.g. security mode, certificate paths,
+            retry behaviour, special register mappings).
+      required: [name]
+
+    GenerateConfigJobAccepted:
+      type: object
+      properties:
+        jobId:
+          type: string
+          description: Opaque job ID — use with GET /configs/generate/{jobId}
+        status:
+          type: string
+          enum: [PENDING]
+      required: [jobId, status]
+
+    GenerateConfigJobStatus:
+      type: object
+      properties:
+        jobId:
+          type: string
+        status:
+          type: string
+          enum: [PENDING, COMPLETE, FAILED]
+        configId:
+          type: string
+          description: Present when status is COMPLETE
+        version:
+          type: string
+          description: Present when status is COMPLETE
+        name:
+          type: string
+        error:
+          type: string
+          description: Present when status is FAILED
+      required: [jobId, status]
+
+    GenerateConfigResponse:
+      type: object
+      properties:
+        configId:
+          type: string
+          description: ID of the newly persisted config
+        version:
+          type: string
+          description: ISO-8601 version key
+        name:
+          type: string
+        generatedConfig:
+          type: object
+          additionalProperties: true
+          description: The AI-generated SFC configuration JSON
+      required: [configId, version, name, generatedConfig]
 
     # ── Remediation ───────────────────────────────────────────────
 
