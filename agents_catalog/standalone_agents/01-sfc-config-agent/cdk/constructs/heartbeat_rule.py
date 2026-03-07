@@ -2,28 +2,41 @@
 WP-08b — SfcHeartbeatRule CDK Construct.
 
 IoT Topic Rule that listens for heartbeat MQTT messages published by the
-edge runner on topic  sfc/{packageId}/heartbeat  and writes them directly
-to the LaunchPackageTable via the DynamoDB IoT Rule Action.
+edge runner on topic  sfc/{packageId}/heartbeat  and invokes a Lambda
+function to persist the heartbeat to the LaunchPackageTable.
+
+Why Lambda instead of the DynamoDB v2 direct action
+----------------------------------------------------
+The DynamoDB v2 PutItem action fails when the sort-key attribute (``createdAt``)
+is an empty string — and the edge runner publishes ``"createdAt": ""`` in
+heartbeat payloads because it does not know the value assigned at package-
+creation time.  A Lambda action can query the table by ``packageId`` (PK) to
+retrieve the real ``createdAt`` SK and then call UpdateItem, which is the
+correct operation for updating an existing record rather than creating a
+duplicate.
 
 IoT SQL:
   SELECT *, topic(2) AS packageId FROM 'sfc/+/heartbeat'
 
-DynamoDB action writes:
-  packageId           = ${packageId}          (from topic extraction)
-  createdAt           = ${createdAt}           (existing SK — must match existing item)
-  lastHeartbeatAt     = ${timestamp()}
-  lastHeartbeatPayload= <full JSON string>
-  sfcRunning          = ${sfcRunning}
+Lambda handler:  lambda_handlers.heartbeat_ingestion_handler.handler
 """
 
 from __future__ import annotations
 
+import os
+
 from aws_cdk import (
+    Duration,
     Stack,
     aws_iam as iam,
     aws_iot as iot,
+    aws_lambda as lambda_,
+    aws_logs as logs,
 )
 from constructs import Construct
+
+_HERE = os.path.dirname(__file__)
+_HANDLERS_SRC = os.path.join(_HERE, "..", "..", "src")
 
 
 class SfcHeartbeatRule(Construct):
@@ -34,7 +47,8 @@ class SfcHeartbeatRule(Construct):
         scope: Construct,
         construct_id: str,
         *,
-        launch_package_table,   # aws_dynamodb.ITable
+        launch_package_table,       # aws_dynamodb.ITable
+        layer: lambda_.ILayerVersion,  # sfc-cp-utils shared layer
         **kwargs,
     ) -> None:
         super().__init__(scope, construct_id, **kwargs)
@@ -44,42 +58,53 @@ class SfcHeartbeatRule(Construct):
         table_name = launch_package_table.table_name
 
         # ----------------------------------------------------------------
-        # IAM role for the IoT Rule Action (DynamoDB write)
+        # Lambda function — heartbeat ingestion
+        # Queries the table by packageId to obtain the real createdAt SK,
+        # then calls UpdateItem to set heartbeat attributes.
         # ----------------------------------------------------------------
+        self.fn_heartbeat = lambda_.Function(
+            self,
+            "fn-heartbeat-ingestion",
+            function_name="fn-heartbeat-ingestion",
+            runtime=lambda_.Runtime.PYTHON_3_12,
+            handler="lambda_handlers.heartbeat_ingestion_handler.handler",
+            code=lambda_.Code.from_asset(_HANDLERS_SRC),
+            layers=[layer],
+            memory_size=128,
+            timeout=Duration.seconds(15),
+            environment={
+                "LAUNCH_PKG_TABLE_NAME": table_name,
+            },
+            log_retention=logs.RetentionDays.ONE_MONTH,
+        )
+
+        # Grant the Lambda Query + UpdateItem on the LaunchPackageTable
+        launch_package_table.grant_read_write_data(self.fn_heartbeat)
+
+        # ----------------------------------------------------------------
+        # IoT Rule — invokes the Lambda
+        # ----------------------------------------------------------------
+        # IAM role for the IoT Rule Action (Lambda invoke)
         self.rule_role = iam.Role(
             self,
             "HeartbeatRuleRole",
             assumed_by=iam.ServicePrincipal("iot.amazonaws.com"),
-            description="Allows IoT heartbeat rule to write to LaunchPackageTable",
+            description="Allows IoT heartbeat rule to invoke the heartbeat ingestion Lambda",
         )
-        launch_package_table.grant_write_data(self.rule_role)
+        self.rule_role.add_to_policy(
+            iam.PolicyStatement(
+                actions=["lambda:InvokeFunction"],
+                resources=[self.fn_heartbeat.function_arn],
+            )
+        )
 
-        # ----------------------------------------------------------------
-        # IoT Topic Rule
-        # ----------------------------------------------------------------
-        # The DynamoDB v2 action writes multiple attributes in a single PutItem.
-        # We use CfnTopicRule with the dynamoDBv2 action shape.
-        # The hash key (packageId) is extracted from topic(2).
-        # The sort key (createdAt) is NOT written by the rule — the PutItem
-        # action on the DynamoDB v2 action includes a putItem that specifies
-        # all fields; any missing SK causes the PutItem to fail.
-        # To avoid this, we use the UpdateItem variant via a separate Lambda
-        # in the IoT Rule — but CDK / IoT only supports UpdateItem via Lambda.
-        # Instead we use the DynamoDB v2 action with a *full document* approach:
-        # the edge runner always publishes packageId+createdAt in the heartbeat
-        # payload so the rule can do a full PutItem with both keys present.
-        #
-        # Heartbeat payload shape (from runner.py):
-        # {
-        #   "packageId": "...",
-        #   "createdAt": "...",       <-- SK, published by runner
-        #   "timestamp": "...",
-        #   "sfcPid": 12345,
-        #   "sfcRunning": true,
-        #   "telemetryEnabled": true,
-        #   "diagnosticsEnabled": false,
-        #   "recentLogs": [...]
-        # }
+        # Allow IoT Core to invoke the Lambda (resource-based policy)
+        self.fn_heartbeat.add_permission(
+            "IoTRuleInvoke",
+            principal=iam.ServicePrincipal("iot.amazonaws.com"),
+            source_arn=f"arn:aws:iot:{region}:{account}:rule/*",
+        )
+
         self.rule = iot.CfnTopicRule(
             self,
             "SfcHeartbeatRule",
@@ -89,11 +114,8 @@ class SfcHeartbeatRule(Construct):
                 rule_disabled=False,
                 actions=[
                     iot.CfnTopicRule.ActionProperty(
-                        dynamo_d_bv2=iot.CfnTopicRule.DynamoDBv2ActionProperty(
-                            role_arn=self.rule_role.role_arn,
-                            put_item=iot.CfnTopicRule.PutItemInputProperty(
-                                table_name=table_name,
-                            ),
+                        lambda_=iot.CfnTopicRule.LambdaActionProperty(
+                            function_arn=self.fn_heartbeat.function_arn,
                         )
                     )
                 ],

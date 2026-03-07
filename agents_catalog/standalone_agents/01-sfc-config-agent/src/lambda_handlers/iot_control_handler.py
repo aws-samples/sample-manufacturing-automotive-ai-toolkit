@@ -86,6 +86,26 @@ def _push_config_update(pkg: dict, body: dict) -> dict:
     config_version = body.get("configVersion")
     if not config_id or not config_version:
         return _error(400, "BAD_REQUEST", "configId and configVersion required")
+
+    # Enforce: only the same configId that was baked into the package may be pushed
+    if config_id != pkg.get("configId"):
+        return _error(
+            400,
+            "BAD_REQUEST",
+            f"Config update must use the same configId as the package "
+            f"(expected: {pkg.get('configId')}, got: {config_id})",
+        )
+
+    # Enforce: only versions strictly newer than the one snapshotted in the package
+    pkg_config_version = pkg.get("configVersion", "")
+    if config_version <= pkg_config_version:
+        return _error(
+            400,
+            "BAD_REQUEST",
+            f"Config update must be a version newer than the package's current version "
+            f"(package version: {pkg_config_version}, requested: {config_version})",
+        )
+
     s3_key = s3_util.config_s3_key(config_id, config_version)
     presigned = s3_util.generate_presigned_url(CONFIGS_BUCKET, s3_key, ttl_seconds=300)
     topic = f"sfc/{pkg['packageId']}/control/config-update"

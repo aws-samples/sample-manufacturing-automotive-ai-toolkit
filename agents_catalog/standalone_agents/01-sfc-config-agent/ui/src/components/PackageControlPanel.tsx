@@ -6,7 +6,7 @@ import {
   setDiagnostics,
   pushConfigUpdate,
   restartSfc,
-  listConfigs,
+  getConfig,
   listConfigVersions,
   type LaunchPackage,
 } from "../api/client";
@@ -90,18 +90,22 @@ export default function PackageControlPanel({ pkg }: Props) {
     enabled: isReady,
   });
 
-  // Config push state
-  const { data: configs } = useQuery({
-    queryKey: ["configs"],
-    queryFn: listConfigs,
-  });
-  const [pushConfigId, setPushConfigId] = useState("");
+  // Config push state — locked to the package's own configId
   const [pushVersion, setPushVersion] = useState("");
-  const { data: versions } = useQuery({
-    queryKey: ["configVersions", pushConfigId],
-    queryFn: () => listConfigVersions(pushConfigId),
-    enabled: !!pushConfigId,
+  const { data: configMeta } = useQuery({
+    queryKey: ["config", pkg.configId],
+    queryFn: () => getConfig(pkg.configId),
+    enabled: !!pkg.configId,
   });
+  const { data: allVersions } = useQuery({
+    queryKey: ["configVersions", pkg.configId],
+    queryFn: () => listConfigVersions(pkg.configId),
+    enabled: !!pkg.configId,
+  });
+  // Only show versions strictly newer than the one snapshotted into the package
+  const newerVersions = (allVersions ?? []).filter(
+    (v) => v.version > pkg.configVersion
+  );
 
   // Restart confirm
   const [showRestartConfirm, setShowRestartConfirm] = useState(false);
@@ -116,7 +120,7 @@ export default function PackageControlPanel({ pkg }: Props) {
     onSuccess: () => qc.invalidateQueries({ queryKey: ["control", pkg.packageId] }),
   });
   const cfgPushMut = useMutation({
-    mutationFn: () => pushConfigUpdate(pkg.packageId, pushConfigId, pushVersion),
+    mutationFn: () => pushConfigUpdate(pkg.packageId, pkg.configId, pushVersion),
     onSuccess: () => qc.invalidateQueries({ queryKey: ["control", pkg.packageId] }),
   });
   const restartMut = useMutation({
@@ -162,35 +166,35 @@ export default function PackageControlPanel({ pkg }: Props) {
       <div className="card space-y-3">
         <p className="text-xs font-medium text-slate-500">Push Config Update</p>
         <div className="space-y-2">
-          <select
-            className="w-full bg-[#0f1117] border border-[#2a3044] rounded px-2 py-1.5 text-sm text-slate-300 disabled:opacity-40"
-            value={pushConfigId}
-            onChange={(e) => { setPushConfigId(e.target.value); setPushVersion(""); }}
-            disabled={!isReady}
-          >
-            <option value="">Select config…</option>
-            {configs?.map((c) => (
-              <option key={c.configId} value={c.configId}>
-                {c.name} ({c.configId})
-              </option>
-            ))}
-          </select>
-          <select
-            className="w-full bg-[#0f1117] border border-[#2a3044] rounded px-2 py-1.5 text-sm text-slate-300 disabled:opacity-40"
-            value={pushVersion}
-            onChange={(e) => setPushVersion(e.target.value)}
-            disabled={!isReady || !pushConfigId}
-          >
-            <option value="">Select version…</option>
-            {versions?.map((v) => (
-              <option key={v.version} value={v.version}>
-                {v.version}
-              </option>
-            ))}
-          </select>
+          {/* Config locked to the package's own configId */}
+          <div className="rounded px-2 py-1.5 bg-[#0f1117] border border-[#2a3044]">
+            <p className="text-[10px] text-slate-500 mb-0.5">Config (locked)</p>
+            <p className="text-xs text-slate-300 font-mono truncate">
+              {configMeta?.name ?? pkg.configId}
+            </p>
+          </div>
+          {newerVersions.length === 0 ? (
+            <p className="text-xs text-slate-500 italic border border-slate-700 rounded px-3 py-2">
+              No newer versions available — save a new version of this config first.
+            </p>
+          ) : (
+            <select
+              className="w-full bg-[#0f1117] border border-[#2a3044] rounded px-2 py-1.5 text-sm text-slate-300 disabled:opacity-40"
+              value={pushVersion}
+              onChange={(e) => setPushVersion(e.target.value)}
+              disabled={!isReady}
+            >
+              <option value="">Select version…</option>
+              {newerVersions.map((v) => (
+                <option key={v.version} value={v.version}>
+                  {new Date(v.version).toLocaleString()}
+                </option>
+              ))}
+            </select>
+          )}
           <button
             className="btn btn-primary w-full"
-            disabled={!isReady || !pushConfigId || !pushVersion || cfgPushMut.isPending}
+            disabled={!isReady || !pushVersion || cfgPushMut.isPending}
             onClick={() => cfgPushMut.mutate()}
           >
             {cfgPushMut.isPending ? <span className="spinner" /> : "Push Update"}

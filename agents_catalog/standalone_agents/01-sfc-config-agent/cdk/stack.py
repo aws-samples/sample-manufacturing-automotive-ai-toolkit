@@ -388,11 +388,14 @@ class SfcConfigAgentStack(NestedStack):
 
         # ----------------------------------------------------------------
         # WP-08 (partial): IoT Heartbeat Rule
+        # Pass the shared sfc-cp-utils layer from ControlPlaneApi so the
+        # heartbeat ingestion Lambda can import sfc_cp_utils.ddb.
         # ----------------------------------------------------------------
         self.heartbeat_rule = SfcHeartbeatRule(
             self,
             "HeartbeatRule",
             launch_package_table=self.cp_tables.launch_package_table,
+            layer=self.cp_api.layer,
         )
 
         # ----------------------------------------------------------------

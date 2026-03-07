@@ -1,3 +1,4 @@
+import { useEffect, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { getHeartbeat, type HeartbeatStatus } from "../api/client";
 
@@ -26,6 +27,15 @@ function relativeTime(iso?: string) {
   return `${Math.round(diff / 3600)}h ago`;
 }
 
+/** Ticks every second so that "Last seen" counts up in real time. */
+function useTick(intervalMs = 1_000) {
+  const [, setTick] = useState(0);
+  useEffect(() => {
+    const id = setInterval(() => setTick((t) => t + 1), intervalMs);
+    return () => clearInterval(id);
+  }, [intervalMs]);
+}
+
 export default function HeartbeatStatusLed({ packageId, compact }: Props) {
   const { data } = useQuery({
     queryKey: ["heartbeat", packageId],
@@ -33,6 +43,9 @@ export default function HeartbeatStatusLed({ packageId, compact }: Props) {
     refetchInterval: 10_000,
     staleTime: 8_000,
   });
+
+  // Re-render every second so the relative timestamp counts up live
+  useTick();
 
   const status = data?.liveStatus ?? "INACTIVE";
 

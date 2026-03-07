@@ -104,6 +104,7 @@ export default function PackageDetail() {
                 <Row
                   label="Config Name"
                   value={configMeta.name}
+                  prominent
                   onClick={() =>
                     navigate(
                       `/configs/${pkg.configId}?version=${encodeURIComponent(pkg.configVersion)}`
@@ -227,6 +228,7 @@ function Row({
   label,
   value,
   mono = false,
+  prominent = false,
   onClick,
   title,
   sublabel,
@@ -234,12 +236,14 @@ function Row({
   label: string;
   value: string;
   mono?: boolean;
+  prominent?: boolean;
   onClick?: () => void;
   title?: string;
   sublabel?: string;
 }) {
+  const textSize = prominent ? "text-sm" : "text-xs";
   return (
-    <div className="flex items-start gap-2 text-sm">
+    <div className="flex items-start gap-2">
       <span className="w-32 shrink-0 text-slate-500 text-xs pt-0.5">{label}</span>
       <div className="flex flex-col gap-0.5 min-w-0">
         {onClick ? (
@@ -247,15 +251,15 @@ function Row({
             type="button"
             onClick={onClick}
             title={title}
-            className={`break-all text-left cursor-pointer text-sky-400 hover:text-sky-300 hover:underline transition-colors ${
-              mono ? "font-mono text-xs" : ""
+            className={`break-all text-left cursor-pointer ${textSize} text-sky-400 hover:text-sky-300 hover:underline transition-colors ${
+              mono ? "font-mono" : ""
             }`}
           >
             {value}
           </button>
         ) : (
           <span
-            className={`break-all ${mono ? "font-mono text-xs text-slate-300" : "text-slate-200"}`}
+            className={`break-all ${textSize} ${mono ? "font-mono text-slate-300" : "text-slate-200"}`}
           >
             {value}
           </span>
