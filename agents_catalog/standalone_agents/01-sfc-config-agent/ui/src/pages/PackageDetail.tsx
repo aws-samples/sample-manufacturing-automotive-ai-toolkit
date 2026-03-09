@@ -3,7 +3,6 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import {
   getPackage,
   getPackageDownloadUrl,
-  triggerRemediation,
   getConfig,
   deepDeletePackage,
   updatePackageTags,
@@ -32,8 +31,6 @@ export default function PackageDetail() {
     enabled: !!pkg?.configId,
   });
 
-  const [remediating, setRemediating] = useState(false);
-  const [remediationResult, setRemediationResult] = useState<string | null>(null);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [tags, setTags] = useState<string[]>([]);
   const tagsInitialized = useRef(false);
@@ -58,21 +55,6 @@ export default function PackageDetail() {
     },
   });
 
-  const remediateMut = useMutation({
-    mutationFn: () => {
-      const end = new Date().toISOString();
-      const start = new Date(Date.now() - 15 * 60_000).toISOString();
-      return triggerRemediation(packageId!, start, end);
-    },
-    onSuccess: (res) => {
-      qc.invalidateQueries({ queryKey: ["package", packageId] });
-      setRemediationResult(
-        `Remediation complete. New config version: ${res.newConfigVersion}`
-      );
-      setRemediating(false);
-    },
-    onError: () => setRemediating(false),
-  });
 
   if (isLoading) return <p className="p-6 text-slate-500 text-sm">Loading…</p>;
   if (!pkg) return <p className="p-6 text-slate-500 text-sm">Package not found.</p>;
@@ -146,29 +128,48 @@ export default function PackageDetail() {
               </div>
             )}
 
-            {/* AI Remediation */}
-            <div className="card space-y-3">
-              <p className="text-xs font-medium text-slate-500">AI-Assisted Remediation</p>
-              <p className="text-xs text-slate-400">
-                Triggers the Bedrock agent to analyse the last 15 minutes of error logs
-                and produce a corrected SFC config version.
+            {/* AI Remediation entry point */}
+            <div className="card space-y-3 border border-sky-900/40 bg-sky-950/10">
+              <div className="flex items-center gap-2">
+                <svg
+                  xmlns="http://www.w3.org/2000/svg"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="1.6"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  className="w-4 h-4 text-sky-400 shrink-0"
+                >
+                  <polyline points="2,20 9,7 13,13 16,9 22,20" />
+                  <polyline points="14.3,11 16,9 17.7,11.4" />
+                </svg>
+                <p className="text-xs font-medium text-sky-300">AI-Assisted Remediation</p>
+              </div>
+              <p className="text-xs text-slate-400 leading-relaxed">
+                Open the Log Viewer to inspect live SFC logs. When errors are detected,
+                the <span className="text-sky-300 font-medium">Fix with AI</span> button
+                triggers a <span className="text-slate-300">Bedrock AgentCore Runtime</span> that
+                analyses the error window and produces a corrected config version automatically.
               </p>
-              {remediationResult && (
-                <p className="text-xs text-green-400">{remediationResult}</p>
-              )}
-              {remediateMut.isError && (
-                <p className="text-xs text-red-400">Remediation failed.</p>
-              )}
               <button
-                className="btn btn-primary"
-                disabled={remediating || remediateMut.isPending}
-                onClick={() => {
-                  setRemediating(true);
-                  setRemediationResult(null);
-                  remediateMut.mutate();
-                }}
+                className="btn btn-primary w-full inline-flex items-center justify-center gap-2"
+                onClick={() => navigate(`/packages/${pkg.packageId}/logs`)}
               >
-                {remediateMut.isPending ? <span className="spinner" /> : "Run AI Remediation"}
+                <svg
+                  xmlns="http://www.w3.org/2000/svg"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="1.8"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  className="w-3.5 h-3.5 shrink-0"
+                >
+                  <polyline points="2,20 9,7 13,13 16,9 22,20" />
+                  <polyline points="14.3,11 16,9 17.7,11.4" />
+                </svg>
+                Open Log Viewer
               </button>
             </div>
 

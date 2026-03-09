@@ -13,7 +13,7 @@ TODO:
 [   ] AI Remidiation
 [   ] Viz based on Telemetry
 [   ] Cloudwatch Metrics
-[   ] Log Viewer & API calls only 100 oldest log lines - not newest
+[ x ] Log Viewer & API calls only 100 oldest log lines - not newest
 [ x ] AI guided "Create config" option with prompt & file upload to context (instant base64 encoding)
 [   ] Only "high level validated" configs shall be eligible to be in in Focus -> Launch Configs
 [   ] Detect Agentic Summary response & show proper html instead of json editor

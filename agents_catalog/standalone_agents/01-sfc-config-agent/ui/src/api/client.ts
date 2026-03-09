@@ -68,13 +68,16 @@ export interface ControlState {
 }
 
 export interface LogEvent {
-  timestamp: number;
-  message: string;
-  ingestionTime?: number;
+  /** ISO-8601 timestamp string (e.g. "2026-02-27T16:34:12.451000+00:00") */
+  timestamp: string;
+  /** SFC-native log level extracted from the log body */
+  severityText: "TRACE" | "INFO" | "WARNING" | "ERROR";
+  severityNumber: number;
+  body: string;
 }
 
 export interface LogsResponse {
-  events: LogEvent[];
+  records: LogEvent[];
   nextToken?: string;
 }
 

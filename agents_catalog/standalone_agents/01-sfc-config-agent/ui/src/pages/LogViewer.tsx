@@ -15,7 +15,6 @@ export default function LogViewer() {
     enabled: !!packageId,
   });
 
-  const [errorsOnly, setErrorsOnly] = useState(false);
   const [remediationResult, setRemediationResult] = useState<string | null>(null);
 
   const remediateMut = useMutation({
@@ -46,17 +45,6 @@ export default function LogViewer() {
           )}
         </div>
 
-        <div className="ml-auto flex items-center gap-3">
-          <label className="flex items-center gap-1.5 text-xs text-slate-400 cursor-pointer">
-            <input
-              type="checkbox"
-              checked={errorsOnly}
-              onChange={(e) => setErrorsOnly(e.target.checked)}
-              className="accent-red-500"
-            />
-            Errors only
-          </label>
-        </div>
       </div>
 
       {remediationResult && (
@@ -71,7 +59,6 @@ export default function LogViewer() {
         {packageId && (
           <OtelLogStream
             packageId={packageId}
-            errorsOnly={errorsOnly}
             onFixWithAI={(start, end) => remediateMut.mutate({ start, end })}
           />
         )}

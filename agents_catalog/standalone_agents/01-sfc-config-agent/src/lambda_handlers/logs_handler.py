@@ -1,7 +1,7 @@
 """WP-07 — fn-logs: CloudWatch OTEL log retrieval."""
 
 from __future__ import annotations
-import json, logging, os
+import json, logging, os, re
 from datetime import datetime, timezone
 import boto3
 from sfc_cp_utils import ddb as ddb_util
@@ -16,6 +16,17 @@ _pkg_table = _dynamodb.Table(LAUNCH_PKG_TABLE)
 _logs = boto3.client("logs", region_name=_region)
 
 ERROR_FILTER_PATTERN = '?SeverityText="ERROR" ?SeverityNumber=17 ?SeverityNumber=18 ?SeverityNumber=19 ?SeverityNumber=20 ?SeverityNumber=21 ?SeverityNumber=22 ?SeverityNumber=23 ?SeverityNumber=24'
+
+# Compiled once at module load
+_ANSI_RE = re.compile(r'\x1B\[[0-9;]*[A-Za-z]')
+# Matches SFC-native log level tokens after ANSI codes are stripped
+_SFC_LEVEL_RE = re.compile(r'\b(TRACE|INFO|WARNING|ERROR)\b', re.IGNORECASE)
+_SFC_LEVEL_MAP = {
+    "TRACE":   ("TRACE",   1),
+    "INFO":    ("INFO",    9),
+    "WARNING": ("WARNING", 13),
+    "ERROR":   ("ERROR",   17),
+}
 
 
 def handler(event: dict, context) -> dict:
@@ -42,6 +53,9 @@ def _get_logs(log_group: str, qs: dict, error_only: bool) -> dict:
     kwargs: dict = {"logGroupName": log_group}
     if qs.get("startTime"):
         kwargs["startTime"] = _to_epoch_ms(qs["startTime"])
+    elif not qs.get("nextToken"):
+        # Default to last 1 hour when no time window is specified
+        kwargs["startTime"] = int((datetime.now(timezone.utc).timestamp() - 3600) * 1000)
     if qs.get("endTime"):
         kwargs["endTime"] = _to_epoch_ms(qs["endTime"])
     if qs.get("nextToken"):
@@ -61,19 +75,48 @@ def _get_logs(log_group: str, qs: dict, error_only: bool) -> dict:
 
 
 def _parse_log_event(event: dict) -> dict:
-    msg = event.get("message", "")
+    raw_msg = event.get("message", "")
+    ts_iso = datetime.fromtimestamp(event["timestamp"] / 1000, tz=timezone.utc).isoformat()
+
+    # The OTEL CloudWatch exporter writes each log record as a JSON string.
+    # Try to unwrap it to get the real human-readable body and severity.
+    body = raw_msg.strip()
     severity = "INFO"
     severity_num = 9
-    for sev, num in [("ERROR", 17), ("WARN", 13), ("DEBUG", 5)]:
-        if sev in msg.upper():
-            severity = sev
-            severity_num = num
-            break
+
+    try:
+        inner = json.loads(raw_msg)
+        if isinstance(inner, dict):
+            # Extract inner body text (may be nested one more level under "body")
+            inner_body = inner.get("body", "")
+            if isinstance(inner_body, dict):
+                inner_body = inner_body.get("body", str(inner_body))
+            if inner_body:
+                body = str(inner_body)
+            # Use real severity from the OTEL record if present
+            if inner.get("severityText"):
+                severity = inner["severityText"].upper()
+            if inner.get("severityNumber"):
+                severity_num = int(inner["severityNumber"])
+    except (json.JSONDecodeError, TypeError, ValueError):
+        pass
+
+    # Override severity by scanning the SFC-native log body text.
+    # SFC log levels are: TRACE, INFO, WARNING, ERROR
+    # e.g. "2026-03-09 17:19:29.507 INFO - Creating ..."
+    #      "2026-03-09 17:19:29.508 TRACE -[MainControllerService:...] : ..."
+    # Strip ANSI codes first so e.g. "\x1b[0;34mTRACE\x1b[0m" has a clean word boundary,
+    # then check only the first 80 characters to avoid false positives in long messages.
+    sfc_match = _SFC_LEVEL_RE.search(_ANSI_RE.sub("", body[:80]))
+    if sfc_match:
+        matched = sfc_match.group(1).upper()
+        severity, severity_num = _SFC_LEVEL_MAP.get(matched, (severity, severity_num))
+
     return {
-        "timestamp": datetime.fromtimestamp(event["timestamp"] / 1000, tz=timezone.utc).isoformat(),
+        "timestamp": ts_iso,
         "severityText": severity,
         "severityNumber": severity_num,
-        "body": msg.strip(),
+        "body": body,
     }
 
 

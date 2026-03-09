@@ -228,14 +228,6 @@ export default function PackageControlPanel({ pkg }: Props) {
         )}
       </div>
 
-      {/* Log viewer link */}
-      <button
-        className="btn btn-ghost w-full text-xs"
-        onClick={() => navigate(`/packages/${pkg.packageId}/logs`)}
-      >
-        Open full log viewer →
-      </button>
-
       {showRestartConfirm && (
         <ConfirmDialog
           title="Restart SFC Runtime"
