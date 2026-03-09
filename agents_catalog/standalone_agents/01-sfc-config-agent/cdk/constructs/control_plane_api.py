@@ -248,6 +248,7 @@ class ControlPlaneApi(Construct):
         configs_bucket.grant_read_write(self.fn_agent_remediate)
         config_table.grant_read_write_data(self.fn_agent_remediate)
         launch_package_table.grant_read_data(self.fn_agent_remediate)
+        control_plane_state_table.grant_read_write_data(self.fn_agent_remediate)
         # AgentCore invoke_agent_runtime permission
         self.fn_agent_remediate.add_to_role_policy(iam.PolicyStatement(
             actions=["bedrock-agentcore:InvokeAgentRuntime"],
@@ -269,6 +270,13 @@ class ControlPlaneApi(Construct):
             resources=[
                 f"arn:aws:logs:{region}:{account}:log-group:/sfc/launch-packages/*",
                 f"arn:aws:logs:{region}:{account}:log-group:/sfc/launch-packages/*:*",
+            ],
+        ))
+        # Self-invoke permission for async job dispatch
+        self.fn_agent_remediate.add_to_role_policy(iam.PolicyStatement(
+            actions=["lambda:InvokeFunction"],
+            resources=[
+                f"arn:aws:lambda:{region}:{account}:function:fn-agent-remediate",
             ],
         ))
 

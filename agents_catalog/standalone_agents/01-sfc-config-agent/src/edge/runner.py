@@ -298,7 +298,6 @@ def _capture_stream(stream, no_otel: bool) -> None:
             line = line.rstrip()
             with _recent_logs_lock:
                 _recent_logs.append(line)
-            #print(line, flush=True)
             if not no_otel:
                 _emit_otel_log(line)
     except Exception as exc:
@@ -649,13 +648,14 @@ def _publish_heartbeat_now(iot_cfg: dict | None, sfc_pid: int | None = None, run
     })
     topic = f"sfc/{cfg['packageId']}/heartbeat"
     try:
+        from awscrt.mqtt import QoS as MqttQoS
         _mqtt_connection.publish(
             topic=topic,
             payload=payload,
-            qos=0,  # QoS 0 for heartbeat (best-effort)
+            qos=MqttQoS.AT_MOST_ONCE,  # QoS 0 for heartbeat (best-effort)
         )
     except Exception as exc:
-        logger.debug("Heartbeat publish failed: %s", exc)
+        logger.warning("Heartbeat publish failed: %s", exc)
 
 
 def _heartbeat_loop(iot_cfg: dict) -> None:
@@ -780,12 +780,15 @@ def main() -> None:
     )
     cred_thread.start()
 
-    # Wait for SFC process (or shutdown signal)
-    logger.info("SFC runner active — waiting for shutdown signal or SFC exit")
+    # Wait for shutdown signal — SFC subprocess exit does NOT stop the runner
+    logger.info("SFC runner active — waiting for shutdown signal")
     while not _shutdown.is_set():
-        if _sfc_proc.poll() is not None:
-            logger.warning("SFC process exited with code %s", _sfc_proc.returncode)
-            break
+        if _sfc_proc is not None and _sfc_proc.poll() is not None:
+            logger.warning(
+                "SFC process exited with code %s; runner continues",
+                _sfc_proc.returncode,
+            )
+            _sfc_proc = None  # clear so heartbeat reports sfcRunning=false
         time.sleep(1)
 
     _shutdown.set()

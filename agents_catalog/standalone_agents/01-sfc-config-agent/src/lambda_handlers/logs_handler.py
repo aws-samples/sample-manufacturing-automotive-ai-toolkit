@@ -50,28 +50,39 @@ def handler(event: dict, context) -> dict:
 
 
 def _get_logs(log_group: str, qs: dict, error_only: bool) -> dict:
-    kwargs: dict = {"logGroupName": log_group}
+    """
+    Return the last 100 log events from the past hour.
+
+    filter_log_events is oldest-first with no reverse option.
+    We paginate all internal CW pages (up to 5 000 events) then
+    keep only the tail[-100] — the most recent events.
+    No nextToken is exposed to the client.
+    """
+    kwargs: dict = {
+        "logGroupName": log_group,
+        "startTime": int((datetime.now(timezone.utc).timestamp() - 3600) * 1000),
+    }
     if qs.get("startTime"):
         kwargs["startTime"] = _to_epoch_ms(qs["startTime"])
-    elif not qs.get("nextToken"):
-        # Default to last 1 hour when no time window is specified
-        kwargs["startTime"] = int((datetime.now(timezone.utc).timestamp() - 3600) * 1000)
     if qs.get("endTime"):
         kwargs["endTime"] = _to_epoch_ms(qs["endTime"])
-    if qs.get("nextToken"):
-        kwargs["nextToken"] = qs["nextToken"]
-    kwargs["limit"] = min(int(qs.get("limit", 200)), 1000)
     if error_only:
         kwargs["filterPattern"] = ERROR_FILTER_PATTERN
+
+    all_events: list = []
     try:
-        resp = _logs.filter_log_events(**kwargs)
+        while len(all_events) < 5000:
+            resp = _logs.filter_log_events(**kwargs)
+            all_events.extend(resp.get("events", []))
+            token = resp.get("nextToken")
+            if not token:
+                break
+            kwargs["nextToken"] = token
     except _logs.exceptions.ResourceNotFoundException:
         return _error(404, "NOT_FOUND", f"Log group {log_group} not found")
-    records = [_parse_log_event(e) for e in resp.get("events", [])]
-    result: dict = {"records": records}
-    if resp.get("nextToken"):
-        result["nextToken"] = resp["nextToken"]
-    return _ok(result)
+
+    records = [_parse_log_event(e) for e in all_events[-100:]]
+    return _ok({"records": records})
 
 
 def _parse_log_event(event: dict) -> dict:

@@ -83,8 +83,10 @@ export interface LogsResponse {
 
 export interface RemediationResponse {
   sessionId: string;
-  newConfigVersion: string;
-  correctedConfig: Record<string, unknown>;
+  status: "PENDING" | "COMPLETE" | "FAILED";
+  newConfigVersion?: string;
+  correctedConfig?: Record<string, unknown>;
+  error?: string;
 }
 
 export interface GenerateConfigRequest {
@@ -333,12 +335,14 @@ export const generateConfig = async (
 export const triggerRemediation = (
   packageId: string,
   errorWindowStart: string,
-  errorWindowEnd: string
+  errorWindowEnd: string,
+  selectedErrors?: string[]
 ) =>
   api
     .post<RemediationResponse>(`/packages/${packageId}/remediate`, {
       errorWindowStart,
       errorWindowEnd,
+      ...(selectedErrors !== undefined ? { selectedErrors } : {}),
     })
     .then((r) => r.data);
 

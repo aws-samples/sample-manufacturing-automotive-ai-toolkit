@@ -1,16 +1,18 @@
-import { useState } from "react";
+import { useState, useRef, useEffect } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { getLogs, type LogEvent } from "../api/client";
 import RefreshButton from "./RefreshButton";
+import RemediationConfirmDialog from "./RemediationConfirmDialog";
 
 type SfcLevel = LogEvent["severityText"];
 
 const ALL_LEVELS: SfcLevel[] = ["TRACE", "INFO", "WARNING", "ERROR"];
+const LIVE_INTERVAL_MS = 10_000;
 
 interface Props {
   packageId: string;
   errorsOnly?: boolean;
-  onFixWithAI?: (start: string, end: string) => void;
+  onFixWithAI?: (selectedErrors: string[], start: string, end: string) => void;
 }
 
 function logClass(severity: SfcLevel) {
@@ -41,21 +43,31 @@ export default function OtelLogStream({
   errorsOnly = false,
   onFixWithAI,
 }: Props) {
-  const [nextToken, setNextToken] = useState<string | undefined>();
   const [activeLevels, setActiveLevels] = useState<Set<SfcLevel>>(
     new Set(ALL_LEVELS)
   );
+  const [liveMode, setLiveMode] = useState(false);
+  const [dialogErrors, setDialogErrors] = useState<LogEvent[] | null>(null);
+  const logEndRef = useRef<HTMLDivElement>(null);
 
+  // Always fetch the latest 100 entries — no pagination token
   const { data, isFetching, refetch } = useQuery({
-    queryKey: ["logs", packageId, errorsOnly, nextToken],
-    queryFn: () => getLogs(packageId, { limit: 100, errorsOnly, nextToken }),
-    staleTime: 15_000,
+    queryKey: ["logs", packageId, errorsOnly, liveMode],
+    queryFn: () => getLogs(packageId, { limit: 100, errorsOnly }),
+    staleTime: liveMode ? 0 : 15_000,
+    refetchInterval: liveMode ? LIVE_INTERVAL_MS : false,
   });
 
   const allRecords: LogEvent[] = data?.records ?? [];
   const records = allRecords.filter((r) => activeLevels.has(r.severityText));
-  // Button active only when the fetched batch contains actual ERROR-level records
   const hasVisibleErrors = allRecords.some((r) => r.severityText === "ERROR");
+
+  // Scroll to the bottom whenever records update
+  useEffect(() => {
+    if (logEndRef.current) {
+      logEndRef.current.scrollIntoView({ behavior: "smooth" });
+    }
+  }, [records]);
 
   function toggleLevel(level: SfcLevel) {
     setActiveLevels((prev) => {
@@ -67,30 +79,72 @@ export default function OtelLogStream({
 
   function handleFixWithAI() {
     if (!onFixWithAI || allRecords.length === 0) return;
-    const sorted = [...allRecords].sort((a, b) =>
+    const errors = allRecords.filter((r) => r.severityText === "ERROR");
+    if (errors.length === 0) return;
+    setDialogErrors(errors);
+  }
+
+  function handleDialogConfirm(selectedErrors: string[]) {
+    if (!onFixWithAI || !dialogErrors) return;
+    const sorted = [...dialogErrors].sort((a, b) =>
       a.timestamp.localeCompare(b.timestamp)
     );
-    onFixWithAI(sorted[0].timestamp, sorted[sorted.length - 1].timestamp);
+    setDialogErrors(null);
+    onFixWithAI(selectedErrors, sorted[0].timestamp, sorted[sorted.length - 1].timestamp);
   }
 
   return (
     <div className="flex flex-col h-full">
+      {dialogErrors && (
+        <RemediationConfirmDialog
+          errors={dialogErrors}
+          onConfirm={handleDialogConfirm}
+          onCancel={() => setDialogErrors(null)}
+        />
+      )}
       {/* Toolbar */}
       <div className="flex items-center gap-3 mb-2 flex-wrap">
         <span className="text-sm text-slate-400">
           {records.length}/{allRecords.length} event
           {allRecords.length !== 1 ? "s" : ""}
         </span>
-        <RefreshButton
-          onClick={() => { setNextToken(undefined); refetch(); }}
-          loading={isFetching}
-        />
+
+        {/* Manual refresh — hidden while live mode is active */}
+        {!liveMode && (
+          <RefreshButton
+            onClick={() => refetch()}
+            loading={isFetching}
+          />
+        )}
+
+        {/* Live toggle */}
+        <button
+          onClick={() => setLiveMode((prev) => !prev)}
+          className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded text-xs font-medium border transition-colors ${
+            liveMode
+              ? "bg-green-950/50 border-green-700/60 text-green-300"
+              : "bg-transparent border-slate-700 text-slate-400 hover:text-slate-300"
+          }`}
+          title={liveMode ? "Stop live tail" : "Start live tail (refreshes every 10 s)"}
+        >
+          <span
+            className={`w-2 h-2 rounded-full ${
+              liveMode ? "bg-green-400 animate-pulse" : "bg-slate-600"
+            }`}
+          />
+          Live
+        </button>
+
         {onFixWithAI && (
           <button
             className="btn btn-primary text-xs ml-auto inline-flex items-center gap-1.5 disabled:opacity-30 disabled:cursor-not-allowed"
             onClick={handleFixWithAI}
             disabled={!hasVisibleErrors}
-            title={hasVisibleErrors ? "Trigger AI remediation for visible errors" : "No errors detected — SFC is running well"}
+            title={
+              hasVisibleErrors
+                ? "Trigger AI remediation for visible errors"
+                : "No errors detected — SFC is running well"
+            }
           >
             <svg
               xmlns="http://www.w3.org/2000/svg"
@@ -134,6 +188,9 @@ export default function OtelLogStream({
             reset
           </button>
         )}
+        {liveMode && isFetching && (
+          <span className="text-[10px] text-green-500/70 ml-auto italic">fetching…</span>
+        )}
       </div>
 
       {/* Log output */}
@@ -149,17 +206,9 @@ export default function OtelLogStream({
         {isFetching && (
           <p className="text-slate-600 italic">Loading…</p>
         )}
+        {/* Sentinel for auto-scroll to bottom */}
+        <div ref={logEndRef} />
       </div>
-
-      {data?.nextToken && (
-        <button
-          className="btn btn-ghost text-xs mt-2 self-center"
-          onClick={() => setNextToken(data.nextToken)}
-          disabled={isFetching}
-        >
-          Load more
-        </button>
-      )}
     </div>
   );
 }
