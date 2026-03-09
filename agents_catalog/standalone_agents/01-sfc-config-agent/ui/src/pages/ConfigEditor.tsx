@@ -13,6 +13,7 @@ import {
   listPackages,
 } from "../api/client";
 import MonacoJsonEditor from "../components/MonacoJsonEditor";
+import MarkdownRenderer from "../components/MarkdownRenderer";
 import StatusBadge from "../components/StatusBadge";
 import TagEditor from "../components/TagEditor";
 import { useRef } from "react";
@@ -240,13 +241,45 @@ export default function ConfigEditor() {
         <p className="text-xs text-green-400">Saved as new version.</p>
       )}
 
-      {/* Editor */}
+      {/* Editor — or markdown preview for agent assistant responses */}
       <div className="flex-1 min-h-0">
-        <MonacoJsonEditor
-          value={content}
-          onChange={setContent}
-          height="100%"
-        />
+        {(() => {
+          // Detect if content is an agent assistant-message response:
+          // { "role": "assistant", "content": [{ "text": "<markdown>" }] }
+          try {
+            const parsed = JSON.parse(content);
+            if (
+              parsed?.role === "assistant" &&
+              Array.isArray(parsed?.content) &&
+              typeof parsed.content[0]?.text === "string"
+            ) {
+              return (
+                <div className="h-full rounded-md border border-[#2a3044] bg-[#0d1117] overflow-auto">
+                  <div className="flex items-center gap-2 px-4 py-2 border-b border-[#2a3044] bg-[#0f1117]">
+                    <svg viewBox="0 0 24 24" className="w-4 h-4 text-sky-400 shrink-0" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+                      <polyline points="2,20 9,7 13,13 16,9 22,20" />
+                      <polyline points="14.3,11 16,9 17.7,11.4" />
+                    </svg>
+                    <span className="text-xs text-sky-400 font-semibold uppercase tracking-wider">
+                      Agent Response
+                    </span>
+                    <span className="text-xs text-slate-500">— rendered from assistant message</span>
+                  </div>
+                  <MarkdownRenderer content={parsed.content[0].text} />
+                </div>
+              );
+            }
+          } catch {
+            // not valid JSON — fall through to editor
+          }
+          return (
+            <MonacoJsonEditor
+              value={content}
+              onChange={setContent}
+              height="100%"
+            />
+          );
+        })()}
       </div>
     </div>
   );

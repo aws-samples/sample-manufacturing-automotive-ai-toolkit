@@ -292,7 +292,13 @@ export default function ConfigBrowser() {
                   className="w-full text-left px-4 py-3 text-sm hover:bg-[#232d42] transition-colors text-slate-200"
                   onClick={openWizard}
                 >
-                  <span className="font-medium text-sky-400">AI Guide ✨</span>
+                  <span className="font-medium text-sky-400 flex items-center gap-1.5">
+                    <svg viewBox="0 0 24 24" className="w-4 h-4 shrink-0" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+                      <polyline points="2,20 9,7 13,13 16,9 22,20" />
+                      <polyline points="14.3,11 16,9 17.7,11.4" />
+                    </svg>
+                    AI-guided Config
+                  </span>
                   <p className="text-xs text-slate-500 mt-0.5">Wizard → agent generates config</p>
                 </button>
               </div>
@@ -432,7 +438,13 @@ export default function ConfigBrowser() {
 
             {/* Header */}
             <div className="flex items-center justify-between">
-              <h2 className="text-base font-semibold text-sky-300">AI-Guided Config Creation ✨</h2>
+              <h2 className="text-base font-semibold text-sky-300 flex items-center gap-2">
+                <svg viewBox="0 0 24 24" className="w-5 h-5 shrink-0" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+                  <polyline points="2,20 9,7 13,13 16,9 22,20" />
+                  <polyline points="14.3,11 16,9 17.7,11.4" />
+                </svg>
+                AI-Guided Config Creation
+              </h2>
               <button className="text-slate-500 hover:text-slate-300 text-lg leading-none" onClick={() => setShowWizard(false)}>✕</button>
             </div>
 
@@ -655,7 +667,15 @@ export default function ConfigBrowser() {
                   disabled={generateMut.isPending}
                   onClick={() => { setWizardError(""); generateMut.mutate(); }}
                 >
-                  {generateMut.isPending ? <span className="spinner" /> : "Generate Config ✨"}
+                  {generateMut.isPending ? <span className="spinner" /> : (
+                    <span className="flex items-center gap-1.5">
+                      <svg viewBox="0 0 24 24" className="w-4 h-4 shrink-0" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+                        <polyline points="2,20 9,7 13,13 16,9 22,20" />
+                        <polyline points="14.3,11 16,9 17.7,11.4" />
+                      </svg>
+                      Generate Config
+                    </span>
+                  )}
                 </button>
               )}
             </div>
