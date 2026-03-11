@@ -4,6 +4,7 @@ import {
   getPackage,
   getPackageDownloadUrl,
   getConfig,
+  listConfigVersions,
   deepDeletePackage,
   updatePackageTags,
 } from "../api/client";
@@ -30,6 +31,20 @@ export default function PackageDetail() {
     queryFn: () => getConfig(pkg!.configId),
     enabled: !!pkg?.configId,
   });
+
+  const { data: configVersions } = useQuery({
+    queryKey: ["configVersions", pkg?.configId],
+    queryFn: () => listConfigVersions(pkg!.configId),
+    enabled: !!pkg?.configId,
+  });
+
+  // Compute vN label for the snapshotted config version (oldest = v1)
+  const versionLabel = (() => {
+    if (!configVersions || !pkg?.configVersion) return null;
+    const ordered = [...configVersions].reverse(); // oldest first
+    const idx = ordered.findIndex((v) => v.version === pkg.configVersion);
+    return idx >= 0 ? `v${idx + 1}` : null;
+  })();
 
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [tags, setTags] = useState<string[]>([]);
@@ -98,7 +113,7 @@ export default function PackageDetail() {
               <Row label="Config ID" value={pkg.configId} mono />
               <Row
                 label="Config Version"
-                value={pkg.configVersion}
+                value={versionLabel ? `${versionLabel} — ${pkg.configVersion}` : pkg.configVersion}
                 mono
                 sublabel="snapshotted into zip"
                 onClick={() =>

@@ -6,13 +6,12 @@ import {
   setDiagnostics,
   pushConfigUpdate,
   restartSfc,
-  getConfig,
+  listConfigs,
   listConfigVersions,
   type LaunchPackage,
 } from "../api/client";
 import ConfirmDialog from "./ConfirmDialog";
 import HeartbeatStatusLed from "./HeartbeatStatusLed";
-import { useNavigate } from "react-router-dom";
 
 interface Props {
   pkg: LaunchPackage;
@@ -81,7 +80,6 @@ function Toggle({
 
 export default function PackageControlPanel({ pkg }: Props) {
   const qc = useQueryClient();
-  const navigate = useNavigate();
   const isReady = pkg.status === "READY";
 
   const { data: ctrl } = useQuery({
@@ -90,21 +88,23 @@ export default function PackageControlPanel({ pkg }: Props) {
     enabled: isReady,
   });
 
-  // Config push state — locked to the package's own configId
+  // Config push state — any config, any version
+  const { data: allConfigs } = useQuery({
+    queryKey: ["configs"],
+    queryFn: listConfigs,
+  });
+  const [pushConfigId, setPushConfigId] = useState(pkg.configId);
   const [pushVersion, setPushVersion] = useState("");
-  const { data: configMeta } = useQuery({
-    queryKey: ["config", pkg.configId],
-    queryFn: () => getConfig(pkg.configId),
-    enabled: !!pkg.configId,
+
+  const { data: pushConfigVersions } = useQuery({
+    queryKey: ["configVersions", pushConfigId],
+    queryFn: () => listConfigVersions(pushConfigId),
+    enabled: !!pushConfigId,
   });
-  const { data: allVersions } = useQuery({
-    queryKey: ["configVersions", pkg.configId],
-    queryFn: () => listConfigVersions(pkg.configId),
-    enabled: !!pkg.configId,
-  });
-  // Only show versions strictly newer than the one snapshotted into the package
-  const newerVersions = (allVersions ?? []).filter(
-    (v) => v.version > pkg.configVersion
+
+  // Build a vN label map: oldest version = v1, next = v2, …
+  const versionLabelMap: Record<string, string> = Object.fromEntries(
+    [...(pushConfigVersions ?? [])].reverse().map((v, idx) => [v.version, `v${idx + 1}`])
   );
 
   // Restart confirm
@@ -120,8 +120,15 @@ export default function PackageControlPanel({ pkg }: Props) {
     onSuccess: () => qc.invalidateQueries({ queryKey: ["control", pkg.packageId] }),
   });
   const cfgPushMut = useMutation({
-    mutationFn: () => pushConfigUpdate(pkg.packageId, pkg.configId, pushVersion),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["control", pkg.packageId] }),
+    mutationFn: () => pushConfigUpdate(pkg.packageId, pushConfigId, pushVersion),
+    onSuccess: () => {
+      // Re-fetch the package so LP detail reflects the new configId/configVersion,
+      // and invalidate configs so the Config Browser updates the "deployed" badge.
+      qc.invalidateQueries({ queryKey: ["package", pkg.packageId] });
+      qc.invalidateQueries({ queryKey: ["packages"] });
+      qc.invalidateQueries({ queryKey: ["configs"] });
+      qc.invalidateQueries({ queryKey: ["control", pkg.packageId] });
+    },
   });
   const restartMut = useMutation({
     mutationFn: () => restartSfc(pkg.packageId),
@@ -166,16 +173,27 @@ export default function PackageControlPanel({ pkg }: Props) {
       <div className="card space-y-3">
         <p className="text-xs font-medium text-slate-500">Push Config Update</p>
         <div className="space-y-2">
-          {/* Config locked to the package's own configId */}
-          <div className="rounded px-2 py-1.5 bg-[#0f1117] border border-[#2a3044]">
-            <p className="text-[10px] text-slate-500 mb-0.5">Config (locked)</p>
-            <p className="text-xs text-slate-300 font-mono truncate">
-              {configMeta?.name ?? pkg.configId}
-            </p>
-          </div>
-          {newerVersions.length === 0 ? (
+          {/* Config selector — any config */}
+          <select
+            className="w-full bg-[#0f1117] border border-[#2a3044] rounded px-2 py-1.5 text-sm text-slate-300 disabled:opacity-40"
+            value={pushConfigId}
+            onChange={(e) => {
+              setPushConfigId(e.target.value);
+              setPushVersion("");
+            }}
+            disabled={!isReady}
+          >
+            {(allConfigs ?? []).map((c) => (
+              <option key={c.configId} value={c.configId}>
+                {c.name || c.configId}
+              </option>
+            ))}
+          </select>
+
+          {/* Version selector — all versions of selected config */}
+          {(pushConfigVersions ?? []).length === 0 ? (
             <p className="text-xs text-slate-500 italic border border-slate-700 rounded px-3 py-2">
-              No newer versions available — save a new version of this config first.
+              No versions available for this config.
             </p>
           ) : (
             <select
@@ -185,22 +203,24 @@ export default function PackageControlPanel({ pkg }: Props) {
               disabled={!isReady}
             >
               <option value="">Select version…</option>
-              {newerVersions.map((v) => (
+              {(pushConfigVersions ?? []).map((v) => (
                 <option key={v.version} value={v.version}>
-                  {new Date(v.version).toLocaleString()}
+                  {versionLabelMap[v.version] ? `${versionLabelMap[v.version]} — ` : ""}
+                  {v.version}
                 </option>
               ))}
             </select>
           )}
+
           <button
             className="btn btn-primary w-full"
             disabled={!isReady || !pushVersion || cfgPushMut.isPending}
             onClick={() => cfgPushMut.mutate()}
           >
-            {cfgPushMut.isPending ? <span className="spinner" /> : "Push Update"}
+            {cfgPushMut.isPending ? <span className="spinner" /> : "Push to Edge"}
           </button>
           {cfgPushMut.isSuccess && (
-            <p className="text-xs text-green-400">Config update dispatched.</p>
+            <p className="text-xs text-green-400">Config push dispatched — LP record updated.</p>
           )}
           {ctrl?.lastConfigUpdateAt && (
             <p className="text-xs text-slate-600">

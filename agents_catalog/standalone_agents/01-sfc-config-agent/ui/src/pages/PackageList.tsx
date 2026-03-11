@@ -1,7 +1,7 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { useState, useEffect } from "react";
-import { listPackages, deepDeletePackage, createGgComponent, listConfigs } from "../api/client";
+import { listPackages, deepDeletePackage, createGgComponent, listConfigs, listConfigVersions } from "../api/client";
 import type { LaunchPackage } from "../api/client";
 import StatusBadge from "../components/StatusBadge";
 import HeartbeatStatusLed from "../components/HeartbeatStatusLed";
@@ -11,6 +11,24 @@ import SortableHeader from "../components/SortableHeader";
 import TagFilter from "../components/TagFilter";
 import { useSortable } from "../hooks/useSortable";
 import { useMemo } from "react";
+
+/** Resolves the vN label for a given configId + configVersion pair. */
+function VersionBadge({ configId, configVersion }: { configId: string; configVersion: string }) {
+  const { data: versions } = useQuery({
+    queryKey: ["configVersions", configId],
+    queryFn: () => listConfigVersions(configId),
+    staleTime: 60_000,
+  });
+  if (!versions) return <span className="text-xs text-slate-500 font-mono truncate max-w-[160px]">{configVersion}</span>;
+  const ordered = [...versions].reverse(); // oldest first → v1
+  const idx = ordered.findIndex((v) => v.version === configVersion);
+  const label = idx >= 0 ? `v${idx + 1}` : null;
+  return (
+    <span className="text-xs text-slate-500 font-mono truncate max-w-[160px]">
+      {label ? <><span className="text-slate-300 font-semibold">{label}</span> — </> : null}{configVersion}
+    </span>
+  );
+}
 
 function getValue(item: LaunchPackage & { _configName?: string }, column: string): string | number | undefined {
   switch (column) {
@@ -206,9 +224,7 @@ export default function PackageList() {
                     <div className="text-xs text-slate-500 font-mono truncate max-w-[160px]">
                       {pkg.configId}
                     </div>
-                    <div className="text-xs text-slate-500 font-mono truncate max-w-[160px]">
-                      {pkg.configVersion}
-                    </div>
+                    <VersionBadge configId={pkg.configId} configVersion={pkg.configVersion} />
                     {(pkg as { tags?: string[] }).tags && (pkg as { tags?: string[] }).tags!.length > 0 && (
                       <div className="flex flex-wrap gap-1 mt-1">
                         {(pkg as { tags?: string[] }).tags!.map((tag) => (

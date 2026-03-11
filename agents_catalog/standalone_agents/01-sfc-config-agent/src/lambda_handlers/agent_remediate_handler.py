@@ -193,6 +193,7 @@ def _get_session_status(session_id: str) -> dict:
     return _ok({
         "sessionId": session_id,
         "status": item.get("status", "UNKNOWN"),
+        "newConfigId": item.get("newConfigId"),
         "newConfigVersion": item.get("newConfigVersion"),
         "error": item.get("error"),
     })
@@ -241,7 +242,6 @@ def _run_background_job(event: dict) -> dict:
         s3_key = cfg_item.get("s3Key") or s3_util.config_s3_key(config_id, cfg_item["version"])
         sfc_config = s3_util.get_config_json(CONFIGS_BUCKET, s3_key)
 
-        # Build prompt
         prompt = _build_remediation_prompt(
             package_id=package_id,
             session_id=session_id,
@@ -252,32 +252,51 @@ def _run_background_job(event: dict) -> dict:
         )
 
         corrected_config = _invoke_agentcore(prompt, session_id)
+
         if corrected_config is None:
-            _update_session(session_id, "FAILED", error="AgentCore returned no parseable JSON")
+            _update_session(
+                session_id, "FAILED",
+                error="AgentCore returned no parseable JSON",
+            )
             return {}
 
-        # Save corrected config as a new VERSION of the existing configId
-        new_version = datetime.now(timezone.utc).isoformat()
-        timestamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%S")
-        new_s3_key = s3_util.config_s3_key(config_id, new_version)
+        # Save corrected config as a brand-new standalone config (fresh configId).
+        # Using a new configId means the Config Browser shows it as a separate entry
+        # (named "remediation_<timestamp>_<original-name>") rather than polluting the
+        # version history of the original config or the LP's config reference.
+        now = datetime.now(timezone.utc)
+        ts = now.strftime("%Y%m%dT%H%M%S")
+        original_name = cfg_item.get("name", config_id)
+        new_config_id = str(uuid.uuid4())
+        new_version = now.isoformat()
+        new_name = f"remediation_{ts}_{original_name}"
+        new_s3_key = s3_util.config_s3_key(new_config_id, new_version)
         s3_util.put_config_json(CONFIGS_BUCKET, new_s3_key, corrected_config)
-        _ddb_put_config({
-            "configId": config_id,
+        new_config_item: dict = {
+            "configId": new_config_id,
             "version": new_version,
-            "name": f"agent_remediation_{timestamp}_{package_id[:8]}",
+            "name": new_name,
             "description": (
-                f"AI-remediated from package {package_id} "
-                f"errors {error_start} → {error_end}"
+                f"AI-remediated config based on '{original_name}' "
+                f"(package {package_id}, errors {error_start} → {error_end})"
             ),
             "s3Key": new_s3_key,
             "status": "active",
             "createdAt": new_version,
+            "remediatedFromConfigId": config_id,
             "remediatedFromPackageId": package_id,
             "remediationSessionId": session_id,
-        })
+            "remediationErrorWindow": f"{error_start} → {error_end}",
+        }
+        if cfg_item.get("tags"):
+            new_config_item["tags"] = cfg_item["tags"]
+        _ddb_put_config(new_config_item)
 
-        _update_session(session_id, "COMPLETE", new_config_version=new_version)
-        logger.info("Session %s COMPLETE — configId=%s version=%s", session_id, config_id, new_version)
+        _update_session(session_id, "COMPLETE", new_config_id=new_config_id, new_config_version=new_version)
+        logger.info(
+            "Session %s COMPLETE — new configId=%s name=%s version=%s",
+            session_id, new_config_id, new_name, new_version,
+        )
 
     except Exception as exc:
         logger.exception("Background remediation session %s failed", session_id)
@@ -290,12 +309,16 @@ def _update_session(
     session_id: str,
     status: str,
     *,
+    new_config_id: str | None = None,
     new_config_version: str | None = None,
     error: str | None = None,
 ) -> None:
     update_expr = "SET #s = :s, updatedAt = :ua"
     expr_names = {"#s": "status"}
     expr_values: dict = {":s": status, ":ua": datetime.now(timezone.utc).isoformat()}
+    if new_config_id:
+        update_expr += ", newConfigId = :nci"
+        expr_values[":nci"] = new_config_id
     if new_config_version:
         update_expr += ", newConfigVersion = :ncv"
         expr_values[":ncv"] = new_config_version
@@ -325,8 +348,13 @@ def _build_remediation_prompt(
     error_start: str,
     error_end: str,
 ) -> str:
-    timestamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%S")
-    filename = f"agent_remediation_{timestamp}_{package_id[:8]}.json"
+    """Return the remediation prompt.
+
+    The agent is instructed to return the corrected JSON directly in its reply
+    so the control plane can parse it without any additional S3 look-ups.
+    Do NOT instruct the agent to call save_config_to_file — that would create
+    spurious standalone config entries in the Config Browser.
+    """
     error_text = "\n".join(r.get("body", "") for r in error_records[:50]) or "(no error logs found)"
 
     return (
@@ -342,12 +370,7 @@ def _build_remediation_prompt(
         "AdapterTypes, TargetTypes.\n"
         "- Do NOT change working adapter types, target types, or schedule intervals unless they are "
         "directly implicated in the errors.\n"
-        "IMPORTANT — saving rules:\n"
-        f"- Call save_config_to_file EXACTLY ONCE, with filename '{filename}', "
-        "ONLY after the config is fully complete and validated.\n"
-        "- Do NOT call save_config_to_file for drafts, partial configs, or intermediate steps.\n"
-        "- Only the single final call to save_config_to_file is allowed.\n"
-        "After saving, confirm with a brief message — do not re-output the full JSON."
+        "Return ONLY the corrected JSON object — no prose, no markdown fences, no extra text."
     )
 
 

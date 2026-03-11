@@ -3,11 +3,13 @@ import { useNavigate } from "react-router-dom";
 import {
   listConfigs,
   listPackages,
+  listConfigVersions,
   createConfig,
   getFocus,
   deleteConfig,
   generateConfig,
   type GenerateConfigJobStatus,
+  type LaunchPackage,
 } from "../api/client";
 import StatusBadge from "../components/StatusBadge";
 import ConfirmDialog from "../components/ConfirmDialog";
@@ -16,6 +18,57 @@ import SortableHeader from "../components/SortableHeader";
 import TagFilter from "../components/TagFilter";
 import { useSortable } from "../hooks/useSortable";
 import { useState, useMemo, useRef, useEffect } from "react";
+
+// ─── DeployedVersionBadge ─────────────────────────────────────────────────────
+// Shows "vN deployed" where N is the version label of the currently deployed version.
+
+function DeployedVersionBadge({
+  configId,
+  deployedPackages,
+  onClick,
+}: {
+  configId: string;
+  deployedPackages: LaunchPackage[];
+  onClick: () => void;
+}) {
+  const { data: versions } = useQuery({
+    queryKey: ["configVersions", configId],
+    queryFn: () => listConfigVersions(configId),
+    staleTime: 60_000,
+  });
+
+  // Build vN label for the deployed version (oldest version = v1)
+  const vLabel = (() => {
+    if (!versions || deployedPackages.length === 0) return null;
+    // Take the first package's configVersion (most common: one LP per config)
+    const deployedVersion = deployedPackages[0].configVersion;
+    const ordered = [...versions].reverse(); // oldest first → v1
+    const idx = ordered.findIndex((v) => v.version === deployedVersion);
+    return idx >= 0 ? `v${idx + 1}` : null;
+  })();
+
+  const pkgCount = deployedPackages.length;
+  const title = pkgCount === 1
+    ? `Go to package ${deployedPackages[0].packageId}`
+    : `Show ${pkgCount} packages for this config`;
+
+  return (
+    <button
+      type="button"
+      className="cursor-pointer hover:opacity-80 transition-opacity"
+      onClick={onClick}
+      title={title}
+    >
+      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-semibold bg-teal-900/40 text-teal-300 border border-teal-700/50">
+        {vLabel ? (
+          <><span className="text-teal-200 font-bold">{vLabel}</span> deployed</>
+        ) : (
+          "deployed"
+        )}
+      </span>
+    </button>
+  );
+}
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -365,9 +418,11 @@ export default function ConfigBrowser() {
                           const pkgs = (Array.isArray(rawPackages) ? rawPackages : []).filter((p) => p.configId === c.configId);
                           const dest = pkgs.length === 1 ? `/packages/${pkgs[0].packageId}` : `/packages?configId=${c.configId}`;
                           return (
-                            <button type="button" className="cursor-pointer hover:opacity-80 transition-opacity" onClick={() => navigate(dest)} title={pkgs.length === 1 ? `Go to package ${pkgs[0].packageId}` : `Show ${pkgs.length} packages for this config`}>
-                              <StatusBadge status="deployed" />
-                            </button>
+                            <DeployedVersionBadge
+                              configId={c.configId}
+                              deployedPackages={pkgs}
+                              onClick={() => navigate(dest)}
+                            />
                           );
                         }
                         return <StatusBadge status={derived} />;

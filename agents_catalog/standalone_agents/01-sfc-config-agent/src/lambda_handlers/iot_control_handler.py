@@ -87,32 +87,17 @@ def _push_config_update(pkg: dict, body: dict) -> dict:
     if not config_id or not config_version:
         return _error(400, "BAD_REQUEST", "configId and configVersion required")
 
-    # Enforce: only the same configId that was baked into the package may be pushed
-    if config_id != pkg.get("configId"):
-        return _error(
-            400,
-            "BAD_REQUEST",
-            f"Config update must use the same configId as the package "
-            f"(expected: {pkg.get('configId')}, got: {config_id})",
-        )
-
-    # Enforce: only versions strictly newer than the one snapshotted in the package
-    pkg_config_version = pkg.get("configVersion", "")
-    if config_version <= pkg_config_version:
-        return _error(
-            400,
-            "BAD_REQUEST",
-            f"Config update must be a version newer than the package's current version "
-            f"(package version: {pkg_config_version}, requested: {config_version})",
-        )
-
     s3_key = s3_util.config_s3_key(config_id, config_version)
     presigned = s3_util.generate_presigned_url(CONFIGS_BUCKET, s3_key, ttl_seconds=300)
     topic = f"sfc/{pkg['packageId']}/control/config-update"
     _iot_data.publish(topic=topic, qos=1, payload=json.dumps({"presignedUrl": presigned}))
     now = datetime.now(timezone.utc).isoformat()
+    # Update the LP's active config reference so the detail page reflects the push.
     ddb_util.update_package(_pkg_table, pkg["packageId"], pkg["createdAt"], {
-        "lastConfigUpdateAt": now, "lastConfigUpdateVersion": config_version,
+        "configId": config_id,
+        "configVersion": config_version,
+        "lastConfigUpdateAt": now,
+        "lastConfigUpdateVersion": config_version,
     })
     return _ok({"message": "Config update dispatched"})
 

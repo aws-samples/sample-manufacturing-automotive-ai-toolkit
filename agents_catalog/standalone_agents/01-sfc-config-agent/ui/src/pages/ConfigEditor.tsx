@@ -117,22 +117,41 @@ export default function ConfigEditor() {
     onSuccess: (pkg) => navigate(`/packages/${pkg.packageId}`),
   });
 
+  const activeVersion = selectedVersion || cfg?.version || "";
+
   const isFocused =
     focus?.focusedConfigId === configId &&
-    focus?.focusedConfigVersion === (selectedVersion || cfg?.version);
+    focus?.focusedConfigVersion === activeVersion;
 
-  const isDeployed = (packages ?? []).some((p) => p.configId === configId);
+  // A version is "deployed" only when a package's configVersion matches exactly.
+  const isDeployedVersion = (packages ?? []).some(
+    (p) => p.configId === configId && p.configVersion === activeVersion
+  );
 
   // Check if a package already exists for the currently selected version
   const existingPackageForVersion = (packages ?? []).find(
-    (p) => p.configId === configId && p.configVersion === (selectedVersion || cfg?.version)
+    (p) => p.configId === configId && p.configVersion === activeVersion
   );
 
   function deriveConfigStatus(): string {
-    if (focus?.focusedConfigId === configId) return "focused";
-    if (isDeployed) return "deployed";
+    if (isFocused) return "focused";
+    if (isDeployedVersion) return "deployed";
     return "unused";
   }
+
+  // Detect if content is an agent assistant-message response
+  const isAgentResponse = (() => {
+    try {
+      const parsed = JSON.parse(content);
+      return (
+        parsed?.role === "assistant" &&
+        Array.isArray(parsed?.content) &&
+        typeof parsed.content[0]?.text === "string"
+      );
+    } catch {
+      return false;
+    }
+  })();
 
   if (isLoading) return <p className="p-6 text-slate-500 text-sm">Loading…</p>;
   if (!cfg) return <p className="p-6 text-slate-500 text-sm">Config not found.</p>;
@@ -168,11 +187,15 @@ export default function ConfigEditor() {
               loadVersionMut.mutate(e.target.value);
             }}
           >
-            {versions.map((v) => (
-              <option key={v.version} value={v.version}>
-                {v.version}
-              </option>
-            ))}
+            {(() => {
+              // versions is newest-first; reverse so v1 = oldest, v2 = next, …
+              const ordered = [...versions].reverse();
+              return ordered.map((v, idx) => (
+                <option key={v.version} value={v.version}>
+                  v{idx + 1} — {v.version}
+                </option>
+              ));
+            })()}
           </select>
         )}
 
@@ -199,15 +222,15 @@ export default function ConfigEditor() {
           })()}
 
           <button
-            className="btn btn-secondary"
-            disabled={focusMut.isPending || isFocused}
+            className="btn btn-secondary disabled:opacity-40 disabled:cursor-not-allowed"
+            disabled={focusMut.isPending || isFocused || isAgentResponse}
             onClick={() => focusMut.mutate()}
-            title="Set this version as the active focus for launch packages"
+            title={isAgentResponse ? "Agent Response configs cannot be set as focus" : "Set this version as the active focus for launch packages"}
           >
             {focusMut.isPending ? <span className="spinner" /> : "Set as Focus"}
           </button>
 
-          {existingPackageForVersion ? (
+          {existingPackageForVersion && !isAgentResponse ? (
             <button
               type="button"
               className="btn btn-secondary text-teal-300 border-teal-700/50"
@@ -219,9 +242,9 @@ export default function ConfigEditor() {
           ) : (
             <button
               className="btn btn-secondary disabled:opacity-40 disabled:cursor-not-allowed"
-              disabled={packageMut.isPending || !isFocused}
+              disabled={packageMut.isPending || !isFocused || isAgentResponse}
               onClick={() => packageMut.mutate()}
-              title={isFocused ? "Create a launch package from this focused config version" : "Set this version as Focus first to create a launch package"}
+              title={isAgentResponse ? "Agent Response configs cannot be used to create a launch package" : isFocused ? "Create a launch package from this focused config version" : "Set this version as Focus first to create a launch package"}
             >
               {packageMut.isPending ? <span className="spinner" /> : "Create Launch Package"}
             </button>
