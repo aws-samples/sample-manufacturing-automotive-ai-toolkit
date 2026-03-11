@@ -230,6 +230,7 @@ export const getLogs = (
     endTime?: string;
     nextToken?: string;
     limit?: number;
+    lookbackMinutes?: number;
     errorsOnly?: boolean;
   } = {}
 ) =>

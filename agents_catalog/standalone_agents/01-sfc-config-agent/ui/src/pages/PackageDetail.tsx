@@ -47,6 +47,7 @@ export default function PackageDetail() {
   })();
 
   const [confirmDelete, setConfirmDelete] = useState(false);
+  const [dangerZoneOpen, setDangerZoneOpen] = useState(false);
   const [tags, setTags] = useState<string[]>([]);
   const tagsInitialized = useRef(false);
 
@@ -168,7 +169,7 @@ export default function PackageDetail() {
                 analyses the error window and produces a corrected config version automatically.
               </p>
               <button
-                className="btn btn-primary w-full inline-flex items-center justify-center gap-2"
+                className="btn btn-primary inline-flex items-center gap-2"
                 onClick={() => navigate(`/packages/${pkg.packageId}/logs`)}
               >
                 <svg
@@ -184,29 +185,40 @@ export default function PackageDetail() {
                   <polyline points="2,20 9,7 13,13 16,9 22,20" />
                   <polyline points="14.3,11 16,9 17.7,11.4" />
                 </svg>
-                Open Log Viewer
+                Open Remediation Area
               </button>
             </div>
 
             {/* Danger Zone */}
             <div className="border border-red-900/50 rounded-lg overflow-hidden">
-              <div className="px-4 py-3 bg-red-950/30 flex items-center gap-2">
-                <span className="text-sm font-semibold text-red-400">⚠ Danger Zone</span>
-              </div>
-              <div className="p-4 space-y-3 bg-red-950/10">
-                <p className="text-xs text-slate-400">
-                  Permanently destroys <strong className="text-slate-300">all AWS resources</strong> provisioned
-                  for this package and removes the database record:{" "}
-                  IoT Thing &amp; certificate, IoT policy, role alias, IAM edge role,
-                  CloudWatch log group. S3 assets are retained.
-                </p>
-                <button
-                  className="btn btn-ghost text-xs text-red-300 hover:text-red-200 border border-red-700/70 bg-red-950/30"
-                  onClick={() => setConfirmDelete(true)}
-                >
-                  🗑 Delete Package
-                </button>
-              </div>
+              <button
+                className="w-full flex items-center justify-between px-4 py-3 bg-red-950/30 hover:bg-red-950/50 transition-colors text-left"
+                onClick={() => setDangerZoneOpen((o) => !o)}
+              >
+                <span className="flex items-center gap-2 text-sm font-semibold text-red-400">
+                  <span>⚠</span>
+                  <span>Danger Zone</span>
+                </span>
+                <span className="text-slate-500 text-xs">
+                  {dangerZoneOpen ? "▲ collapse" : "▼ expand"}
+                </span>
+              </button>
+              {dangerZoneOpen && (
+                <div className="p-4 space-y-3 bg-red-950/10">
+                  <p className="text-xs text-slate-400">
+                    Permanently destroys <strong className="text-slate-300">all AWS resources</strong> provisioned
+                    for this package and removes the database record:{" "}
+                    IoT Thing &amp; certificate, IoT policy, role alias, IAM edge role,
+                    CloudWatch log group. S3 assets are retained.
+                  </p>
+                  <button
+                    className="btn btn-ghost text-xs text-red-300 hover:text-red-200 border border-red-700/70 bg-red-950/30"
+                    onClick={() => setConfirmDelete(true)}
+                  >
+                    🗑 Delete Package
+                  </button>
+                </div>
+              )}
             </div>
           </div>
 

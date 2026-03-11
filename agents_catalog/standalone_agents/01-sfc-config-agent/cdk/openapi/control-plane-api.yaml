@@ -617,9 +617,17 @@ paths:
           in: query
           schema:
             type: integer
-            default: 200
+            default: 500
             minimum: 1
-            maximum: 1000
+            maximum: 5000
+        - name: lookbackMinutes
+          in: query
+          description: How far back to look (in minutes). Ignored when startTime is provided. Max 720 (12 h).
+          schema:
+            type: integer
+            default: 15
+            minimum: 1
+            maximum: 720
       responses:
         "200":
           description: Log events page

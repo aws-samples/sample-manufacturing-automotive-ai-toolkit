@@ -51,16 +51,24 @@ def handler(event: dict, context) -> dict:
 
 def _get_logs(log_group: str, qs: dict, error_only: bool) -> dict:
     """
-    Return the last 100 log events from the past hour.
+    Return the last N log events from the past M minutes.
 
-    filter_log_events is oldest-first with no reverse option.
-    We paginate all internal CW pages (up to 5 000 events) then
-    keep only the tail[-100] — the most recent events.
-    No nextToken is exposed to the client.
+    Accepts query params:
+      - limit          : max events to return, 1–5000 (default 500)
+      - lookbackMinutes: how far back to look, 1–720 (default 15, max = 12 h)
+      - startTime      : ISO-8601 override (overrides lookbackMinutes)
+      - endTime        : ISO-8601 override
+
+    filter_log_events is oldest-first; we paginate all CW pages (up to
+    the requested limit) then keep only the tail[-limit] so the most
+    recent events are returned.  No nextToken is exposed to the client.
     """
+    limit = min(max(int(qs.get("limit", 500)), 1), 5000)
+    lookback_minutes = min(max(float(qs.get("lookbackMinutes", 15)), 0.5), 720)
+
     kwargs: dict = {
         "logGroupName": log_group,
-        "startTime": int((datetime.now(timezone.utc).timestamp() - 3600) * 1000),
+        "startTime": int((datetime.now(timezone.utc).timestamp() - lookback_minutes * 60) * 1000),
     }
     if qs.get("startTime"):
         kwargs["startTime"] = _to_epoch_ms(qs["startTime"])
@@ -71,7 +79,7 @@ def _get_logs(log_group: str, qs: dict, error_only: bool) -> dict:
 
     all_events: list = []
     try:
-        while len(all_events) < 5000:
+        while len(all_events) < limit:
             resp = _logs.filter_log_events(**kwargs)
             all_events.extend(resp.get("events", []))
             token = resp.get("nextToken")
@@ -81,7 +89,7 @@ def _get_logs(log_group: str, qs: dict, error_only: bool) -> dict:
     except _logs.exceptions.ResourceNotFoundException:
         return _error(404, "NOT_FOUND", f"Log group {log_group} not found")
 
-    records = [_parse_log_event(e) for e in all_events[-100:]]
+    records = [_parse_log_event(e) for e in all_events[-limit:]]
     return _ok({"records": records})
 
 

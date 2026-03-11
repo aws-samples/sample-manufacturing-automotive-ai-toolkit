@@ -9,6 +9,20 @@ type SfcLevel = LogEvent["severityText"];
 const ALL_LEVELS: SfcLevel[] = ["TRACE", "INFO", "WARNING", "ERROR"];
 const LIVE_INTERVAL_MS = 10_000;
 
+const LIMIT_OPTIONS = [100, 500, 1000, 2000, 5000] as const;
+const LOOKBACK_OPTIONS: { label: string; minutes: number }[] = [
+  { label: "30 sec", minutes: 0.5 },
+  { label: "1 min",  minutes: 1 },
+  { label: "5 min",  minutes: 5 },
+  { label: "15 min", minutes: 15 },
+  { label: "30 min", minutes: 30 },
+  { label: "1 hr",   minutes: 60 },
+  { label: "2 hr",   minutes: 120 },
+  { label: "4 hr",   minutes: 240 },
+  { label: "6 hr",   minutes: 360 },
+  { label: "12 hr",  minutes: 720 },
+];
+
 interface Props {
   packageId: string;
   errorsOnly?: boolean;
@@ -47,13 +61,14 @@ export default function OtelLogStream({
     new Set(ALL_LEVELS)
   );
   const [liveMode, setLiveMode] = useState(false);
+  const [limit, setLimit] = useState<typeof LIMIT_OPTIONS[number]>(500);
+  const [lookback, setLookback] = useState(15);
   const [dialogErrors, setDialogErrors] = useState<LogEvent[] | null>(null);
   const logEndRef = useRef<HTMLDivElement>(null);
 
-  // Always fetch the latest 100 entries — no pagination token
   const { data, isFetching, refetch } = useQuery({
-    queryKey: ["logs", packageId, errorsOnly, liveMode],
-    queryFn: () => getLogs(packageId, { limit: 100, errorsOnly }),
+    queryKey: ["logs", packageId, errorsOnly, liveMode, limit, lookback],
+    queryFn: () => getLogs(packageId, { limit, lookbackMinutes: lookback, errorsOnly }),
     staleTime: liveMode ? 0 : 15_000,
     refetchInterval: liveMode ? LIVE_INTERVAL_MS : false,
   });
@@ -116,6 +131,30 @@ export default function OtelLogStream({
             loading={isFetching}
           />
         )}
+
+        {/* Lookback selector */}
+        <select
+          value={lookback}
+          onChange={(e) => setLookback(Number(e.target.value))}
+          className="bg-[#0f1117] border border-slate-700 rounded px-2 py-1 text-xs text-slate-300 hover:border-slate-500 transition-colors"
+          title="Lookback window"
+        >
+          {LOOKBACK_OPTIONS.map((o) => (
+            <option key={o.minutes} value={o.minutes}>{o.label}</option>
+          ))}
+        </select>
+
+        {/* Limit selector */}
+        <select
+          value={limit}
+          onChange={(e) => setLimit(Number(e.target.value) as typeof LIMIT_OPTIONS[number])}
+          className="bg-[#0f1117] border border-slate-700 rounded px-2 py-1 text-xs text-slate-300 hover:border-slate-500 transition-colors"
+          title="Max events"
+        >
+          {LIMIT_OPTIONS.map((n) => (
+            <option key={n} value={n}>{n} events</option>
+          ))}
+        </select>
 
         {/* Live toggle */}
         <button
