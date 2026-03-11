@@ -16,6 +16,7 @@ import MonacoJsonEditor from "../components/MonacoJsonEditor";
 import MarkdownRenderer from "../components/MarkdownRenderer";
 import StatusBadge from "../components/StatusBadge";
 import TagEditor from "../components/TagEditor";
+import AiConfigWizard from "../components/AiConfigWizard";
 import { useRef } from "react";
 
 export default function ConfigEditor() {
@@ -44,6 +45,7 @@ export default function ConfigEditor() {
   const [editingName, setEditingName] = useState("");
   const [tags, setTags] = useState<string[]>([]);
   const tagsRef = useRef<string[]>([]);
+  const [showUpdateWizard, setShowUpdateWizard] = useState(false);
 
   function handleTagChange(newTags: string[]) {
     setTags(newTags);
@@ -159,45 +161,47 @@ export default function ConfigEditor() {
   return (
     <div className="p-6 max-w-6xl mx-auto flex flex-col gap-4 h-[calc(100vh-7rem)]">
       {/* Toolbar */}
-      <div className="flex items-center gap-3 flex-wrap">
-        <div className="flex flex-col gap-1">
+      <div className="flex flex-col gap-2">
+        {/* Row 1 — name (full width) */}
+        <div>
           <input
-            className="bg-transparent border border-transparent hover:border-[#2a3044] focus:border-[#4a5568] rounded px-2 py-0.5 text-base font-semibold text-slate-100 outline-none transition-colors w-56"
+            className="bg-transparent border border-transparent hover:border-[#2a3044] focus:border-[#4a5568] rounded px-2 py-0.5 text-base font-semibold text-slate-100 outline-none transition-colors w-full"
             value={editingName}
             onChange={(e) => setEditingName(e.target.value)}
             onBlur={() => { if (!editingName.trim()) setEditingName(cfg.name); }}
             title="Click to edit config name"
             placeholder="Config name"
           />
-          <p className="text-xs text-slate-500 font-mono px-2">{configId}</p>
+          <p className="text-xs text-slate-500 font-mono px-2 mt-0.5 truncate">{configId}</p>
         </div>
 
-        {/* Tags */}
-        <div className="w-64">
-          <TagEditor tags={tags} onChange={handleTagChange} placeholder="Add tag…" />
-        </div>
+        {/* Row 2 — tags, version picker, action buttons */}
+        <div className="flex items-center gap-2 flex-wrap">
+          {/* Tags */}
+          <div className="w-56">
+            <TagEditor tags={tags} onChange={handleTagChange} placeholder="Add tag…" />
+          </div>
 
-        {/* Version picker */}
-        {versions && versions.length > 1 && (
-          <select
-            className="bg-[#0f1117] border border-[#2a3044] rounded px-2 py-1 text-xs text-slate-300"
-            value={selectedVersion}
-            onChange={(e) => {
-              setSelectedVersion(e.target.value);
-              loadVersionMut.mutate(e.target.value);
-            }}
-          >
-            {(() => {
-              // versions is newest-first; reverse so v1 = oldest, v2 = next, …
-              const ordered = [...versions].reverse();
-              return ordered.map((v, idx) => (
-                <option key={v.version} value={v.version}>
-                  v{idx + 1} — {v.version}
-                </option>
-              ));
-            })()}
-          </select>
-        )}
+          {/* Version picker */}
+          {versions && versions.length > 1 && (
+            <select
+              className="bg-[#0f1117] border border-[#2a3044] rounded px-2 py-1 text-xs text-slate-300"
+              value={selectedVersion}
+              onChange={(e) => {
+                setSelectedVersion(e.target.value);
+                loadVersionMut.mutate(e.target.value);
+              }}
+            >
+              {(() => {
+                const ordered = [...versions].reverse();
+                return ordered.map((v, idx) => (
+                  <option key={v.version} value={v.version}>
+                    v{idx + 1} — {v.version}
+                  </option>
+                ));
+              })()}
+            </select>
+          )}
 
         <div className="flex items-center gap-2 ml-auto flex-wrap">
           {(() => {
@@ -251,6 +255,19 @@ export default function ConfigEditor() {
           )}
 
           <button
+            className="btn btn-secondary inline-flex items-center gap-1.5 text-sky-300 border-sky-700/50 hover:border-sky-500 disabled:opacity-40 disabled:cursor-not-allowed"
+            disabled={isAgentResponse}
+            onClick={() => setShowUpdateWizard(true)}
+            title={isAgentResponse ? "Cannot update an Agent Response config" : "Use AI to generate an updated version of this config"}
+          >
+            <svg viewBox="0 0 24 24" className="w-3.5 h-3.5 shrink-0" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+              <polyline points="2,20 9,7 13,13 16,9 22,20" />
+              <polyline points="14.3,11 16,9 17.7,11.4" />
+            </svg>
+            Update using AI
+          </button>
+
+          <button
             className="btn btn-primary"
             disabled={saveMut.isPending}
             onClick={() => saveMut.mutate()}
@@ -258,7 +275,8 @@ export default function ConfigEditor() {
             {saveMut.isPending ? <span className="spinner" /> : "Save New Version"}
           </button>
         </div>
-      </div>
+        </div>{/* end row 2 */}
+      </div>{/* end toolbar */}
 
       {saveMut.isSuccess && (
         <p className="text-xs text-green-400">Saved as new version.</p>
@@ -304,6 +322,21 @@ export default function ConfigEditor() {
           );
         })()}
       </div>
+
+      {/* ── Update using AI Wizard ── */}
+      {showUpdateWizard && (() => {
+        // Parse current content to pass as initialConfig
+        let parsedCfg: Record<string, unknown> | undefined;
+        try { parsedCfg = JSON.parse(content) as Record<string, unknown>; } catch { parsedCfg = undefined; }
+        return (
+          <AiConfigWizard
+            mode="update"
+            initialConfig={parsedCfg}
+            currentConfigName={editingName || cfg.name}
+            onClose={() => setShowUpdateWizard(false)}
+          />
+        );
+      })()}
     </div>
   );
 }
