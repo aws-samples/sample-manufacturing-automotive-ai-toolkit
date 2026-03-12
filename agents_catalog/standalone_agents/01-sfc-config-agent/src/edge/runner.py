@@ -23,7 +23,6 @@ import collections
 import json
 import logging
 import os
-import platform
 import signal
 import subprocess
 import sys
@@ -123,31 +122,6 @@ def _detect_sfc_modules(sfc_config: dict) -> list[str]:
     return sorted(modules)
 
 
-def _ensure_java(sfc_bin_dir: Path) -> str:
-    """Return path to java binary; install Temurin JRE via Adoptium API if absent."""
-    java = "java"
-    try:
-        subprocess.run([java, "-version"], capture_output=True, check=True)
-        return java
-    except (FileNotFoundError, subprocess.CalledProcessError):
-        pass
-
-    logger.info("Java not found — downloading Temurin 21 via Adoptium API …")
-    arch = "x64" if platform.machine() in ("x86_64", "AMD64") else "aarch64"
-    url = (
-        f"https://api.adoptium.net/v3/binary/latest/21/ga/"
-        f"linux/{arch}/jre/hotspot/normal/eclipse"
-    )
-    dest = sfc_bin_dir / "jre.tar.gz"
-    urllib.request.urlretrieve(url, dest)
-    subprocess.run(["tar", "-xzf", str(dest), "-C", str(sfc_bin_dir)], check=True)
-    # Find extracted directory
-    for entry in sfc_bin_dir.iterdir():
-        java_bin = entry / "bin" / "java"
-        if java_bin.exists():
-            logger.info("Java installed at %s", java_bin)
-            return str(java_bin)
-    raise RuntimeError("Java extraction failed — java binary not found")
 
 
 def _download_and_extract(artifact: str, version: str, sfc_bin_dir: Path) -> None:
@@ -191,7 +165,7 @@ def _ensure_sfc_artifacts(version: str, sfc_cfg: dict, sfc_bin_dir: Path) -> Pat
     Always downloads sfc-main.  Additionally downloads every module referenced
     in AdapterTypes / TargetTypes JarFiles entries.
 
-    Returns the path to the sfc-main launcher jar.
+    Returns the path to the sfc-main directory (containing lib/).
     """
     sfc_bin_dir.mkdir(parents=True, exist_ok=True)
 
@@ -204,16 +178,16 @@ def _ensure_sfc_artifacts(version: str, sfc_cfg: dict, sfc_bin_dir: Path) -> Pat
     for module in modules:
         _download_and_extract(module, version, sfc_bin_dir)
 
-    # 3. Locate the sfc-main binary
-    sfc_binary = sfc_bin_dir / "sfc-main" / "bin" / "sfc-main"
-    if not sfc_binary.exists():
+    # 3. Verify the sfc-main/lib directory exists
+    sfc_main_dir = sfc_bin_dir / "sfc-main"
+    sfc_lib_dir = sfc_main_dir / "lib"
+    if not sfc_lib_dir.exists():
         raise RuntimeError(
-            f"SFC binary not found at {sfc_binary}. "
+            f"SFC lib directory not found at {sfc_lib_dir}. "
             "Check the extracted sfc-main artifact structure."
         )
-    sfc_binary.chmod(sfc_binary.stat().st_mode | 0o111)
-    logger.info("SFC binary: %s", sfc_binary)
-    return sfc_binary
+    logger.info("SFC lib directory: %s", sfc_lib_dir)
+    return sfc_main_dir
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -271,7 +245,7 @@ def _credential_refresh_loop(iot_cfg: dict) -> None:
 # ─────────────────────────────────────────────────────────────────────────────
 
 def _start_sfc(
-    sfc_binary: Path,
+    sfc_main_dir: Path,
     sfc_config_path: Path,
     sfc_bin_dir: Path,
     log_level_flag: str = "-info",
@@ -281,7 +255,8 @@ def _start_sfc(
         env.update(_aws_credentials)
     # MODULES_DIR must resolve ${MODULES_DIR} references in sfc-config JarFiles
     env["MODULES_DIR"] = str(sfc_bin_dir)
-    cmd = [str(sfc_binary), "-config", str(sfc_config_path), log_level_flag]
+    classpath = str(sfc_main_dir / "lib" / "*")
+    cmd = ["java", "-cp", classpath, "com.amazonaws.sfc.MainController", "-config", str(sfc_config_path), log_level_flag]
     logger.info("Launching SFC: %s", " ".join(cmd))
     logger.info("MODULES_DIR=%s", env["MODULES_DIR"])
     proc = subprocess.Popen(
@@ -331,7 +306,7 @@ def _capture_sfc_output(proc: subprocess.Popen, no_otel: bool) -> None:
 
 
 def _restart_sfc(
-    sfc_binary: Path,
+    sfc_main_dir: Path,
     sfc_config_path: Path,
     sfc_bin_dir: Path,
     log_level_flag: str = "-info",
@@ -344,7 +319,7 @@ def _restart_sfc(
             _sfc_proc.wait(timeout=10)
         except subprocess.TimeoutExpired:
             _sfc_proc.kill()
-    _sfc_proc = _start_sfc(sfc_binary, sfc_config_path, sfc_bin_dir, log_level_flag)
+    _sfc_proc = _start_sfc(sfc_main_dir, sfc_config_path, sfc_bin_dir, log_level_flag)
     t = threading.Thread(
         target=_capture_sfc_output,
         args=(_sfc_proc, False),
@@ -600,8 +575,8 @@ def _dispatch_control(topic: str, payload: bytes, iot_cfg: dict) -> None:
             sfc_bin_dir = _HERE / ".sfc-bin"
             sfc_cfg = _load_sfc_config()
             sfc_version = _detect_sfc_version(sfc_cfg)
-            sfc_binary = _ensure_sfc_artifacts(sfc_version, sfc_cfg, sfc_bin_dir)
-            _restart_sfc(sfc_binary, _SFC_CONFIG_PATH, sfc_bin_dir, log_flag)
+            sfc_main_dir = _ensure_sfc_artifacts(sfc_version, sfc_cfg, sfc_bin_dir)
+            _restart_sfc(sfc_main_dir, _SFC_CONFIG_PATH, sfc_bin_dir, log_flag)
 
         elif suffix == "config-update":
             presigned_url = msg.get("presignedUrl")
@@ -618,8 +593,8 @@ def _dispatch_control(topic: str, payload: bytes, iot_cfg: dict) -> None:
                 sfc_bin_dir = _HERE / ".sfc-bin"
                 sfc_cfg = _load_sfc_config()
                 sfc_version = _detect_sfc_version(sfc_cfg)
-                sfc_binary = _ensure_sfc_artifacts(sfc_version, sfc_cfg, sfc_bin_dir)
-                _restart_sfc(sfc_binary, _SFC_CONFIG_PATH, sfc_bin_dir, log_flag)
+                sfc_main_dir = _ensure_sfc_artifacts(sfc_version, sfc_cfg, sfc_bin_dir)
+                _restart_sfc(sfc_main_dir, _SFC_CONFIG_PATH, sfc_bin_dir, log_flag)
 
     except Exception as exc:
         logger.error("Control dispatch error: %s", exc)
@@ -635,10 +610,10 @@ def _apply_config_update(presigned_url: str, iot_cfg: dict) -> None:
         logger.info("Config updated from presigned URL; restarting SFC …")
         sfc_version = _detect_sfc_version(new_config)
         sfc_bin_dir = _HERE / ".sfc-bin"
-        sfc_binary = _ensure_sfc_artifacts(sfc_version, new_config, sfc_bin_dir)
+        sfc_main_dir = _ensure_sfc_artifacts(sfc_version, new_config, sfc_bin_dir)
         # Preserve current diagnostics log level across config-push restarts
         log_flag = "-trace" if _diagnostics_enabled else "-info"
-        _restart_sfc(sfc_binary, _SFC_CONFIG_PATH, sfc_bin_dir, log_flag)
+        _restart_sfc(sfc_main_dir, _SFC_CONFIG_PATH, sfc_bin_dir, log_flag)
     except Exception as exc:
         logger.error("Config update failed: %s", exc)
 
@@ -768,11 +743,11 @@ def main() -> None:
     if not args.no_otel:
         _init_otel(iot_cfg)
 
-    # Step 1: Ensure SFC artifacts (sfc-main binary + all modules from config)
-    sfc_binary = _ensure_sfc_artifacts(sfc_version, sfc_cfg, sfc_bin_dir)
+    # Step 1: Ensure SFC artifacts (sfc-main + all modules from config)
+    sfc_main_dir = _ensure_sfc_artifacts(sfc_version, sfc_cfg, sfc_bin_dir)
 
     # Step 3: Start SFC subprocess
-    _sfc_proc = _start_sfc(sfc_binary, _SFC_CONFIG_PATH, sfc_bin_dir)
+    _sfc_proc = _start_sfc(sfc_main_dir, _SFC_CONFIG_PATH, sfc_bin_dir)
     output_thread = threading.Thread(
         target=_capture_sfc_output,
         args=(_sfc_proc, args.no_otel),

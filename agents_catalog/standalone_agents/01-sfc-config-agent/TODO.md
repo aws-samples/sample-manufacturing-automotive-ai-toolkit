@@ -5,10 +5,10 @@ TODO:
 [ x ] config update shall only be possible with new versions of the Launch package's existing config...
 [ x ] config-update does not work - presigned s3 url not found
 [ x ] Logs shall be tailed in near-real time (check ERROR filter)
-[   ] Telemetry / Diagnostics toggles
+[ x ] Telemetry / Diagnostics toggles
 [   ] Add one-click UI macOS/linux/windows runners to Launch Package
-[   ] Fix sfc path length issue by using java jar based runtime
-[   ] Remove Java installer if java not found
+[ x ] Fix sfc path length issue by using java jar based runtime
+[ x ] Remove Java installer if java not found
 
 ## Control Plane
 [ x ] AI Remidiation
@@ -22,4 +22,4 @@ TODO:
 [ x ] Detect Agentic Summary response & show proper html instead of json editor
 [   ] Add token based auth to APIGW & UX
 [   ] Add UI-pagination
-[   ] Check if GG comp creation works
+[ x ] Check if GG comp creation works
