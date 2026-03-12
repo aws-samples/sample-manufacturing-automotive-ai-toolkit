@@ -198,8 +198,23 @@ class ControlPlaneApi(Construct):
         configs_bucket.grant_read(self.fn_gg_comp)
         launch_package_table.grant_read_write_data(self.fn_gg_comp)
         self.fn_gg_comp.add_to_role_policy(iam.PolicyStatement(
-            actions=["greengrassv2:CreateComponentVersion"],
+            actions=["greengrass:CreateComponentVersion"],
             resources=["*"],
+        ))
+        # Greengrass validates the S3 artifact URI during CreateComponentVersion
+        # by fetching it as the greengrass.amazonaws.com service principal.
+        # The bucket must explicitly allow this service to read packages/*.
+        configs_bucket.add_to_resource_policy(iam.PolicyStatement(
+            sid="AllowGreengrassArtifactAccess",
+            effect=iam.Effect.ALLOW,
+            principals=[iam.ServicePrincipal("greengrass.amazonaws.com")],
+            actions=["s3:GetObject"],
+            resources=[f"{configs_bucket.bucket_arn}/packages/*"],
+            conditions={
+                "StringEquals": {
+                    "aws:SourceAccount": account,
+                }
+            },
         ))
 
         # ----------------------------------------------------------------

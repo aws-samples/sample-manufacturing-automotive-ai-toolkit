@@ -45,6 +45,13 @@ def _create_component(pkg: dict) -> dict:
     if _has_recent_errors(pkg):
         return _error(409, "CONFLICT", "ERROR-severity logs exist within the last 10 minutes")
 
+    # Resolve the exact S3 key from the package record — the filename includes
+    # a timestamp suffix (e.g. launch-package-20260227T163134Z.zip) so we must
+    # use the stored s3ZipKey rather than a hardcoded path.
+    s3_zip_key = pkg.get("s3ZipKey")
+    if not s3_zip_key:
+        return _error(409, "CONFLICT", "Package has no s3ZipKey — launch bundle not yet uploaded")
+
     config_name = pkg.get("configId", package_id).replace("-", "_")
     version = datetime.now(timezone.utc).strftime("%Y.%m.%d.%H%M%S")
     component_name = f"com.sfc.{config_name}"
@@ -58,7 +65,7 @@ def _create_component(pkg: dict) -> dict:
         "Manifests": [{
             "Platform": {"os": "linux"},
             "Artifacts": [{
-                "URI": f"s3://{CONFIGS_BUCKET}/packages/{package_id}/launch-package.zip",
+                "URI": f"s3://{CONFIGS_BUCKET}/{s3_zip_key}",
                 "Unarchive": "ZIP",
                 "Permission": {"Read": "OWNER"},
             }],

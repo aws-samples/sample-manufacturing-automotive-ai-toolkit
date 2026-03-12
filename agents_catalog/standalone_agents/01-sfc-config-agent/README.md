@@ -5,7 +5,7 @@ SFC Agentic Control Plane
 
 ## Executive Summary
 
-Connecting industrial equipment to cloud data pipelines is one of manufacturing's most persistent bottlenecks. The **SFC Config Generation Agent** eliminates this barrier by combining a conversational AI assistant with a production-grade cloud control plane. Engineers describe what they need — in plain language or by uploading existing machine specs — and the agent produces a validated, deployment-ready Shop Floor Connectivity (SFC) configuration. That configuration is then packaged, cryptographically credentialed, and pushed to the edge in a single click. If the running process emits errors, a second AI step diagnoses the logs and proposes a corrected configuration automatically.
+Connecting industrial equipment to cloud data pipelines is one of manufacturing's most persistent bottlenecks. The **SFC Agentic Control Plane** eliminates this barrier by combining a conversational AI assistant with a production-grade cloud control plane. Engineers describe what they need — in plain language or by uploading existing machine specs — and the agent produces a validated, deployment-ready Shop Floor Connectivity (SFC) configuration. That configuration is then packaged, cryptographically credentialed, and pushed to the edge in a single click. If the running process emits errors, a second AI step diagnoses the logs and proposes a corrected configuration automatically.
 
 ## Pitch
 The SFC Agentic Control Plane eliminates the barrier of onboarding industrial equipment by combining an LLM Agent with a production-grade cloud control plane.

@@ -11,6 +11,7 @@ import {
 import StatusBadge from "../components/StatusBadge";
 import PackageControlPanel from "../components/PackageControlPanel";
 import ConfirmDialog from "../components/ConfirmDialog";
+import GgDeployDialog from "../components/GgDeployDialog";
 import TagEditor from "../components/TagEditor";
 import { useState, useEffect, useRef } from "react";
 
@@ -47,6 +48,7 @@ export default function PackageDetail() {
   })();
 
   const [confirmDelete, setConfirmDelete] = useState(false);
+  const [ggConfirmOpen, setGgConfirmOpen] = useState(false);
   const [dangerZoneOpen, setDangerZoneOpen] = useState(false);
   const [tags, setTags] = useState<string[]>([]);
   const tagsInitialized = useRef(false);
@@ -70,7 +72,6 @@ export default function PackageDetail() {
       navigate("/packages");
     },
   });
-
 
   if (isLoading) return <p className="p-6 text-slate-500 text-sm">Loading…</p>;
   if (!pkg) return <p className="p-6 text-slate-500 text-sm">Package not found.</p>;
@@ -189,6 +190,35 @@ export default function PackageDetail() {
               </button>
             </div>
 
+            {/* Greengrass Deployment */}
+            <div className="card space-y-3 border border-slate-700/50">
+              <p className="text-xs font-medium text-slate-400">Greengrass Deployment</p>
+              <p className="text-xs text-slate-400 leading-relaxed">
+                Publish this launch bundle as a new{" "}
+                <span className="text-slate-300 font-medium">AWS IoT Greengrass v2 component version</span>.
+                Each call creates a new version (timestamped{" "}
+                <span className="font-mono text-slate-300">YYYY.MM.DD.HHmmss</span>) under the component
+                name <span className="font-mono text-slate-300">com.sfc.&lt;configId&gt;</span> — versions
+                accumulate and nothing is overwritten. The resulting component ARN can be targeted in a
+                Greengrass deployment to roll out SFC to any edge device managed by the local Greengrass
+                nucleus.
+                {pkg.ggComponentArn && (
+                  <span className="block mt-2 text-emerald-400/80 font-mono text-[10px] break-all">
+                    ✓ latest: {pkg.ggComponentArn}
+                  </span>
+                )}
+              </p>
+              <button
+                className="inline-flex items-center px-3 py-1.5 rounded-md text-xs font-medium
+                  border border-slate-600/70 text-slate-300 hover:text-slate-100 hover:border-slate-500
+                  transition-colors bg-transparent disabled:opacity-40 disabled:cursor-not-allowed"
+                disabled={pkg.status !== "READY"}
+                onClick={() => setGgConfirmOpen(true)}
+              >
+                Create Greengrass Component
+              </button>
+            </div>
+
             {/* Danger Zone */}
             <div className="border border-red-900/50 rounded-lg overflow-hidden">
               <button
@@ -246,6 +276,14 @@ export default function PackageDetail() {
           danger
           onConfirm={() => deleteMut.mutate()}
           onCancel={() => setConfirmDelete(false)}
+        />
+      )}
+
+      {/* Greengrass confirmation dialog — shared component */}
+      {ggConfirmOpen && (
+        <GgDeployDialog
+          packageId={pkg.packageId}
+          onClose={() => setGgConfirmOpen(false)}
         />
       )}
     </>

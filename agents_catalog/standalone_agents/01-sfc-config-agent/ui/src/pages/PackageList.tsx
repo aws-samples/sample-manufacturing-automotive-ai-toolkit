@@ -1,16 +1,16 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useNavigate, useSearchParams } from "react-router-dom";
-import { useState, useEffect } from "react";
-import { listPackages, deepDeletePackage, createGgComponent, listConfigs, listConfigVersions } from "../api/client";
+import { useState, useEffect, useMemo } from "react";
+import { listPackages, deepDeletePackage, listConfigs, listConfigVersions } from "../api/client";
 import type { LaunchPackage } from "../api/client";
 import StatusBadge from "../components/StatusBadge";
 import HeartbeatStatusLed from "../components/HeartbeatStatusLed";
 import ConfirmDialog from "../components/ConfirmDialog";
+import GgDeployDialog from "../components/GgDeployDialog";
 import RefreshButton from "../components/RefreshButton";
 import SortableHeader from "../components/SortableHeader";
 import TagFilter from "../components/TagFilter";
 import { useSortable } from "../hooks/useSortable";
-import { useMemo } from "react";
 
 /** Resolves the vN label for a given configId + configVersion pair. */
 function VersionBadge({ configId, configVersion }: { configId: string; configVersion: string }) {
@@ -46,6 +46,7 @@ export default function PackageList() {
   const qc = useQueryClient();
   const [dangerOpen, setDangerOpen] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState<string | null>(null);
+  const [ggConfirmTarget, setGgConfirmTarget] = useState<string | null>(null);
   const [searchParams] = useSearchParams();
   const [configFilter, setConfigFilter] = useState<string | null>(
     searchParams.get("configId")
@@ -116,11 +117,6 @@ export default function PackageList() {
       qc.invalidateQueries({ queryKey: ["packages"] });
       setDeleteTarget(null);
     },
-  });
-
-  const ggMut = useMutation({
-    mutationFn: (id: string) => createGgComponent(id),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["packages"] }),
   });
 
   const isFetching = isFetchingPackages || isFetchingConfigs;
@@ -253,20 +249,26 @@ export default function PackageList() {
                     {new Date(pkg.createdAt).toLocaleDateString()}
                   </td>
                   <td onClick={(e) => e.stopPropagation()}>
-                    <div className="flex items-center gap-1">
+                    <div className="flex items-center gap-2">
                       <button
-                        className="btn btn-ghost text-xs"
+                        className="inline-flex items-center px-2.5 py-1 rounded-md text-xs font-medium
+                          border border-slate-600/70 text-slate-300 hover:text-slate-100 hover:border-slate-500
+                          transition-colors bg-transparent"
                         onClick={() => navigate(`/packages/${pkg.packageId}/logs`)}
+                        title="View SFC log stream"
                       >
-                        Logs
+                        SFC Logs
                       </button>
                       <button
-                        className="btn btn-ghost text-xs"
-                        disabled={pkg.status !== "READY" || ggMut.isPending}
-                        onClick={() => ggMut.mutate(pkg.packageId)}
-                        title="Create Greengrass v2 component"
+                        className="inline-flex items-center px-2.5 py-1 rounded-md text-xs font-medium
+                          border border-slate-600/70 text-slate-300 hover:text-slate-100 hover:border-slate-500
+                          transition-colors bg-transparent
+                          disabled:opacity-40 disabled:cursor-not-allowed"
+                        disabled={pkg.status !== "READY"}
+                        onClick={() => setGgConfirmTarget(pkg.packageId)}
+                        title="Register as AWS IoT Greengrass v2 component"
                       >
-                        GG
+                        Create Greengrass Component
                       </button>
                     </div>
                   </td>
@@ -328,7 +330,7 @@ export default function PackageList() {
         </div>
       )}
 
-      {/* ── Confirm dialog ─────────────────────────────────────────────────── */}
+      {/* ── Delete confirm dialog ──────────────────────────────────────────── */}
       {deleteTarget && (
         <ConfirmDialog
           title="Delete Package"
@@ -345,6 +347,14 @@ export default function PackageList() {
           danger
           onConfirm={() => deleteMut.mutate(deleteTarget)}
           onCancel={() => setDeleteTarget(null)}
+        />
+      )}
+
+      {/* ── Greengrass confirm dialog ──────────────────────────────────────── */}
+      {ggConfirmTarget && (
+        <GgDeployDialog
+          packageId={ggConfirmTarget}
+          onClose={() => setGgConfirmTarget(null)}
         />
       )}
     </div>

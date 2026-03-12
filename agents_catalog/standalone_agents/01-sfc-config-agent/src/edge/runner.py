@@ -7,7 +7,7 @@ Edge agent that:
   2. Vends AWS credentials via IoT mTLS role alias
   3. Launches SFC as a subprocess with captured stdout/stderr
   4. Ships OTEL log records to CloudWatch (SigV4-signed)
-  5. Maintains an MQTT5 control channel (telemetry, diagnostics, config-update, restart)
+  5. Maintains an MQTT5 control channel (diagnostics, config-update, restart)
   6. Publishes heartbeat every 5 s on sfc/{packageId}/heartbeat
   7. Refreshes IoT credentials every 50 min
   8. Handles SIGTERM/SIGINT gracefully
@@ -72,7 +72,6 @@ _recent_logs: deque[str] = deque(maxlen=_RECENT_LOG_RING_SIZE)
 _recent_logs_lock = threading.Lock()
 _aws_credentials: dict[str, str] = {}
 _credentials_lock = threading.Lock()
-_telemetry_enabled = True
 _diagnostics_enabled = False
 _otel_processor = None   # set after OTEL init
 _logger_provider = None  # set after OTEL init
@@ -271,13 +270,18 @@ def _credential_refresh_loop(iot_cfg: dict) -> None:
 # 3. SFC subprocess
 # ─────────────────────────────────────────────────────────────────────────────
 
-def _start_sfc(sfc_binary: Path, sfc_config_path: Path, sfc_bin_dir: Path) -> subprocess.Popen:
+def _start_sfc(
+    sfc_binary: Path,
+    sfc_config_path: Path,
+    sfc_bin_dir: Path,
+    log_level_flag: str = "-info",
+) -> subprocess.Popen:
     env = {**os.environ}
     with _credentials_lock:
         env.update(_aws_credentials)
     # MODULES_DIR must resolve ${MODULES_DIR} references in sfc-config JarFiles
     env["MODULES_DIR"] = str(sfc_bin_dir)
-    cmd = [str(sfc_binary), "-config", str(sfc_config_path)]
+    cmd = [str(sfc_binary), "-config", str(sfc_config_path), log_level_flag]
     logger.info("Launching SFC: %s", " ".join(cmd))
     logger.info("MODULES_DIR=%s", env["MODULES_DIR"])
     proc = subprocess.Popen(
@@ -326,7 +330,12 @@ def _capture_sfc_output(proc: subprocess.Popen, no_otel: bool) -> None:
         _publish_heartbeat_now(iot_cfg=None, sfc_pid=proc.pid, running=False)
 
 
-def _restart_sfc(sfc_binary: Path, sfc_config_path: Path, sfc_bin_dir: Path) -> None:
+def _restart_sfc(
+    sfc_binary: Path,
+    sfc_config_path: Path,
+    sfc_bin_dir: Path,
+    log_level_flag: str = "-info",
+) -> None:
     global _sfc_proc
     if _sfc_proc and _sfc_proc.poll() is None:
         logger.info("Terminating existing SFC process (pid=%s) for restart …", _sfc_proc.pid)
@@ -335,7 +344,7 @@ def _restart_sfc(sfc_binary: Path, sfc_config_path: Path, sfc_bin_dir: Path) -> 
             _sfc_proc.wait(timeout=10)
         except subprocess.TimeoutExpired:
             _sfc_proc.kill()
-    _sfc_proc = _start_sfc(sfc_binary, sfc_config_path, sfc_bin_dir)
+    _sfc_proc = _start_sfc(sfc_binary, sfc_config_path, sfc_bin_dir, log_level_flag)
     t = threading.Thread(
         target=_capture_sfc_output,
         args=(_sfc_proc, False),
@@ -466,7 +475,10 @@ def _init_otel(iot_cfg: dict) -> bool:
             },
             region=region,
         )
-        processor = BatchLogRecordProcessor(sig_exporter)
+        processor = BatchLogRecordProcessor(
+            sig_exporter,
+            schedule_delay_millis=30_000,  # flush every 30 s (12× less than 5 s default)
+        )
         resource = Resource.create({
             "service.name": "aws-sfc-runtime-agent",
             "sfc.package_id": iot_cfg.get("packageId", ""),
@@ -502,7 +514,7 @@ def _emit_otel_log(line: str) -> None:
     Severity is inferred by keyword scan; all plain/no-prefix lines default to INFO.
     Exceptions are surfaced at WARNING so they are not silently swallowed.
     """
-    if not _telemetry_enabled or not _logger_provider:
+    if not _logger_provider:
         return
     try:
         sub_logger = logging.getLogger("sfc-subprocess")
@@ -570,21 +582,26 @@ def _connect_mqtt(iot_cfg: dict):
 
 def _dispatch_control(topic: str, payload: bytes, iot_cfg: dict) -> None:
     """Route incoming MQTT control messages to handlers."""
-    global _telemetry_enabled, _diagnostics_enabled, _sfc_proc
+    global _diagnostics_enabled, _sfc_proc
     try:
         msg = json.loads(payload)
         suffix = topic.split("/")[-1]
         logger.info("Control message received: topic=%s payload=%s", topic, msg)
 
-        if suffix == "telemetry":
-            _telemetry_enabled = bool(msg.get("enabled", True))
-            logger.info("Telemetry set to %s", _telemetry_enabled)
-
-        elif suffix == "diagnostics":
+        if suffix == "diagnostics":
             _diagnostics_enabled = bool(msg.get("enabled", False))
             level = logging.DEBUG if _diagnostics_enabled else logging.WARNING
             logging.getLogger("sfc-subprocess").setLevel(level)
-            logger.info("Diagnostics set to %s", _diagnostics_enabled)
+            log_flag = "-trace" if _diagnostics_enabled else "-info"
+            logger.info(
+                "Diagnostics set to %s — restarting SFC with %s",
+                _diagnostics_enabled, log_flag,
+            )
+            sfc_bin_dir = _HERE / ".sfc-bin"
+            sfc_cfg = _load_sfc_config()
+            sfc_version = _detect_sfc_version(sfc_cfg)
+            sfc_binary = _ensure_sfc_artifacts(sfc_version, sfc_cfg, sfc_bin_dir)
+            _restart_sfc(sfc_binary, _SFC_CONFIG_PATH, sfc_bin_dir, log_flag)
 
         elif suffix == "config-update":
             presigned_url = msg.get("presignedUrl")
@@ -593,12 +610,16 @@ def _dispatch_control(topic: str, payload: bytes, iot_cfg: dict) -> None:
 
         elif suffix == "restart":
             if msg.get("restart"):
-                logger.info("Restart command received")
+                # logLevel is set by the Lambda based on the persisted
+                # diagnosticsEnabled flag; fall back to _diagnostics_enabled
+                # for any older messages that don't include it.
+                log_flag = msg.get("logLevel") or ("-trace" if _diagnostics_enabled else "-info")
+                logger.info("Restart command received — log level: %s", log_flag)
                 sfc_bin_dir = _HERE / ".sfc-bin"
                 sfc_cfg = _load_sfc_config()
                 sfc_version = _detect_sfc_version(sfc_cfg)
                 sfc_binary = _ensure_sfc_artifacts(sfc_version, sfc_cfg, sfc_bin_dir)
-                _restart_sfc(sfc_binary, _SFC_CONFIG_PATH, sfc_bin_dir)
+                _restart_sfc(sfc_binary, _SFC_CONFIG_PATH, sfc_bin_dir, log_flag)
 
     except Exception as exc:
         logger.error("Control dispatch error: %s", exc)
@@ -615,7 +636,9 @@ def _apply_config_update(presigned_url: str, iot_cfg: dict) -> None:
         sfc_version = _detect_sfc_version(new_config)
         sfc_bin_dir = _HERE / ".sfc-bin"
         sfc_binary = _ensure_sfc_artifacts(sfc_version, new_config, sfc_bin_dir)
-        _restart_sfc(sfc_binary, _SFC_CONFIG_PATH, sfc_bin_dir)
+        # Preserve current diagnostics log level across config-push restarts
+        log_flag = "-trace" if _diagnostics_enabled else "-info"
+        _restart_sfc(sfc_binary, _SFC_CONFIG_PATH, sfc_bin_dir, log_flag)
     except Exception as exc:
         logger.error("Config update failed: %s", exc)
 
@@ -642,7 +665,6 @@ def _publish_heartbeat_now(iot_cfg: dict | None, sfc_pid: int | None = None, run
         "timestamp": datetime.now(timezone.utc).isoformat(),
         "sfcPid": pid,
         "sfcRunning": sfc_is_running,
-        "telemetryEnabled": _telemetry_enabled,
         "diagnosticsEnabled": _diagnostics_enabled,
         "recentLogs": recent,
     })

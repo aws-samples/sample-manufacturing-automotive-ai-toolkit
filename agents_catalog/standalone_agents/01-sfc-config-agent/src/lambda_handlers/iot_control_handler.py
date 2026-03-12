@@ -33,8 +33,6 @@ def handler(event: dict, context) -> dict:
             return _get_heartbeat(pkg)
         if path.endswith("/control") and method == "GET":
             return _get_control_state(pkg)
-        if path.endswith("/telemetry") and method == "PUT":
-            return _set_toggle(pkg, "telemetry", _parse_body(event))
         if path.endswith("/diagnostics") and method == "PUT":
             return _set_toggle(pkg, "diagnostics", _parse_body(event))
         if path.endswith("/config-update") and method == "POST":
@@ -56,8 +54,7 @@ def _require_ready(pkg: dict):
 def _get_control_state(pkg: dict) -> dict:
     return _ok({
         "packageId": pkg["packageId"],
-        "telemetryEnabled": pkg.get("telemetryEnabled", "unknown"),
-        "diagnosticsEnabled": pkg.get("diagnosticsEnabled", "unknown"),
+        "diagnosticsEnabled": pkg.get("diagnosticsEnabled", False),
         "lastConfigUpdateAt": pkg.get("lastConfigUpdateAt"),
         "lastConfigUpdateVersion": pkg.get("lastConfigUpdateVersion"),
         "lastRestartAt": pkg.get("lastRestartAt"),
@@ -106,8 +103,12 @@ def _restart(pkg: dict) -> dict:
     err = _require_ready(pkg)
     if err:
         return err
+    # Honour the persisted diagnostics setting so the edge restarts with the
+    # correct log-level flag (-trace when diagnostics is ON, -info otherwise).
+    diagnostics_on = bool(pkg.get("diagnosticsEnabled", False))
+    log_level = "-trace" if diagnostics_on else "-info"
     topic = f"sfc/{pkg['packageId']}/control/restart"
-    _iot_data.publish(topic=topic, qos=1, payload=json.dumps({"restart": True}))
+    _iot_data.publish(topic=topic, qos=1, payload=json.dumps({"restart": True, "logLevel": log_level}))
     now = datetime.now(timezone.utc).isoformat()
     ddb_util.update_package(_pkg_table, pkg["packageId"], pkg["createdAt"], {"lastRestartAt": now})
     return _ok({"message": "Restart command dispatched"})

@@ -41,7 +41,6 @@ export interface LaunchPackage {
   logGroupName?: string;
   ggComponentArn?: string;
   sourcePackageId?: string;
-  telemetryEnabled?: boolean;
   diagnosticsEnabled?: boolean;
   lastConfigUpdateAt?: string;
   lastConfigUpdateVersion?: string;
@@ -60,8 +59,7 @@ export interface HeartbeatStatus {
 
 export interface ControlState {
   packageId: string;
-  telemetryEnabled: boolean | "unknown";
-  diagnosticsEnabled: boolean | "unknown";
+  diagnosticsEnabled: boolean;
   lastConfigUpdateAt?: string;
   lastConfigUpdateVersion?: string;
   lastRestartAt?: string;
@@ -246,11 +244,6 @@ export const getLogs = (
 export const getControlState = (packageId: string) =>
   api
     .get<ControlState>(`/packages/${packageId}/control`)
-    .then((r) => r.data);
-
-export const setTelemetry = (packageId: string, enabled: boolean) =>
-  api
-    .put(`/packages/${packageId}/control/telemetry`, { enabled })
     .then((r) => r.data);
 
 export const setDiagnostics = (packageId: string, enabled: boolean) =>

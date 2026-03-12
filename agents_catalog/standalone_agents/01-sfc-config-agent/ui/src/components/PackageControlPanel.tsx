@@ -1,8 +1,7 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   getControlState,
-  setTelemetry,
   setDiagnostics,
   pushConfigUpdate,
   restartSfc,
@@ -18,8 +17,8 @@ interface Props {
 }
 
 /**
- * Toggle row matching design spec:
- *   Telemetry (OTEL)   ● ON  ○ OFF   [Apply]
+ * Toggle row:
+ *   Diagnostics (TRACE log)   ● ON  ○ OFF   [Apply]
  * Radio buttons select local state; Apply fires the mutation.
  */
 function Toggle({
@@ -37,8 +36,9 @@ function Toggle({
 }) {
   const [local, setLocal] = useState(value);
 
-  // Sync local when persisted value changes (e.g. after Apply succeeds)
-  useState(() => { setLocal(value); });
+  // Sync local whenever the persisted server value changes
+  // (page refresh, Apply success, or external update)
+  useEffect(() => { setLocal(value); }, [value]);
 
   const dirty = local !== value;
 
@@ -111,10 +111,6 @@ export default function PackageControlPanel({ pkg }: Props) {
   const [showRestartConfirm, setShowRestartConfirm] = useState(false);
 
   // Mutations
-  const telemetryMut = useMutation({
-    mutationFn: (v: boolean) => setTelemetry(pkg.packageId, v),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["control", pkg.packageId] }),
-  });
   const diagMut = useMutation({
     mutationFn: (v: boolean) => setDiagnostics(pkg.packageId, v),
     onSuccess: () => qc.invalidateQueries({ queryKey: ["control", pkg.packageId] }),
@@ -122,8 +118,6 @@ export default function PackageControlPanel({ pkg }: Props) {
   const cfgPushMut = useMutation({
     mutationFn: () => pushConfigUpdate(pkg.packageId, pushConfigId, pushVersion),
     onSuccess: () => {
-      // Re-fetch the package so LP detail reflects the new configId/configVersion,
-      // and invalidate configs so the Config Browser updates the "deployed" badge.
       qc.invalidateQueries({ queryKey: ["package", pkg.packageId] });
       qc.invalidateQueries({ queryKey: ["packages"] });
       qc.invalidateQueries({ queryKey: ["configs"] });
@@ -135,7 +129,6 @@ export default function PackageControlPanel({ pkg }: Props) {
     onSuccess: () => qc.invalidateQueries({ queryKey: ["control", pkg.packageId] }),
   });
 
-  const telemetry = ctrl?.telemetryEnabled === true || ctrl?.telemetryEnabled === "unknown";
   const diagnostics = ctrl?.diagnosticsEnabled === true;
 
   return (
@@ -150,16 +143,10 @@ export default function PackageControlPanel({ pkg }: Props) {
         </p>
       )}
 
-      {/* Toggles */}
+      {/* Runtime Controls — Diagnostics toggle + Restart */}
       <div className="card space-y-1">
         <p className="text-xs font-medium text-slate-500 mb-2">Runtime Controls</p>
-        <Toggle
-          label="Telemetry (OTEL)"
-          value={telemetry}
-          onApply={(v) => telemetryMut.mutate(v)}
-          disabled={!isReady}
-          pending={telemetryMut.isPending}
-        />
+
         <Toggle
           label="Diagnostics (TRACE log)"
           value={diagnostics}
@@ -167,6 +154,24 @@ export default function PackageControlPanel({ pkg }: Props) {
           disabled={!isReady}
           pending={diagMut.isPending}
         />
+
+        <div className="pt-1 border-t border-slate-700/60">
+          <div className="flex items-center justify-between gap-3 py-1.5">
+            <span className="text-sm text-slate-300 shrink-0">Restart SFC</span>
+            <button
+              className="btn btn-danger text-xs py-1 px-3"
+              disabled={!isReady || restartMut.isPending}
+              onClick={() => setShowRestartConfirm(true)}
+            >
+              {restartMut.isPending ? <span className="spinner" /> : "Restart"}
+            </button>
+          </div>
+          {ctrl?.lastRestartAt && (
+            <p className="text-xs text-slate-600 mt-0.5">
+              Last restart: {new Date(ctrl.lastRestartAt).toLocaleString()}
+            </p>
+          )}
+        </div>
       </div>
 
       {/* Push config update */}
@@ -229,23 +234,6 @@ export default function PackageControlPanel({ pkg }: Props) {
             </p>
           )}
         </div>
-      </div>
-
-      {/* Restart */}
-      <div className="card space-y-2">
-        <p className="text-xs font-medium text-slate-500">Restart SFC Runtime</p>
-        <button
-          className="btn btn-danger w-full"
-          disabled={!isReady || restartMut.isPending}
-          onClick={() => setShowRestartConfirm(true)}
-        >
-          {restartMut.isPending ? <span className="spinner" /> : "Restart SFC"}
-        </button>
-        {ctrl?.lastRestartAt && (
-          <p className="text-xs text-slate-600">
-            Last restart: {new Date(ctrl.lastRestartAt).toLocaleString()}
-          </p>
-        )}
       </div>
 
       {showRestartConfirm && (

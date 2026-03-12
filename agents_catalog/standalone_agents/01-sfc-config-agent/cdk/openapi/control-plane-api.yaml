@@ -759,38 +759,6 @@ paths:
         uri: "${FnIotControlArn}"
         payloadFormatVersion: "2.0"
 
-  /packages/{packageId}/control/telemetry:
-    put:
-      operationId: setTelemetry
-      summary: Toggle OTEL telemetry on/off for a package
-      tags: [control]
-      parameters:
-        - $ref: "#/components/parameters/packageId"
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: "#/components/schemas/ToggleRequest"
-      responses:
-        "200":
-          description: Telemetry state updated
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/MessageResponse"
-        "404":
-          $ref: "#/components/responses/NotFound"
-        "409":
-          $ref: "#/components/responses/Conflict"
-        "500":
-          $ref: "#/components/responses/InternalError"
-      x-amazon-apigateway-integration:
-        type: aws_proxy
-        httpMethod: POST
-        uri: "${FnIotControlArn}"
-        payloadFormatVersion: "2.0"
-
   /packages/{packageId}/control/diagnostics:
     put:
       operationId: setDiagnostics
@@ -1249,8 +1217,6 @@ components:
               type: string
             ggComponentArn:
               type: string
-            telemetryEnabled:
-              type: boolean
             diagnosticsEnabled:
               type: boolean
             lastConfigUpdateAt:
@@ -1339,17 +1305,8 @@ components:
       properties:
         packageId:
           type: string
-        telemetryEnabled:
-          description: true/false or "unknown" for pre-feature packages
-          oneOf:
-            - type: boolean
-            - type: string
-              enum: [unknown]
         diagnosticsEnabled:
-          oneOf:
-            - type: boolean
-            - type: string
-              enum: [unknown]
+          type: boolean
         lastConfigUpdateAt:
           type: string
           format: date-time
