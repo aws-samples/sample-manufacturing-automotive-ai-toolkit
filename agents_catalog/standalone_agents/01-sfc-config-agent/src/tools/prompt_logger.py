@@ -25,7 +25,7 @@ from src.tools.file_operations import (
     _resolve_ddb_table,
     _get_s3_client,
     _get_ddb_table,
-    _hive_partition_prefix,
+    _date_partition_prefix,
     _generate_presigned_url,
 )
 
@@ -127,7 +127,7 @@ class PromptLogger:
     def _save_to_cloud(self, filename: str, content: str) -> Tuple[bool, str]:
         """Save conversation content to S3 and index in DynamoDB.
 
-        The file is stored under conversations/year=YYYY/month=MM/day=DD/hour=HH/<filename>
+        The file is stored under conversations/YYYY/MM/DD/HH/<filename>
         in S3. A pre-signed download URL is returned as a markdown hyperlink.
 
         Args:
@@ -137,7 +137,7 @@ class PromptLogger:
         Returns:
             Tuple of (success, message)
         """
-        partition = _hive_partition_prefix()
+        partition = _date_partition_prefix()
         s3_key = f"conversations/{partition}/{filename}"
         bucket = _resolve_s3_bucket()
 
