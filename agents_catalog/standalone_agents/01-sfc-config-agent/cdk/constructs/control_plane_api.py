@@ -252,6 +252,21 @@ class ControlPlaneApi(Construct):
         ))
 
         # ----------------------------------------------------------------
+        # Tag Extraction — fn-tag-extract
+        # ----------------------------------------------------------------
+        self.fn_tag_extract = _fn(
+            "fn-tag-extract",
+            "tag_extract_handler",
+            memory_mb=256,
+            timeout_s=60,  # synchronous Bedrock call — up to ~30s typical
+        )
+        # Bedrock InvokeModel permission — same cross-region inference profile as the agent
+        self.fn_tag_extract.add_to_role_policy(iam.PolicyStatement(
+            actions=["bedrock:InvokeModel"],
+            resources=["*"],
+        ))
+
+        # ----------------------------------------------------------------
         # WP-10 — fn-agent-remediate
         # ----------------------------------------------------------------
         self.fn_agent_remediate = _fn(
@@ -315,6 +330,7 @@ class ControlPlaneApi(Construct):
             "FnIotControlArn": _lambda_integration_uri(self.fn_iot_control),
             "FnAgentCreateConfigArn": _lambda_integration_uri(self.fn_agent_create_config),
             "FnAgentRemediateArn": _lambda_integration_uri(self.fn_agent_remediate),
+            "FnTagExtractArn": _lambda_integration_uri(self.fn_tag_extract),
             # CloudFront origin placeholder — filled at deploy time via stack output
             "CloudFrontOrigin": "https://placeholder.cloudfront.net",
         }
@@ -363,6 +379,7 @@ class ControlPlaneApi(Construct):
             self.fn_iot_control,
             self.fn_agent_create_config,
             self.fn_agent_remediate,
+            self.fn_tag_extract,
         ]:
             fn.add_permission(
                 f"ApiGwInvoke-{fn.node.id}",

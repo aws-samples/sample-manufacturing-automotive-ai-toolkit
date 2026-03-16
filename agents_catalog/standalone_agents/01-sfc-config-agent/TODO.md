@@ -13,9 +13,8 @@ TODO:
 ## Control Plane
 [ x ] AI Remidiation
 [ x ] AI remediation shall not update Launch packages config - just use the remediated config and create new versions of the LP's config
-[ x ] Config Versioning - use iterations like v1, v2 etc. instead of Timestamp 
-[   ] Viz based on Telemetry
-[   ] Cloudwatch Metrics
+[ x ] Config Versioning - use iterations like v1, v2 etc. instead of Timestamp
+[   ] SFC Cloudwatch Metrics dashboard
 [ x ] Log Viewer & API calls only 100 oldest log lines - not newest
 [ x ] AI guided "Create config" option with prompt & file upload to context (instant base64 encoding)
 [ x ] AI guided config Update option
@@ -23,3 +22,5 @@ TODO:
 [   ] Add token based auth to APIGW & UX
 [   ] Add UI-pagination
 [ x ] Check if GG comp creation works
+[   ] Create AgentCore Gateway - facading the SFC Control Plane HTTP API
+[   ] Add Tag Mapping Tools for importing existing PLC docs (text only) and creating SFC Channel Maps

@@ -1,7 +1,14 @@
-import { useState } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "react-router-dom";
-import { generateConfig, type GenerateConfigJobStatus } from "../api/client";
+import {
+  generateConfig,
+  extractTags,
+  type GenerateConfigJobStatus,
+  type TagMapping,
+  type ExtractedPlc,
+  type ExtractedTag,
+} from "../api/client";
 import MarkdownRenderer from "./MarkdownRenderer";
 
 // ─── SFC Protocol Adapters (source side) ─────────────────────────────────────
@@ -197,6 +204,187 @@ function ToggleCard({
   );
 }
 
+// ─── Tag extraction per-adapter state ────────────────────────────────────────
+
+interface AdapterTagState {
+  docText: string;
+  plcs: ExtractedPlc[];
+  /** addresses selected by user: key = `${plcId}::${address}` */
+  selectedKeys: Set<string>;
+  loading: boolean;
+  error: string;
+}
+
+function emptyAdapterTagState(): AdapterTagState {
+  return { docText: "", plcs: [], selectedKeys: new Set(), loading: false, error: "" };
+}
+
+function tagKey(plcId: string, address: string) { return `${plcId}::${address}`; }
+
+function buildTagMappings(
+  adapters: string[],
+  tagStates: Record<string, AdapterTagState>
+): TagMapping[] {
+  return adapters
+    .map((adapterId) => {
+      const ts = tagStates[adapterId];
+      if (!ts || ts.plcs.length === 0) return null;
+      const plcsWithTags = ts.plcs.map((plc) => ({
+        plcId: plc.plcId,
+        endpoint: plc.endpoint ?? null,
+        selectedTags: plc.tags.filter((t: ExtractedTag) =>
+          ts.selectedKeys.has(tagKey(plc.plcId, t.address))
+        ),
+      })).filter((p) => p.selectedTags.length > 0);
+      if (plcsWithTags.length === 0) return null;
+      return { adapterId, plcs: plcsWithTags } as TagMapping;
+    })
+    .filter(Boolean) as TagMapping[];
+}
+
+// ─── "Bring your Tags" panel (one per adapter) ───────────────────────────────
+
+function BringYourTagsPanel({
+  adapterId,
+  adapterLabel,
+  state,
+  onChange,
+  onExtract,
+}: {
+  adapterId: string;
+  adapterLabel: string;
+  state: AdapterTagState;
+  onChange: (patch: Partial<AdapterTagState>) => void;
+  onExtract: () => void;
+}) {
+  const totalTags = state.plcs.reduce((n, p) => n + p.tags.length, 0);
+  const selCount = state.selectedKeys.size;
+
+  function toggleTag(plcId: string, tag: ExtractedTag) {
+    const k = tagKey(plcId, tag.address);
+    const next = new Set(state.selectedKeys);
+    if (next.has(k)) next.delete(k); else next.add(k);
+    onChange({ selectedKeys: next });
+  }
+
+  function toggleAllPlc(plc: ExtractedPlc) {
+    const next = new Set(state.selectedKeys);
+    const allSelected = plc.tags.every((t) => next.has(tagKey(plc.plcId, t.address)));
+    plc.tags.forEach((t) => {
+      const k = tagKey(plc.plcId, t.address);
+      if (allSelected) next.delete(k); else next.add(k);
+    });
+    onChange({ selectedKeys: next });
+  }
+
+  return (
+    <div className="border border-[#2a3044] rounded-lg overflow-hidden">
+      {/* Header */}
+      <div className="flex items-center gap-2 px-3 py-2 bg-sky-950/20 border-b border-[#2a3044]">
+        <span className="text-xs font-semibold text-sky-300 uppercase tracking-wide">{adapterLabel}</span>
+        <span className="text-[10px] text-slate-500 ml-auto">Bring your Tags</span>
+      </div>
+
+      <div className="p-3 flex flex-col gap-2">
+        {/* Paste area */}
+        <textarea
+          className="bg-[#0f1117] border border-[#2a3044] rounded px-3 py-2 text-xs font-mono focus:border-sky-500 outline-none resize-none w-full"
+          rows={4}
+          maxLength={100000}
+          placeholder={`Paste PLC documentation text for ${adapterLabel} here…\nTables, register lists, tag specs — any text format (max 100k chars)`}
+          value={state.docText}
+          onChange={(e) => onChange({ docText: e.target.value, plcs: [], selectedKeys: new Set(), error: "" })}
+        />
+        <div className="flex items-center justify-between">
+          <span className="text-[10px] text-slate-600">{state.docText.length.toLocaleString()} / 100,000 chars</span>
+          <div className="flex gap-2">
+            {state.error && (
+              <button
+                className="text-[10px] text-amber-400 underline"
+                onClick={onExtract}
+                title="Retry extraction"
+              >
+                Retry ↻
+              </button>
+            )}
+            <button
+              className="btn btn-secondary text-xs py-1 px-3 disabled:opacity-50"
+              disabled={!state.docText.trim() || state.loading}
+              onClick={onExtract}
+            >
+              {state.loading ? <span className="spinner" /> : "Extract Tags →"}
+            </button>
+          </div>
+        </div>
+
+        {/* Error */}
+        {state.error && (
+          <p className="text-[10px] text-red-400 bg-red-950/30 border border-red-800/40 rounded px-2 py-1">
+            {state.error}
+          </p>
+        )}
+
+        {/* Results */}
+        {state.plcs.length > 0 && (
+          <div className="flex flex-col gap-2 overflow-y-auto pr-1" style={{ maxHeight: "16rem" }}>
+            <div className="flex items-center justify-between">
+              <span className="text-[10px] text-slate-400">
+                {state.plcs.length} PLC{state.plcs.length !== 1 ? "s" : ""} · {totalTags} tags found
+              </span>
+              <span className="text-[10px] text-sky-400 font-medium">{selCount} selected</span>
+            </div>
+            {state.plcs.map((plc) => {
+              const allSel = plc.tags.length > 0 && plc.tags.every((t) => state.selectedKeys.has(tagKey(plc.plcId, t.address)));
+              const ep = plc.endpoint;
+              return (
+                <div key={plc.plcId} className="border border-[#2a3044] rounded overflow-hidden">
+                  {/* PLC header */}
+                  <button
+                    type="button"
+                    onClick={() => toggleAllPlc(plc)}
+                    className="w-full flex items-center gap-2 px-2 py-1.5 bg-[#0d1117] hover:bg-sky-950/20 text-left"
+                  >
+                    <span className={`w-3 h-3 flex-shrink-0 rounded border text-[9px] flex items-center justify-center ${allSel ? "bg-sky-500 border-sky-500 text-white" : "border-slate-600"}`}>
+                      {allSel ? "✓" : ""}
+                    </span>
+                    <span className="text-xs font-semibold text-sky-200 truncate">{plc.plcId}</span>
+                    {ep && (ep.ip || ep.port) && (
+                      <span className="ml-auto text-[10px] text-slate-500 font-mono shrink-0">
+                        {ep.ip}{ep.port ? `:${ep.port}` : ""}
+                      </span>
+                    )}
+                    <span className="text-[10px] text-slate-500 shrink-0">{plc.tags.length} tags</span>
+                  </button>
+                  {/* Tag rows */}
+                  <div className="divide-y divide-[#1a2035]">
+                    {plc.tags.map((tag) => {
+                      const k = tagKey(plc.plcId, tag.address);
+                      const sel = state.selectedKeys.has(k);
+                      return (
+                        <label key={k} className="flex items-start gap-2 px-2 py-1 cursor-pointer hover:bg-sky-950/10">
+                          <span className={`mt-0.5 w-3 h-3 flex-shrink-0 rounded border text-[9px] flex items-center justify-center ${sel ? "bg-sky-500 border-sky-500 text-white" : "border-slate-600"}`}>
+                            {sel ? "✓" : ""}
+                          </span>
+                          <input type="checkbox" className="sr-only" checked={sel} onChange={() => toggleTag(plc.plcId, tag)} />
+                          <span className="flex-1 min-w-0">
+                            <span className="block text-[11px] font-mono text-sky-300 truncate">{tag.address}</span>
+                            <span className="block text-[10px] text-slate-400 truncate">{tag.name}</span>
+                          </span>
+                          <span className="text-[10px] text-slate-500 shrink-0 font-mono">{tag.dataType}</span>
+                        </label>
+                      );
+                    })}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 // ─── Component ────────────────────────────────────────────────────────────────
 
 const EMPTY_WIZARD: WizardState = {
@@ -228,6 +416,76 @@ export default function AiConfigWizard({
   const [wizard, setWizard] = useState<WizardState>(initState);
   const [wizardError, setWizardError] = useState("");
   const [completedJob, setCompletedJob] = useState<GenerateConfigJobStatus | null>(null);
+
+  // ── Tag-mapping state (one entry per adapter id) ───────────────────────────
+  const LS_KEY = `sfc-wizard-tags-${mode}-${currentConfigName ?? "new"}`;
+
+  const [tagStates, setTagStates] = useState<Record<string, AdapterTagState>>(() => {
+    try {
+      const raw = localStorage.getItem(LS_KEY);
+      if (raw) {
+        const parsed: Record<string, { docText: string; plcs: ExtractedPlc[]; selectedKeys: string[] }> = JSON.parse(raw);
+        const restored: Record<string, AdapterTagState> = {};
+        for (const [aid, v] of Object.entries(parsed)) {
+          restored[aid] = { ...emptyAdapterTagState(), docText: v.docText, plcs: v.plcs, selectedKeys: new Set(v.selectedKeys) };
+        }
+        return restored;
+      }
+    } catch { /* ignore */ }
+    return {};
+  });
+
+  // Persist tag state to localStorage whenever it changes
+  const saveTagStatesRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(() => {
+    if (saveTagStatesRef.current) clearTimeout(saveTagStatesRef.current);
+    saveTagStatesRef.current = setTimeout(() => {
+      try {
+        const serialisable: Record<string, { docText: string; plcs: ExtractedPlc[]; selectedKeys: string[] }> = {};
+        for (const [aid, ts] of Object.entries(tagStates)) {
+          serialisable[aid] = { docText: ts.docText, plcs: ts.plcs, selectedKeys: Array.from(ts.selectedKeys) };
+        }
+        localStorage.setItem(LS_KEY, JSON.stringify(serialisable));
+      } catch { /* quota exceeded — ignore */ }
+    }, 400);
+  }, [tagStates, LS_KEY]);
+
+  function patchTagState(adapterId: string, patch: Partial<AdapterTagState>) {
+    setTagStates((prev) => ({
+      ...prev,
+      [adapterId]: { ...(prev[adapterId] ?? emptyAdapterTagState()), ...patch },
+    }));
+  }
+
+  async function handleExtract(adapterId: string) {
+    const ts = tagStates[adapterId] ?? emptyAdapterTagState();
+    patchTagState(adapterId, { loading: true, error: "" });
+    try {
+      const result = await extractTags(adapterId, ts.docText);
+      if (!result || !Array.isArray(result.plcs)) {
+        throw new Error("Invalid response from extraction service — expected { plcs: [...] }");
+      }
+      if (result.plcs.length === 0) {
+        patchTagState(adapterId, { loading: false, plcs: [], error: "No tags found. The text may not contain tag definitions — try pasting more specific register/address documentation." });
+        return;
+      }
+      // Auto-select all tags on first extraction
+      const allKeys = new Set<string>();
+      result.plcs.forEach((plc) => plc.tags.forEach((t) => allKeys.add(tagKey(plc.plcId, t.address))));
+      patchTagState(adapterId, { loading: false, plcs: result.plcs, selectedKeys: allKeys, error: "" });
+    } catch (err: unknown) {
+      // Surface the API error message (including 422 validation detail from Lambda)
+      let msg = "Extraction failed";
+      if (err && typeof err === "object") {
+        const axiosErr = err as { response?: { data?: { message?: string; error?: string } }; message?: string };
+        msg = axiosErr.response?.data?.message
+          ?? axiosErr.response?.data?.error
+          ?? axiosErr.message
+          ?? msg;
+      }
+      patchTagState(adapterId, { loading: false, error: msg });
+    }
+  }
 
   // ── Helpers ────────────────────────────────────────────────────────────────
   function updateWizard(patch: Partial<WizardState>) {
@@ -265,6 +523,7 @@ export default function AiConfigWizard({
           "\n```";
         ctx = ctx ? prefix + "\n\n" + ctx : prefix;
       }
+      const tagMappings = buildTagMappings(wizard.protocol_adapters, tagStates);
       return generateConfig({
         name: wizard.name,
         description: wizard.description || undefined,
@@ -277,6 +536,7 @@ export default function AiConfigWizard({
         channels_description: wizard.channels_description,
         sampling_interval_ms: 1000,
         additional_context: ctx || undefined,
+        tag_mappings: tagMappings.length > 0 ? tagMappings : undefined,
       });
     },
     onSuccess: (result: GenerateConfigJobStatus) => {
@@ -377,9 +637,9 @@ export default function AiConfigWizard({
           </div>
         )}
 
-        {/* ── Step 2: Protocol Adapters ── */}
+        {/* ── Step 2: Protocol Adapters + Bring your Tags ── */}
         {wizardStep === 2 && (
-          <div className="flex flex-col gap-3">
+          <div className="flex flex-col gap-4">
             <p className="text-xs text-slate-400">
               Select one or more SFC protocol adapters (source side).{" "}
               {isUpdate && (
@@ -400,23 +660,40 @@ export default function AiConfigWizard({
                 />
               ))}
             </div>
-            <div className="flex flex-col gap-1 mt-1">
-              <label className="text-xs text-slate-400">
-                Source endpoint(s){" "}
-                <span className="text-slate-600">(optional — one per line)</span>
-              </label>
-              <textarea
-                className="bg-[#0f1117] border border-[#2a3044] rounded px-3 py-2 text-sm font-mono focus:border-sky-500 outline-none resize-none"
-                rows={3}
-                placeholder={"opc.tcp://192.168.1.10\n192.168.1.20\nhttps://api.example.com/data"}
-                value={wizard.source_endpoints}
-                onChange={(e) => updateWizard({ source_endpoints: e.target.value })}
-              />
-              <p className="text-[10px] text-slate-500">
-                Enter host/IP addresses, OPC-UA endpoints, MQTT broker URLs, etc. The AI uses
-                these as-is.
-              </p>
-            </div>
+
+            {/* Per-adapter "Bring your Tags" panels */}
+            {wizard.protocol_adapters.length > 0 && (
+              <div className="flex flex-col gap-3 mt-1">
+                <div className="flex items-center gap-2">
+                  <span className="text-xs font-semibold text-slate-300">Bring your Tags</span>
+                  <span className="text-[10px] text-slate-500">
+                    (optional) Paste PLC documentation per adapter — the AI will extract tags
+                  </span>
+                </div>
+                {wizard.protocol_adapters.map((adapterId) => {
+                  const adapterMeta = SFC_ADAPTERS.find((a) => a.id === adapterId);
+                  return (
+                    <BringYourTagsPanel
+                      key={adapterId}
+                      adapterId={adapterId}
+                      adapterLabel={adapterMeta?.label ?? adapterId}
+                      state={tagStates[adapterId] ?? emptyAdapterTagState()}
+                      onChange={(patch) => patchTagState(adapterId, patch)}
+                      onExtract={() => handleExtract(adapterId)}
+                    />
+                  );
+                })}
+                {/* Summary of selected tags */}
+                {(() => {
+                  const totalSel = wizard.protocol_adapters.reduce((n, aid) => n + (tagStates[aid]?.selectedKeys.size ?? 0), 0);
+                  return totalSel > 0 ? (
+                    <p className="text-[10px] text-sky-400 font-medium">
+                      ✓ {totalSel} tag{totalSel !== 1 ? "s" : ""} selected — will be included in the AI prompt
+                    </p>
+                  ) : null;
+                })()}
+              </div>
+            )}
           </div>
         )}
 

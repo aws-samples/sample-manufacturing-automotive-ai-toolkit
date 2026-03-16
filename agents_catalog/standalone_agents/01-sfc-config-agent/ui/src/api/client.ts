@@ -99,6 +99,8 @@ export interface GenerateConfigRequest {
   channels_description: string;
   sampling_interval_ms: number;
   additional_context?: string;
+  /** AI-extracted + user-confirmed tag mappings per adapter (from "Bring your Tags") */
+  tag_mappings?: TagMapping[];
 }
 
 /** Returned immediately by POST /configs/generate (202 Accepted) */
@@ -323,6 +325,47 @@ export const generateConfig = async (
   }
   throw new Error("AI config generation timed out");
 };
+
+// ─── Tag extraction ──────────────────────────────────────────────────────────
+
+export interface ExtractedTag {
+  address: string;
+  name: string;
+  dataType: string;
+  description?: string;
+}
+
+export interface ExtractedEndpoint {
+  ip: string | null;
+  port: string | null;
+  description?: string;
+}
+
+export interface ExtractedPlc {
+  plcId: string;
+  endpoint: ExtractedEndpoint | null;
+  tags: ExtractedTag[];
+}
+
+export interface TagExtractResponse {
+  plcs: ExtractedPlc[];
+}
+
+/** Tag mapping entry attached to a generate request (selected tags per adapter). */
+export interface TagMapping {
+  adapterId: string;
+  plcs: Array<{
+    plcId: string;
+    endpoint: ExtractedEndpoint | null;
+    /** Only the addresses the user ticked */
+    selectedTags: ExtractedTag[];
+  }>;
+}
+
+export const extractTags = (protocol: string, docText: string) =>
+  api
+    .post<TagExtractResponse>("/configs/tags/extract", { protocol, docText })
+    .then((r) => r.data);
 
 // ─── Remediation endpoints ───────────────────────────────────────────────────
 

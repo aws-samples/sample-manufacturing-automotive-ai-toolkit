@@ -167,6 +167,7 @@ def _run_background_job(event: dict) -> dict:
     description: str = (event.get("description") or "").strip()
     sampling_interval_ms: int = int(event.get("sampling_interval_ms") or 1000)
     additional_context: str = (event.get("additional_context") or "").strip()
+    tag_mappings: list = event.get("tag_mappings") or []
 
     try:
         prompt = _build_prompt(
@@ -177,6 +178,7 @@ def _run_background_job(event: dict) -> dict:
             channels_description=channels_description,
             sampling_interval_ms=sampling_interval_ms,
             additional_context=additional_context,
+            tag_mappings=tag_mappings,
         )
 
         session_id = str(uuid.uuid4())
@@ -247,10 +249,23 @@ def _update_job(job_id: str, status: str, *, config_id: str | None = None,
 
 
 def _build_prompt(*, name, protocol_adapters, source_endpoints, sfc_targets,
-                  channels_description, sampling_interval_ms, additional_context="") -> str:
+                  channels_description, sampling_interval_ms, additional_context="",
+                  tag_mappings=None) -> str:
     adapter_section = "\n".join(f"  - {a}" for a in protocol_adapters) if protocol_adapters else "  - OPCUA"
 
-    if source_endpoints:
+    # Build endpoint section from tag_mappings if provided, otherwise fall back to source_endpoints
+    if tag_mappings:
+        ep_lines = []
+        for tm in tag_mappings:
+            adapter_id = tm.get("adapterId", "")
+            for plc in (tm.get("plcs") or []):
+                ep = plc.get("endpoint") or {}
+                ip = ep.get("ip") or ""
+                port = ep.get("port") or ""
+                if ip:
+                    ep_lines.append(f"  - [{adapter_id}] {ip}" + (f":{port}" if port else ""))
+        endpoint_section = "\n".join(ep_lines) if ep_lines else "  (none — use placeholder)"
+    elif source_endpoints:
         ep_lines = []
         for ep in source_endpoints:
             if isinstance(ep, dict):
@@ -268,6 +283,44 @@ def _build_prompt(*, name, protocol_adapters, source_endpoints, sfc_targets,
     channel_section = channels_description or "Use sensible placeholder channels for the chosen protocol."
     extra = f"\nAdditional context:\n{additional_context}\n" if additional_context else ""
 
+    # Build tag mappings section — this is the most important part for grounding tag addresses
+    tag_section = ""
+    if tag_mappings:
+        lines = ["\nTag Mappings & Source Endpoints by Protocol (user-confirmed from PLC documentation):"]
+        for tm in tag_mappings:
+            adapter_id = tm.get("adapterId", "unknown")
+            plcs = tm.get("plcs") or []
+            lines.append(f"\n  Protocol/Adapter: {adapter_id}")
+            if not plcs:
+                lines.append("    (no tags selected)")
+                continue
+            for plc in plcs:
+                plc_id = plc.get("plcId", "unknown")
+                ep = plc.get("endpoint") or {}
+                ip = ep.get("ip") or ""
+                port = ep.get("port") or ""
+                ep_str = f"{ip}:{port}" if (ip and port) else (ip or "")
+                ep_line = f" [endpoint: {ep_str}]" if ep_str else ""
+                lines.append(f"    PLC: {plc_id}{ep_line}")
+                selected_tags = plc.get("selectedTags") or []
+                if selected_tags:
+                    for tag in selected_tags:
+                        addr = tag.get("address", "")
+                        tag_name = tag.get("name", "")
+                        dtype = tag.get("dataType", "")
+                        desc = tag.get("description", "")
+                        tag_line = f"      - {addr}  |  {tag_name}  |  {dtype}"
+                        if desc:
+                            tag_line += f"  |  {desc}"
+                        lines.append(tag_line)
+                else:
+                    lines.append("      (no tags selected for this PLC)")
+        lines.append(
+            "\nIMPORTANT: Use the tag addresses listed above EXACTLY as-is when creating Sources "
+            "and channel definitions in the SFC config. Each tag address must appear verbatim."
+        )
+        tag_section = "\n".join(lines) + "\n"
+
     # Derive a safe base from the config name (strip leading "agent_" prefix that
     # is already enforced, then sanitise remaining characters).
     base = name[len("agent_"):] if name.startswith("agent_") else name
@@ -283,6 +336,7 @@ def _build_prompt(*, name, protocol_adapters, source_endpoints, sfc_targets,
         f"SFC Target(s) (destination side):\n{target_section}\n\n"
         f"Data channels / values to collect:\n{channel_section}\n\n"
         f"Schedule sampling interval: {sampling_interval_ms} ms\n"
+        f"{tag_section}"
         f"{extra}\n"
         "Requirements:\n"
         "- The output MUST be a single valid SFC configuration JSON object.\n"

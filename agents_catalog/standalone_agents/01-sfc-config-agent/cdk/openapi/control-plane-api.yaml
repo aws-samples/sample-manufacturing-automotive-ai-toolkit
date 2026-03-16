@@ -874,6 +874,42 @@ paths:
         payloadFormatVersion: "2.0"
 
   # ────────────────────────────────────────────────────────────────
+  # Tag & Endpoint Extraction
+  # ────────────────────────────────────────────────────────────────
+
+  /configs/tags/extract:
+    post:
+      operationId: extractTags
+      summary: Extract PLC tags and network endpoints from arbitrary documentation text
+      description: >
+        Sends the provided text to Amazon Bedrock (Claude) and returns a structured
+        list of PLC devices, each with their network endpoint and tag definitions.
+        The extraction is synchronous and typically completes within 30 seconds.
+      tags: [configs]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/TagExtractRequest"
+      responses:
+        "200":
+          description: Extracted PLC tag groups and endpoints
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TagExtractResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "500":
+          $ref: "#/components/responses/InternalError"
+      x-amazon-apigateway-integration:
+        type: aws_proxy
+        httpMethod: POST
+        uri: "${FnTagExtractArn}"
+        payloadFormatVersion: "2.0"
+
+  # ────────────────────────────────────────────────────────────────
   # AI-Guided Config Generation
   # ────────────────────────────────────────────────────────────────
 
@@ -1443,6 +1479,74 @@ components:
           additionalProperties: true
           description: The AI-generated SFC configuration JSON
       required: [configId, version, name, generatedConfig]
+
+    # ── Tag Extraction ────────────────────────────────────────────
+
+    TagExtractRequest:
+      type: object
+      properties:
+        protocol:
+          type: string
+          description: SFC adapter id providing context for extraction (e.g. S7, OPCUA, Modbus)
+        docText:
+          type: string
+          description: Arbitrary PLC documentation text (max 100,000 characters)
+          maxLength: 100000
+      required: [docText]
+
+    ExtractedTag:
+      type: object
+      properties:
+        address:
+          type: string
+          description: Tag address as found in documentation (e.g. '%DB120:242:REAL', 'ns=2;i=1001')
+        name:
+          type: string
+          description: Human-readable tag name
+        dataType:
+          type: string
+          description: PLC data type (e.g. REAL, INT, BOOL, DINT)
+        description:
+          type: string
+          description: Brief description of the tag
+      required: [address, name, dataType]
+
+    ExtractedEndpoint:
+      type: object
+      properties:
+        ip:
+          type: string
+          description: IP address or hostname
+        port:
+          type: string
+          description: Port number (as string) or null
+        description:
+          type: string
+          description: Context description (e.g. 'Press PLC A')
+
+    ExtractedPlc:
+      type: object
+      properties:
+        plcId:
+          type: string
+          description: PLC or device identifier
+        endpoint:
+          $ref: "#/components/schemas/ExtractedEndpoint"
+        tags:
+          type: array
+          items:
+            $ref: "#/components/schemas/ExtractedTag"
+      required: [plcId, tags]
+
+    TagExtractResponse:
+      type: object
+      properties:
+        plcs:
+          type: array
+          description: One entry per PLC/device found in the documentation
+          items:
+            $ref: "#/components/schemas/ExtractedPlc"
+      required: [plcs]
 
     # ── Remediation ───────────────────────────────────────────────
 
