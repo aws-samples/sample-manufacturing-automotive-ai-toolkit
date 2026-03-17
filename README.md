@@ -6,18 +6,18 @@ The demo library showcases innovative AWS solutions across manufacturing and aut
 
 Explore individual demos using the links below, or follow the installation instructions at the bottom to deploy the entire library at once.
 
-### [In-Vehicle Agentic AI Agents (VISTA)](agents_catalog/multi_agent_collaboration/01-vista-agents-agentcore)
+### [In-Vehicle Agentic AI Agents (VISTA)](catalog/vista-agents-agentcore)
 A multi-agent collaboration framework to improve the in-vehicle experience, with a focus on diagnostic trouble codes and service center interactions. Available in two implementations:
-- **[AgentCore Version](agents_catalog/multi_agent_collaboration/01-vista-agents-agentcore)**: Container-based deployment using Amazon Bedrock AgentCore
-- **[Bedrock Native Agents](agents_catalog/multi_agent_collaboration/00-vista-agents)**: Fully managed implementation using Amazon Bedrock Agents
+- **[AgentCore Version](catalog/vista-agents-agentcore)**: Container-based deployment using Amazon Bedrock AgentCore
+- **[Bedrock Native Agents](catalog/vista-agents)**: Fully managed implementation using Amazon Bedrock Agents
 
-### [Inventory Optimizer](agents_catalog/multi_agent_collaboration/02-inventory-optimizer)
+### [Inventory Optimizer](catalog/inventory-optimizer)
 An intelligent inventory management system for e-bike manufacturing using Amazon Bedrock AgentCore with the Strands framework. Analyzes production schedules, inventory levels, supplier information, and bill of materials to make informed inventory rebalancing and procurement decisions.
 
-### [Manufacturing Quality Inspection Multi-Agent System](agents_catalog/multi_agent_collaboration/03-quality-inspection)
+### [Manufacturing Quality Inspection Multi-Agent System](catalog/quality-inspection)
 AI-powered quality inspection system using Amazon Nova Pro and multi-agent architecture for manufacturing defect detection and workflow automation.
 
-### [Vehicle Data Discovery](https://github.com/aws-samples/sample-manufacturing-automotive-ai-toolkit/tree/main/agents_catalog/multi_agent_collaboration/04-Vehicle_Data_Discovery)
+### [Vehicle Data Discovery](catalog/vehicle-data-discovery)
 A multi-agent system for autonomous vehicle fleet data discovery and HIL (Hardware-in-the-Loop) testing optimization.
 
 ---

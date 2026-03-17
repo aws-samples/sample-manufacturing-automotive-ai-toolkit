@@ -1,7 +1,7 @@
 # In Vehicle Agentic AI Agents - Bedrock Agents
 
 > **This agent is disabled by default.** The AgentCore-based implementation
-> ([01-vista-agents-agentcore](../01-vista-agents-agentcore/README.md)) is the
+> ([vista-agents-agentcore](../vista-agents-agentcore/README.md)) is the
 > active version deployed by the main stack. This Bedrock Agents variant is
 > retained for reference but is excluded from `deploy_cdk.sh` deployments.
 >

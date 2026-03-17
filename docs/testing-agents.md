@@ -7,7 +7,7 @@ How to test your agents before deploying to AWS.
 ### Test Agent Code Directly
 
 ```bash
-cd agents_catalog/standalone_agents/XX-agent-name
+cd catalog/agent-name
 python agent.py
 ```
 

@@ -43,7 +43,7 @@ if [ "$STACK_NAME" = "QualityInspectionStack" ]; then
   fi
   
   # Run the quality inspection destroy script with --force flag
-  exec bash "./agents_catalog/multi_agent_collaboration/03-quality-inspection/deploy/destroy_full_stack_quality_inspection.sh" --force
+  exec bash "./catalog/quality-inspection/deploy/destroy_full_stack_quality_inspection.sh" --force
 fi
 
 echo "Checking for Quality Inspection stack..."
@@ -55,11 +55,11 @@ if aws cloudformation describe-stacks --stack-name "$QI_STACK_NAME" --region "$R
     echo "Destroying Quality Inspection stack..."
     
     # Change to quality inspection CDK directory and destroy
-    cd agents_catalog/multi_agent_collaboration/03-quality-inspection/cdk
+    cd catalog/quality-inspection/cdk
     cdk destroy "$QI_STACK_NAME" --force --region "$REGION"
     
     # Return to root directory
-    cd ../../../..
+    cd ../../..
     
     echo "Quality Inspection stack destroyed"
 else
@@ -72,7 +72,7 @@ echo "Cleaning up external resources before CDK destroy..."
 echo "Deleting AgentCore agents..."
 delete_agentcore_agents() {
   # Find all manifest.json files and extract agentcore agent IDs
-  for manifest in $(find agents_catalog -name "manifest.json" 2>/dev/null); do
+  for manifest in $(find catalog -name "manifest.json" 2>/dev/null); do
     # Extract agent IDs where type is "agentcore"
     agent_ids=$(python3 -c "
 import json

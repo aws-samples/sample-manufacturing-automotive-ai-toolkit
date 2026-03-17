@@ -76,7 +76,7 @@ class SfcConfigAgentStack(NestedStack):
 
         # ----------------------------------------------------------------
         # SSM Parameters — allow agent to discover resources at runtime
-        # (same pattern as 03-quality-inspection)
+        # (same pattern as quality-inspection)
         # ----------------------------------------------------------------
         ssm.StringParameter(
             self, "SfcS3BucketNameParameter",

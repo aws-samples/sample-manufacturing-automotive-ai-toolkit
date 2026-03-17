@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-01-in-vehicle-agentic-ai-assistant
+vista-agents-agentcore
 A multi agent colloboration framework to improve the in-vehicle experience especially focused on diagnostic trouble codes and service center experience.
 """
 from fastapi import FastAPI, HTTPException, Request

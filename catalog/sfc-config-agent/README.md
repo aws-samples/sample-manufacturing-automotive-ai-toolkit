@@ -16,7 +16,7 @@ This agent leverages Amazon Bedrock (Claude) and the Strands Agents SDK to assis
 ## Project Structure
 
 ```
-01-sfc-config-agent/
+sfc-config-agent/
 ├── manifest.json            # Agent metadata & CDK infrastructure definition
 ├── requirements.txt         # Python dependencies
 ├── cdk/                     # CDK stack for deploying the agent infrastructure

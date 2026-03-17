@@ -158,6 +158,33 @@ response = ssm.get_parameter(Name='/quality-inspection/agentcore-runtime/orchest
 runtime_arn = response['Parameter']['Value']
 ```
 
+## UI Configuration
+
+Specify whether your project has its own frontend or uses the shared MA3T UI:
+
+```json
+{
+  "agents": [...],
+  "ui": {
+    "type": "custom",
+    "framework": "streamlit",
+    "path": "src/demo_app/"
+  }
+}
+```
+
+### `type` (string)
+- `"custom"` — Project has its own standalone frontend
+- `"shared"` — Uses the shared MA3T UI (default when `ui` is omitted)
+
+### `framework` (string, optional)
+Frontend framework used. Examples: `"streamlit"`, `"nextjs"`, `"react"`
+
+### `path` (string, optional)
+Relative path to the frontend code within the project directory.
+
+Projects with custom UIs are listed separately in the deploy script output so operators know which frontends need independent deployment.
+
 ## Bedrock Agent Configuration
 
 For Bedrock agents, add bedrock-specific settings:
@@ -209,6 +236,9 @@ For Bedrock agents, add bedrock-specific settings:
   },
   "ssm_parameter_mapping": {
     "quality_inspector": "/quality-inspector/agentcore-runtime/main"
+  },
+  "ui": {
+    "type": "shared"
   }
 }
 ```
