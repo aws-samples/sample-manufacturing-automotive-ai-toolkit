@@ -17,6 +17,9 @@ An intelligent inventory management system for e-bike manufacturing using Amazon
 ### [Manufacturing Quality Inspection Multi-Agent System](catalog/quality-inspection)
 AI-powered quality inspection system using Amazon Nova Pro and multi-agent architecture for manufacturing defect detection and workflow automation.
 
+### [SFC Config Generation Agent](catalog/sfc-config-agent)
+An agent that accelerates industrial equipment onboarding by generating Shopfloor Connectivity (SFC) configurations for protocols like OPC-UA, Modbus, and S7, with support for multiple AWS target services.
+
 ### [Vehicle Data Discovery](catalog/vehicle-data-discovery)
 A multi-agent system for autonomous vehicle fleet data discovery and HIL (Hardware-in-the-Loop) testing optimization.
 
