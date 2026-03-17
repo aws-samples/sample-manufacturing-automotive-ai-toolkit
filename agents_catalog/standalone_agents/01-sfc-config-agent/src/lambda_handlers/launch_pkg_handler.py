@@ -291,9 +291,23 @@ def _read_edge_file(filename: str) -> str:
     return f"# {filename} not found\n"
 
 
+def _zip_write_executable(zf: zipfile.ZipFile, arcname: str, content: str) -> None:
+    """Write a text file into the zip with Unix executable permissions (755)."""
+    info = zipfile.ZipInfo(arcname)
+    info.compress_type = zipfile.ZIP_DEFLATED
+    # Set Unix permissions: owner rwx (7), group rx (5), other rx (5)
+    info.external_attr = 0o755 << 16
+    zf.writestr(info, content)
+
+
 def _build_zip(package_id: str, sfc_config: dict, iot_config: dict, prov: dict, root_ca: str) -> bytes:
     buf = io.BytesIO()
     with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:
+        # One-click launchers at the top level of the zip
+        _zip_write_executable(zf, "run.sh", _read_edge_file("run.sh"))
+        _zip_write_executable(zf, "run.command", _read_edge_file("run.command"))
+        zf.writestr("run.bat", _read_edge_file("run.bat"))
+        # Core content
         zf.writestr("sfc-config.json", json.dumps(sfc_config, indent=2))
         zf.writestr("iot/device.cert.pem", prov["certPem"])
         zf.writestr("iot/device.private.key", prov["privateKey"])
@@ -314,10 +328,25 @@ def _build_readme(package_id: str) -> str:
 
 ## Quick Start
 
-### Native (uv)
+### One-click launchers (recommended)
+
+Extract the zip, then run the script for your OS from the top-level folder:
+
+| OS | Script | How to run |
+|----|--------|-----------|
+| **Windows** | `run.bat` | Double-click or run in Command Prompt |
+| **macOS** | `run.command` | Double-click in Finder (allow in Security settings if prompted) or run in Terminal |
+| **Linux** | `run.sh` | `bash run.sh` in a terminal |
+
+Each script checks whether **Java (Amazon Corretto 21)** and **uv** are installed,
+offers to install them automatically if missing, and then starts the SFC Launch Package.
+
+> **Note (macOS):** On first launch macOS Gatekeeper may block the script.
+> Go to *System Settings → Privacy & Security* and click **Allow Anyway**, then re-run.
+
+### Manual start (uv)
 ```bash
 cd runner
-uv sync --frozen
 uv run runner.py
 ```
 
@@ -327,10 +356,17 @@ cd docker
 bash docker-build.sh
 ```
 
+## Prerequisites
+- **Java 21** — installed automatically by the launcher scripts using [Amazon Corretto 21](https://downloads.corretto.aws/#/downloads?version=21)
+- **uv** — installed automatically by the launcher scripts from [astral.sh/uv](https://astral.sh/uv)
+
 ## Contents
+- `run.sh` — One-click launcher for Linux
+- `run.command` — One-click launcher for macOS
+- `run.bat` — One-click launcher for Windows
 - `sfc-config.json` — SFC configuration with IoT credential provider
 - `iot/` — Device certificate, private key, Root CA, IoT config
-- `runner/` — Python edge agent (runner.py)
+- `runner/` — Python edge agent (runner.py + pyproject.toml)
 - `docker/` — Dockerfile and build script
 """
 

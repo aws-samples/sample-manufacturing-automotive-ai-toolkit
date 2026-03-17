@@ -1,4 +1,6 @@
-TODO:
+TODO
+====
+
 
 ## Edge
 - [x] heartbeat not sent - not received in iot core - shall lead to Status Active in LP view
@@ -6,7 +8,7 @@ TODO:
 - [x] config-update does not work - presigned s3 url not found
 - [x] Logs shall be tailed in near-real time (check ERROR filter)
 - [x] Telemetry / Diagnostics toggles
-- [ ] Add one-click UI macOS/linux/windows runners to Launch Package
+- [x] Add one-click UI macOS/linux/windows runners to Launch Package
 - [x] Fix sfc path length issue by using java jar based runtime
 - [x] Remove Java installer if java not found
 
