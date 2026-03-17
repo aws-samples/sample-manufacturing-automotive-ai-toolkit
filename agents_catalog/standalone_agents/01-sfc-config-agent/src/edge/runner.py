@@ -614,11 +614,66 @@ def _dispatch_control(topic: str, payload: bytes, iot_cfg: dict) -> None:
         logger.error("Control dispatch error: %s", exc)
 
 
+def _inject_iot_credentials(sfc_config: dict, iot_cfg: dict) -> dict:
+    """
+    Inject AwsIotCredentialProviderClients, Metrics, and target AwsCredentialClient refs
+    into *sfc_config* using the IoT metadata from *iot_cfg* (iot-config.json).
+
+    Mirrors the injection done by launch_pkg_handler.py at LP creation time so that
+    config-update pushes arriving on a running LP produce an identical on-disk
+    sfc-config.json — without storing the injected blocks in S3/DDB.
+    """
+    import copy
+    cfg = copy.deepcopy(sfc_config)
+    package_id = iot_cfg["packageId"]
+    cred_name = f"CredProvider-{package_id}"
+    region = iot_cfg.get("region", "us-east-1")
+
+    # Inject AwsIotCredentialProviderClients block
+    cfg.setdefault("AwsIotCredentialProviderClients", {})[cred_name] = {
+        "IotCredentialEndpoint": iot_cfg["iotEndpoint"],
+        "RoleAlias": iot_cfg["roleAlias"],
+        "ThingName": iot_cfg["thingName"],
+        "CertificateFile": "../iot/device.cert.pem",
+        "PrivateKeyFile": "../iot/device.private.key",
+        "RootCa": "../iot/AmazonRootCA1.pem",
+    }
+
+    # Inject top-level Metrics block (CloudWatch metrics adapter)
+    cfg["Metrics"] = {
+        "Enabled": True,
+        "CredentialProviderClient": cred_name,
+        "Interval": 60,
+        "Region": region,
+        "Writer": {
+            "MetricsWriter": {
+                "FactoryClassName": "com.amazonaws.sfc.cloudwatch.AwsCloudWatchMetricsWriter",
+                "JarFiles": [
+                    "${MODULES_DIR}/aws-cloudwatch-metrics/lib",
+                ],
+            }
+        },
+    }
+
+    # Patch all AWS targets that don't already declare a credential client
+    targets = cfg.get("Targets", {})
+    if isinstance(targets, dict):
+        for tgt in targets.values():
+            if isinstance(tgt, dict) and "AwsCredentialClient" not in tgt:
+                tgt["AwsCredentialClient"] = cred_name
+
+    return cfg
+
+
 def _apply_config_update(presigned_url: str, iot_cfg: dict) -> None:
     """Download new sfc-config.json, overwrite local file, restart SFC."""
     try:
         with urllib.request.urlopen(presigned_url, timeout=30) as resp:
             new_config = json.loads(resp.read())
+        # Inject IoT credential provider + Metrics before writing to disk so
+        # the on-disk sfc-config.json is identical to what was produced at LP
+        # creation time.  The raw config in S3/DDB stays clean.
+        new_config = _inject_iot_credentials(new_config, iot_cfg)
         with open(_SFC_CONFIG_PATH, "w") as fh:
             json.dump(new_config, fh, indent=2)
         logger.info("Config updated from presigned URL; restarting SFC …")
