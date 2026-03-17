@@ -8,7 +8,7 @@ dotenv.config();
 
 const REGION = process.env.AWS_REGION || 'us-west-2';
 const CONFIG_DIR = path.join(process.cwd(), 'app', 'api', 'agents', 'config');
-const AGENTS_CATALOG = path.join(process.cwd(), '..', 'agents_catalog');
+const AGENTS_CATALOG = path.join(process.cwd(), '..', 'catalog');
 
 type AgentRole = 'supervisor' | 'specialist' | 'standalone' | 'individual';
 
@@ -91,38 +91,34 @@ async function getBedrockAgentDetails(client: any, agentId: string) {
 
 function findManifestFiles(): string[] {
   const manifestPaths: string[] = [];
-  const catalogTypes = ['multi_agent_collaboration', 'standalone_agents'];
 
-  for (const type of catalogTypes) {
-    const typePath = path.join(AGENTS_CATALOG, type);
-    if (!fs.existsSync(typePath)) {
-      console.log(`Directory not found: ${typePath}`);
-      continue;
-    }
+  if (!fs.existsSync(AGENTS_CATALOG)) {
+    console.log(`Catalog directory not found: ${AGENTS_CATALOG}`);
+    return manifestPaths;
+  }
 
-    console.log(`Scanning directory: ${typePath}`);
-    const entries: string[] = fs.readdirSync(typePath);
-    console.log(`Found entries: ${entries.join(', ')}`);
+  console.log(`Scanning catalog: ${AGENTS_CATALOG}`);
+  const entries: string[] = fs.readdirSync(AGENTS_CATALOG);
+  console.log(`Found entries: ${entries.join(', ')}`);
 
-    // Filter for numbered directories (starts with at least 2 digits followed by dash)
-    const numberedDirs: string[] = entries.filter((entry: string) => {
-      // Sanitize entry to prevent path traversal
-      const sanitizedEntry = entry.replace(/\.\./g, '');
-      const isDir = fs.statSync(path.join(typePath, sanitizedEntry)).isDirectory();
-      const matchesPattern = /^\d{2,}-/.test(sanitizedEntry);
-      console.log(`Entry ${sanitizedEntry}: isDir=${isDir}, matchesPattern=${matchesPattern}`);
-      return isDir && matchesPattern;
-    });
+  // Filter for project directories
+  const projectDirs: string[] = entries.filter((entry: string) => {
+    // Sanitize entry to prevent path traversal
+    const sanitizedEntry = entry.replace(/\.\./g, '');
+    const isDir = fs.statSync(path.join(AGENTS_CATALOG, sanitizedEntry)).isDirectory();
+    const isHidden = sanitizedEntry.startsWith('.');
+    console.log(`Entry ${sanitizedEntry}: isDir=${isDir}`);
+    return isDir && !isHidden;
+  });
 
-    // Look for manifest.json in each numbered directory
-    for (const dir of numberedDirs) {
-      const manifestPath = path.join(typePath, dir, 'manifest.json');
-      if (fs.existsSync(manifestPath)) {
-        console.log(`Found manifest: ${manifestPath}`);
-        manifestPaths.push(manifestPath);
-      } else {
-        console.log(`No manifest found in: ${dir}`);
-      }
+  // Look for manifest.json in each project directory
+  for (const dir of projectDirs) {
+    const manifestPath = path.join(AGENTS_CATALOG, dir, 'manifest.json');
+    if (fs.existsSync(manifestPath)) {
+      console.log(`Found manifest: ${manifestPath}`);
+      manifestPaths.push(manifestPath);
+    } else {
+      console.log(`No manifest found in: ${dir}`);
     }
   }
 
@@ -175,29 +171,26 @@ function loadAllManifests(): Map<string, ManifestAgent> {
 
 function findAgentCoreYamlFiles(): Map<string, any> {
   const yamlMap = new Map<string, any>();
-  const catalogTypes = ['multi_agent_collaboration', 'standalone_agents'];
 
-  for (const type of catalogTypes) {
-    const typePath = path.join(AGENTS_CATALOG, type);
-    if (!fs.existsSync(typePath)) {
-      continue;
-    }
+  if (!fs.existsSync(AGENTS_CATALOG)) {
+    return yamlMap;
+  }
 
-    const entries: string[] = fs.readdirSync(typePath);
+  const entries: string[] = fs.readdirSync(AGENTS_CATALOG);
 
-    // Filter for numbered directories
-    const numberedDirs: string[] = entries.filter((entry: string) => {
-      // Sanitize entry to prevent path traversal
-      const sanitizedEntry = entry.replace(/\.\./g, '');
-      const fullPath = path.join(typePath, sanitizedEntry);
-      const isDir = fs.statSync(fullPath).isDirectory();
-      const matchesPattern = /^\d{2,}-/.test(sanitizedEntry);
-      return isDir && matchesPattern;
-    });
+  // Filter for project directories
+  const projectDirs: string[] = entries.filter((entry: string) => {
+    // Sanitize entry to prevent path traversal
+    const sanitizedEntry = entry.replace(/\.\./g, '');
+    const fullPath = path.join(AGENTS_CATALOG, sanitizedEntry);
+    const isDir = fs.statSync(fullPath).isDirectory();
+    const isHidden = sanitizedEntry.startsWith('.');
+    return isDir && !isHidden;
+  });
 
-    // Look for .bedrock_agentcore.yaml in each numbered directory and its subdirectories
-    for (const dir of numberedDirs) {
-      const dirPath = path.join(typePath, dir);
+  // Look for .bedrock_agentcore.yaml in each project directory and its subdirectories
+  for (const dir of projectDirs) {
+    const dirPath = path.join(AGENTS_CATALOG, dir);
 
       // First check if the YAML file is directly in the numbered directory
       const directYamlPath = path.join(dirPath, '.bedrock_agentcore.yaml');
@@ -274,7 +267,6 @@ function findAgentCoreYamlFiles(): Map<string, any> {
         console.warn(`Warning: Error reading subdirectories in ${dirPath}:`, error);
       }
     }
-  }
 
   return yamlMap;
 }
@@ -441,7 +433,7 @@ async function main() {
     // Initialize Bedrock client
     const client = new BedrockAgentClient({ region: REGION });
 
-    // Load all manifests from agents_catalog
+    // Load all manifests from catalog
     const manifestAgents = loadAllManifests();
     console.log(`Loaded ${manifestAgents.size} agent manifests`);
 

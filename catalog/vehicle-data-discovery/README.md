@@ -13,7 +13,7 @@ This solution uses AI agents to analyze driving scenarios from fleet vehicles, i
 ## Project Structure
 
 ```
-04-Vehicle_Data_Discovery/
+vehicle-data-discovery/
 ├── agents/          # AI agents (AgentCore/Strands)
 ├── api/             # FastAPI backend
 ├── frontend/        # Next.js React UI

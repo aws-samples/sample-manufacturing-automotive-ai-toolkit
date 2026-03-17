@@ -1,0 +1,34 @@
+{
+  "group": ["Quality Inspection"],
+  "agents": [
+    {
+      "id": "quality_inspection_orchestrator",
+      "name": "Quality Inspection Orchestrator",
+      "version": "1.0.0",
+      "description": "AI-powered quality inspection system using Amazon Nova Pro and multi-agent architecture for manufacturing defect detection.",
+      "type": "agentcore",
+      "role": "supervisor",
+      "entrypoint": "src/agents/orchestrator_agent.py",
+      "metadata": {
+        "authors": [
+          {
+            "name": "AWS",
+            "organization": "AWS"
+          }
+        ],
+        "created_date": "2025-10-01",
+        "last_updated": "2025-10-01",
+        "maturity": "development"
+      }
+    }
+  ],
+  "infrastructure": {
+    "standalone": true,
+    "deploy_script": "deploy/deploy_full_stack_quality_inspection.sh"
+  },
+  "ui": {
+    "type": "custom",
+    "framework": "streamlit",
+    "path": "src/demo_app/"
+  }
+}

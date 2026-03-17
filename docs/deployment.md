@@ -13,7 +13,7 @@ This deploys all agents and infrastructure to AWS.
 ## Deployment Process
 
 ### 1. Agent Discovery
-The framework scans `agents_catalog/` for `manifest.json` files.
+The framework scans `catalog/` for `manifest.json` files.
 
 ### 2. Infrastructure Deployment
 For agents with `infrastructure.cdk: true`:

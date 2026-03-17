@@ -52,7 +52,7 @@ The wizard will prompt you for:
 The wizard creates:
 
 ```
-agents_catalog/{standalone_agents|multi_agent_collaboration}/XX-agent-name/
+catalog/agent-name/
 ├── manifest.json          # Generated from your answers
 ├── README.md             # Template documentation
 ├── agent.py              # Boilerplate agent code (if AgentCore)
@@ -102,19 +102,13 @@ See [Agent Types](agent-types.md) for detailed comparison.
 
 ### Step 2: Create Folder Structure
 
-Create your agent folder in the appropriate location:
+Create your project folder in the catalog:
 
-**Standalone agents:**
 ```
-agents_catalog/standalone_agents/XX-agent-name/
-```
-
-**Multi-agent collaborations:**
-```
-agents_catalog/multi_agent_collaboration/XX-collaboration-name/
+catalog/project-name/
 ```
 
-Where `XX` is a sequential number (e.g., `01`, `02`, etc.).
+Use a descriptive kebab-case name (e.g., `quality-inspection`, `inventory-optimizer`).
 
 ### Step 3: Create manifest.json
 
@@ -293,7 +287,7 @@ Additional resource types can be added to `cdk/stacks/nested_stack_registry.py`.
 Here's a complete agent with infrastructure:
 
 ```
-agents_catalog/standalone_agents/05-example-agent/
+catalog/example-agent/
 ├── manifest.json
 ├── README.md
 ├── agent.py
@@ -404,7 +398,7 @@ class MyAgentStack(NestedStack):
 Test your agent before deploying:
 
 ```bash
-cd agents_catalog/standalone_agents/XX-agent-name
+cd catalog/agent-name
 python agent.py
 ```
 

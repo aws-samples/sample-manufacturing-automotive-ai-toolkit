@@ -126,8 +126,8 @@ class CodeBuildConstruct(Construct):
                         "if [ -f repo ]; then unzip -q repo -d . && echo 'Extraction successful'; else echo 'Cannot extract - repo file missing'; fi",
                         "echo 'Listing directory contents after extraction:'",
                         "ls -la",
-                        "echo 'Checking for agents_catalog directory:'",
-                        "ls -la agents_catalog/ || echo 'agents_catalog directory not found'",
+                        "echo 'Checking for catalog directory:'",
+                        "ls -la catalog/ || echo 'catalog directory not found'",
                         "echo 'Checking for manifest files:'",
                         "find . -name 'manifest.json' -type f || echo 'No manifest.json files found'",
                         "echo 'Checking AWS credentials and configuration...'",
@@ -259,7 +259,7 @@ class CodeBuildConstruct(Construct):
     def _get_agent_specific_buildspec(self, agent_name: str, agent_config: Dict[str, Any]) -> Dict[str, Any]:
         """Get the build specification for a specific AgentCore agent"""
         agent_path = agent_config.get(
-            'path', f'agents_catalog/standalone_agents/{agent_name}')
+            'path', f'catalog/{agent_name}')
 
         return {
             "version": "0.2",

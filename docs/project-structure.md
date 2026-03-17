@@ -5,7 +5,7 @@ This guide explains how to organize your agent code in MA3T.
 ## Standard Agent Structure
 
 ```
-XX-agent-name/
+project-name/
 ├── manifest.json         # Agent metadata (required)
 ├── README.md             # Agent documentation
 ├── agent.py              # Main entry point (for AgentCore)
@@ -71,17 +71,12 @@ See [Infrastructure Setup](infrastructure-setup.md) for details.
 
 ## Folder Naming
 
-### Standalone Agents
+### All Projects
 ```
-agents_catalog/standalone_agents/XX-agent-name/
+catalog/project-name/
 ```
 
-Where `XX` is a sequential number: `01`, `02`, `03`, etc.
-
-### Multi-Agent Collaborations
-```
-agents_catalog/multi_agent_collaboration/XX-collaboration-name/
-```
+Use a descriptive kebab-case name (e.g., `quality-inspection`, `inventory-optimizer`).
 
 ## Next Steps
 

@@ -71,18 +71,17 @@ Before using these scripts, ensure you have:
 
 1. **AWS Credentials**: Properly configured AWS credentials with necessary permissions
 2. **Python Environment**: Python 3.7+ with required packages installed
-3. **Agent Catalog Structure**: Proper directory structure in `agents_catalog/`
+3. **Catalog Structure**: Proper directory structure in `catalog/`
 
 ## Directory Structure
 
 The scripts expect the following directory structure:
 
 ```
-agents_catalog/
-├── standalone_agents/
-│   └── [agent-directories]/
-└── multi_agent_collaboration/
-    └── [collaboration-directories]/
+catalog/
+├── project-name-1/
+├── project-name-2/
+└── .../
 ```
 
 Each agent directory should contain:
@@ -153,7 +152,7 @@ These scripts are designed to work seamlessly with the MA3T framework:
    - CloudFormation operations
    - Container registry access (for AgentCore)
 
-3. **Directory Structure**: Ensure proper agents_catalog structure exists
+3. **Directory Structure**: Ensure proper catalog structure exists
 
 ### Logging
 

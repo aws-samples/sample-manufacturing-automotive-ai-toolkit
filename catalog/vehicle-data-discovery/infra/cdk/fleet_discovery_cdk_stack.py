@@ -1517,8 +1517,8 @@ def lambda_handler(event, context):
             repo_dir = stack_file.parent
             
             # Verify we found the right directory by checking for pipeline/
-            # pipeline/ is at project root: 04-Vehicle_Data_Discovery/pipeline/
-            # stack_file is at: 04-Vehicle_Data_Discovery/infra/cdk/fleet_discovery_cdk_stack.py
+            # pipeline/ is at project root: vehicle-data-discovery/pipeline/
+            # stack_file is at: vehicle-data-discovery/infra/cdk/fleet_discovery_cdk_stack.py
             for _ in range(3):  # Go up to 3 levels to find pipeline/
                 if (repo_dir / "pipeline").exists():
                     break

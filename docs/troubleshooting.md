@@ -42,7 +42,7 @@ cdk destroy --context region=us-west-2
 **Fix**:
 ```bash
 # Test Docker build locally
-cd agents_catalog/standalone_agents/XX-agent-name
+cd catalog/agent-name
 docker build -t test-agent .
 
 # Check agent code
@@ -102,7 +102,7 @@ if shared_resources and 'agent_role' in shared_resources:
 1. Check CloudWatch logs
 2. Test agent locally:
 ```bash
-cd agents_catalog/standalone_agents/XX-agent-name
+cd catalog/agent-name
 python agent.py
 ```
 3. Verify AWS resources exist

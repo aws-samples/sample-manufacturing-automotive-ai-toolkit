@@ -23,7 +23,7 @@ Native AWS Bedrock agents managed entirely by the AWS Bedrock service.
 
 ### Example Structure
 ```
-agents_catalog/standalone_agents/01-my-bedrock-agent/
+catalog/my-bedrock-agent/
 ├── manifest.json
 ├── README.md
 └── cdk/
@@ -81,7 +81,7 @@ Container-based agents using the Bedrock AgentCore framework. Supports multiple 
 
 **Without Infrastructure** (Simple agent):
 ```
-agents_catalog/standalone_agents/02-my-agentcore-agent/
+catalog/my-agentcore-agent/
 ├── manifest.json
 ├── README.md
 ├── agent.py              # Agent implementation
@@ -90,7 +90,7 @@ agents_catalog/standalone_agents/02-my-agentcore-agent/
 
 **With Infrastructure** (Needs AWS resources):
 ```
-agents_catalog/standalone_agents/03-complex-agent/
+catalog/complex-agent/
 ├── manifest.json
 ├── README.md
 ├── agent.py

@@ -86,7 +86,7 @@ streamlit run src/demo_app/quality-inspection-streamlit-demo.py
 ## 📁 Project Structure
 
 ```
-03-quality-inspection/
+quality-inspection/
 ├── cdk/                         # Infrastructure as Code (CDK)
 │   ├── app.py                   # CDK application entry point
 │   ├── quality_inspection_stack.py # Main CDK stack
