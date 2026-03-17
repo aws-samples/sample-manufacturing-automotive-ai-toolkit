@@ -253,10 +253,13 @@ def _get_download_url(package_id: str) -> dict:
 # ── Helpers ──────────────────────────────────────────────────────────────────
 
 def _inject_iot_credentials(sfc_config: dict, package_id: str, prov: dict) -> dict:
-    """Add AwsIotCredentialProviderClients block and patch target credential refs."""
+    """Add AwsIotCredentialProviderClients block, Metrics block, and patch target credential refs."""
     import copy
     cfg = copy.deepcopy(sfc_config)
-    cfg.setdefault("AwsIotCredentialProviderClients", {})[f"CredProvider-{package_id}"] = {
+    cred_provider_name = f"CredProvider-{package_id}"
+
+    # Inject AWSIoTCredentialProviderClients section
+    cfg.setdefault("AwsIotCredentialProviderClients", {})[cred_provider_name] = {
         "IotCredentialEndpoint": prov["iotEndpoint"],
         "RoleAlias": prov["roleAliasName"],
         "ThingName": prov["thingName"],
@@ -264,12 +267,29 @@ def _inject_iot_credentials(sfc_config: dict, package_id: str, prov: dict) -> di
         "PrivateKeyFile": "../iot/device.private.key",
         "RootCa": "../iot/AmazonRootCA1.pem",
     }
+
+    # Always inject the SFC top-level Metrics block (CloudWatch metrics adapter)
+    cfg["Metrics"] = {
+        "Enabled": True,
+        "CredentialProviderClient": cred_provider_name,
+        "Interval": 60,
+        "Region": _region,
+        "Writer": {
+            "MetricsWriter": {
+                "FactoryClassName": "com.amazonaws.sfc.cloudwatch.AwsCloudWatchMetricsWriter",
+                "JarFiles": [
+                    "${MODULES_DIR}/aws-cloudwatch-metrics/lib",
+                ],
+            }
+        },
+    }
+
     # Patch all AWS targets to reference the credential provider
     targets = cfg.get("Targets", {})
     if isinstance(targets, dict):
         for tgt in targets.values():
             if isinstance(tgt, dict) and "AwsCredentialClient" not in tgt:
-                tgt["AwsCredentialClient"] = f"CredProvider-{package_id}"
+                tgt["AwsCredentialClient"] = cred_provider_name
     return cfg
 
 

@@ -52,7 +52,7 @@ _KEY_PATH = _HERE.parent / "iot" / "device.private.key"
 _CA_PATH = _HERE.parent / "iot" / "AmazonRootCA1.pem"
 
 _HEARTBEAT_INTERVAL_S = 5
-_CREDENTIAL_REFRESH_INTERVAL_S = 50 * 60  # 50 minutes
+_CREDENTIAL_REFRESH_INTERVAL_S = 300
 _RECENT_LOG_RING_SIZE = 3
 _CREDENTIAL_ENDPOINT_TEMPLATE = (
     "https://{iotEndpoint}/role-aliases/{roleAlias}/credentials"
@@ -97,28 +97,42 @@ def _detect_sfc_version(sfc_config: dict) -> str:
 
 def _detect_sfc_modules(sfc_config: dict) -> list[str]:
     """
-    Parse AdapterTypes and TargetTypes JarFiles entries to derive module names.
+    Parse AdapterTypes, TargetTypes, and Metrics.Writer JarFiles entries to derive
+    module names.
 
-    Each JarFiles entry follows the pattern: ${MODULES_DIR}/{module-name}/lib
+    Each JarFiles entry follows the pattern: ${MODULES_DIR}/{module-name}/lib(s)
     The middle path segment is the module tar.gz name (without .tar.gz).
 
-    Returns a deduplicated list of module names, e.g. ['simulator', 'debug-target'].
+    Returns a deduplicated list of module names,
+    e.g. ['simulator', 'debug-target', 'aws-cloudwatch-metrics'].
     """
     modules: set[str] = set()
+
+    def _extract_from_jar_files(jar_files: list) -> None:
+        for jar_path in jar_files:
+            # Normalise: replace backslashes, split on '/'
+            parts = jar_path.replace("\\", "/").split("/")
+            # Pattern: ['${MODULES_DIR}', '{module}', 'lib(s)']
+            # Find the part after ${MODULES_DIR}
+            try:
+                idx = next(i for i, p in enumerate(parts) if "MODULES_DIR" in p)
+                module_name = parts[idx + 1]
+                if module_name:
+                    modules.add(module_name)
+            except (StopIteration, IndexError):
+                logger.warning("Could not parse module name from JarFiles entry: %s", jar_path)
+
+    # Scan AdapterTypes and TargetTypes (protocol adapters and data targets)
     for section_key in ("AdapterTypes", "TargetTypes"):
         for _type_name, type_cfg in sfc_config.get(section_key, {}).items():
-            for jar_path in type_cfg.get("JarFiles", []):
-                # Normalise: replace backslashes, split on '/'
-                parts = jar_path.replace("\\", "/").split("/")
-                # Pattern: ['${MODULES_DIR}', '{module}', 'lib']
-                # Find the part after ${MODULES_DIR}
-                try:
-                    idx = next(i for i, p in enumerate(parts) if "MODULES_DIR" in p)
-                    module_name = parts[idx + 1]
-                    if module_name:
-                        modules.add(module_name)
-                except (StopIteration, IndexError):
-                    logger.warning("Could not parse module name from JarFiles entry: %s", jar_path)
+            _extract_from_jar_files(type_cfg.get("JarFiles", []))
+
+    # Scan Metrics.Writer entries (e.g. aws-cloudwatch-metrics)
+    metrics_writer = sfc_config.get("Metrics", {}).get("Writer", {})
+    for _writer_name, writer_cfg in metrics_writer.items():
+        if isinstance(writer_cfg, dict):
+            _extract_from_jar_files(writer_cfg.get("JarFiles", []))
+
     return sorted(modules)
 
 

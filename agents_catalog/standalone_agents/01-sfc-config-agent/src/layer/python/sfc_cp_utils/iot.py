@@ -221,6 +221,16 @@ def derive_iam_policy_statements(sfc_config: dict, package_id: str, region: str,
         "Resource": log_group_arn,
     })
 
+    # ── CloudWatch Metrics (always required) ──────────────────────────────────
+    # The SFC top-level Metrics block (aws-cloudwatch-metrics adapter) is always
+    # injected into every LP's sfc-config.  cloudwatch:PutMetricData does not
+    # support resource-level restrictions — Resource must be "*".
+    statements.append({
+        "Effect": "Allow",
+        "Action": ["cloudwatch:PutMetricData"],
+        "Resource": "*",
+    })
+
     # ── IoT DescribeEndpoint (always required) ────────────────────────────────
     # runner.py calls iot:DescribeEndpoint(iot:Data-ATS) to resolve the MQTT
     # broker address from the IoT credentials endpoint stored in iot-config.json.
