@@ -236,9 +236,19 @@ def _fetch_credentials(iot_cfg: dict) -> dict:
 
 
 def _credential_refresh_loop(iot_cfg: dict) -> None:
-    """Background thread: re-fetch credentials every 50 min."""
+    """Background thread: re-fetch credentials every _CREDENTIAL_REFRESH_INTERVAL_S seconds.
+
+    Initial credentials are fetched by main() before this thread starts, so
+    we wait first to avoid an immediate redundant re-fetch that can return
+    HTTP 404 from the IoT credential provider endpoint when called too soon
+    after the initial vend.
+    """
     global _aws_credentials
     while not _shutdown.is_set():
+        # Wait first — main() already holds fresh credentials at thread start
+        _shutdown.wait(timeout=_CREDENTIAL_REFRESH_INTERVAL_S)
+        if _shutdown.is_set():
+            break
         try:
             creds = _fetch_credentials(iot_cfg)
             with _credentials_lock:
@@ -251,7 +261,6 @@ def _credential_refresh_loop(iot_cfg: dict) -> None:
             logger.info("Credentials refreshed successfully")
         except Exception as exc:
             logger.error("Credential refresh failed: %s", exc)
-        _shutdown.wait(timeout=_CREDENTIAL_REFRESH_INTERVAL_S)
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -645,6 +654,10 @@ def _inject_iot_credentials(sfc_config: dict, iot_cfg: dict) -> dict:
         "CredentialProviderClient": cred_name,
         "Interval": 60,
         "Region": region,
+        "CommonDimensions": {
+            "LaunchPackage": package_id,
+            "configName": iot_cfg.get("configName") or iot_cfg.get("configId", package_id),
+        },
         "Writer": {
             "MetricsWriter": {
                 "FactoryClassName": "com.amazonaws.sfc.cloudwatch.AwsCloudWatchMetricsWriter",

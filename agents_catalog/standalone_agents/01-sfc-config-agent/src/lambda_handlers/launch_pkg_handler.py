@@ -141,7 +141,7 @@ def _create_package(body: dict) -> dict:
     prov = iot_util.provision_thing(package_id, _region, sfc_config)
 
     # Rewrite SFC config with IoT credential provider
-    rewritten = _inject_iot_credentials(sfc_config, package_id, prov)
+    rewritten = _inject_iot_credentials(sfc_config, package_id, prov, cfg_item.get("name", config_id))
 
     # Build iot-config.json
     iot_config = {
@@ -152,6 +152,7 @@ def _create_package(body: dict) -> dict:
         "logGroupName": prov["logGroupName"],
         "packageId": package_id,
         "configId": config_id,
+        "configName": cfg_item.get("name", config_id),
         "topicPrefix": f"sfc/{package_id}/control",
     }
 
@@ -252,7 +253,7 @@ def _get_download_url(package_id: str) -> dict:
 
 # ── Helpers ──────────────────────────────────────────────────────────────────
 
-def _inject_iot_credentials(sfc_config: dict, package_id: str, prov: dict) -> dict:
+def _inject_iot_credentials(sfc_config: dict, package_id: str, prov: dict, config_name: str = "") -> dict:
     """Add AwsIotCredentialProviderClients block, Metrics block, and patch target credential refs."""
     import copy
     cfg = copy.deepcopy(sfc_config)
@@ -274,6 +275,10 @@ def _inject_iot_credentials(sfc_config: dict, package_id: str, prov: dict) -> di
         "CredentialProviderClient": cred_provider_name,
         "Interval": 60,
         "Region": _region,
+        "CommonDimensions": {
+            "LaunchPackage": package_id,
+            "configName": config_name or package_id,
+        },
         "Writer": {
             "MetricsWriter": {
                 "FactoryClassName": "com.amazonaws.sfc.cloudwatch.AwsCloudWatchMetricsWriter",
