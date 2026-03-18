@@ -22,6 +22,9 @@ REPO_URL = os.environ.get(
     "SFC_REPO_URL", "https://github.com/awslabs/industrial-shopfloor-connect.git"
 )
 
+# Base URL for generating clickable GitHub links to rendered markdown pages
+GITHUB_BASE_URL = "https://github.com/awslabs/industrial-shopfloor-connect/blob/main"
+
 
 # tools-functions
 
@@ -655,38 +658,17 @@ def load_sfc_knowledge() -> Dict[str, Any]:
     }
 
 
-def init_sfc_repository():
-    """
-    Initializes the SFC repository by cloning it if it doesn't exist.
-    Uses GitPython instead of subprocess for better error handling and portability.
-
-    This function checks if the SFC repository exists at the defined path.
-    If it doesn't exist, it clones the repository from the specified URL.
-    """
-    if not os.path.exists(REPO_PATH):
-        try:
-            print(
-                f"SFC repository not found at {REPO_PATH}. Cloning from {REPO_URL}..."
-            )
-            os.makedirs(os.path.dirname(REPO_PATH), exist_ok=True)
-            git.Repo.clone_from(REPO_URL, REPO_PATH)
-            print("SFC repository cloned successfully.")
-            return True
-        except git.exc.GitCommandError as e:
-            print(f"Failed to clone SFC repository: {e}")
-            return False
-        except Exception as e:
-            print(f"Unexpected error during repository clone: {e}")
-            return False
-    else:
-        print(f"SFC repository found at {REPO_PATH}.")
-        return True
-
-
 # Create the MCP server
 server = FastMCP(
     name="sfc-spec-server",
-    instructions="Provides access to SFC documentation Specification and repository management tools",
+    instructions=(
+        "Provides access to SFC documentation Specification and repository management tools. "
+        "IMPORTANT: Whenever a tool response contains a 'github_url' field, you MUST include "
+        "it as a clickable Markdown hyperlink in your final text response to the user. "
+        "Format it as: [<document-name>](<github_url>). "
+        "Never omit github_url links from your responses — always surface them so the user "
+        "can navigate directly to the relevant GitHub documentation page."
+    ),
 )
 
 sfc_knowledge = load_sfc_knowledge()
@@ -754,6 +736,7 @@ def get_core_doc_tool(doc_name: str) -> Dict[str, Any]:
             - name (str): The name of the document
             - content (str): The markdown content of the document
             - type (str): The document type (always "markdown")
+            - github_url (str): GitHub URL to the rendered markdown page — ALWAYS include this as a Markdown link [name](github_url) in your response
             - error (str): Error message if document not found or cannot be read
             - status (int): HTTP-like status code indicating result
 
@@ -787,6 +770,7 @@ def list_core_docs_tool() -> Dict[str, Any]:
             - documents (list): List of document info dictionaries, each containing:
                 - name (str): The name of the document (without extension)
                 - path (str): Relative path to the document
+                - github_url (str): GitHub URL to the rendered markdown page — ALWAYS present this as a Markdown link [name](github_url) in your response
             - error (str): Error message if directory not found or cannot be read
             - status (int): HTTP-like status code indicating result
 
@@ -818,6 +802,7 @@ def get_adapter_doc_tool(doc_name: str) -> Dict[str, Any]:
             - name (str): The name of the document
             - content (str): The markdown content of the document
             - type (str): The document type (always "markdown")
+            - github_url (str): GitHub URL to the rendered markdown page — ALWAYS include this as a Markdown link [name](github_url) in your response
             - error (str): Error message if document not found or cannot be read
             - status (int): HTTP-like status code indicating result
 
@@ -851,6 +836,7 @@ def list_adapter_docs_tool() -> Dict[str, Any]:
             - documents (list): List of document info dictionaries, each containing:
                 - name (str): The name of the document (without extension)
                 - path (str): Relative path to the document
+                - github_url (str): GitHub URL to the rendered markdown page — ALWAYS present this as a Markdown link [name](github_url) in your response
             - error (str): Error message if directory not found or cannot be read
             - status (int): HTTP-like status code indicating result
 
@@ -882,6 +868,7 @@ def get_target_doc_tool(doc_name: str) -> Dict[str, Any]:
             - name (str): The name of the document
             - content (str): The markdown content of the document
             - type (str): The document type (always "markdown")
+            - github_url (str): GitHub URL to the rendered markdown page — ALWAYS include this as a Markdown link [name](github_url) in your response
             - error (str): Error message if document not found or cannot be read
             - status (int): HTTP-like status code indicating result
 
@@ -915,6 +902,7 @@ def list_target_docs_tool() -> Dict[str, Any]:
             - documents (list): List of document info dictionaries, each containing:
                 - name (str): The name of the document (without extension)
                 - path (str): Relative path to the document
+                - github_url (str): GitHub URL to the rendered markdown page — ALWAYS present this as a Markdown link [name](github_url) in your response
             - error (str): Error message if directory not found or cannot be read
             - status (int): HTTP-like status code indicating result
 
@@ -939,7 +927,15 @@ def _get_markdown_content(file_path: str, doc_name: str) -> Dict[str, Any]:
         with open(file_path, "r", encoding="utf-8") as file:
             content = file.read()
 
-        return {"name": doc_name, "content": content, "type": "markdown"}
+        rel_path = os.path.relpath(file_path, REPO_PATH).replace(os.sep, "/")
+        github_url = f"{GITHUB_BASE_URL}/{rel_path}"
+
+        return {
+            "name": doc_name,
+            "content": content,
+            "type": "markdown",
+            "github_url": github_url,
+        }
     except Exception as e:
         return {"error": f"Failed to read document: {str(e)}", "status": 500}
 
@@ -954,8 +950,16 @@ def _list_docs_in_directory(dir_path: str) -> Dict[str, Any]:
         for file in os.listdir(dir_path):
             if file.endswith(".md"):
                 name = file[:-3]  # Remove .md extension
+                rel_path = os.path.relpath(
+                    os.path.join(dir_path, file), REPO_PATH
+                ).replace(os.sep, "/")
+                github_url = f"{GITHUB_BASE_URL}/{rel_path}"
                 md_files.append(
-                    {"name": name, "path": f"{os.path.basename(dir_path)}/{name}"}
+                    {
+                        "name": name,
+                        "path": f"{os.path.basename(dir_path)}/{name}",
+                        "github_url": github_url,
+                    }
                 )
 
         return {"documents": md_files}
@@ -991,6 +995,7 @@ def query_docs_tool(
                 - name (str): The name of the document (without extension)
                 - type (str): The document type (core, adapters, or targets)
                 - path (str): Relative path to the document
+                - github_url (str): GitHub URL to the rendered markdown page — ALWAYS present this as a Markdown link [name](github_url) in your response
                 - content (str): The document content (if include_content is True)
                 - error (str): Error message if document content cannot be read
             - count (int): Number of documents found
@@ -1040,10 +1045,14 @@ def query_docs_tool(
                 if search_term and search_term.lower() not in name.lower():
                     continue
 
+                rel_path = os.path.relpath(
+                    os.path.join(dir_path, file), REPO_PATH
+                ).replace(os.sep, "/")
                 doc_info = {
                     "name": name,
                     "type": directory,
                     "path": f"{directory}/{name}",
+                    "github_url": f"{GITHUB_BASE_URL}/{rel_path}",
                 }
 
                 # Include content if requested
@@ -1231,6 +1240,7 @@ def search_doc_content_tool(
                 - name (str): The name of the document (without extension)
                 - type (str): The document type (core, adapters, or targets)
                 - path (str): Relative path to the document
+                - github_url (str): GitHub URL to the rendered markdown page — ALWAYS present this as a Markdown link [name](github_url) in your response
                 - matches (list): List of match dictionaries, each containing:
                     - line_number (int): Line number where the match was found
                     - context (str): Text context surrounding the match
@@ -1299,11 +1309,15 @@ def search_doc_content_tool(
                             matches.append({"line_number": i + 1, "context": context})
 
                     if matches:
+                        rel_path = os.path.relpath(file_path, REPO_PATH).replace(
+                            os.sep, "/"
+                        )
                         results.append(
                             {
                                 "name": name,
                                 "type": directory,
                                 "path": f"{directory}/{name}",
+                                "github_url": f"{GITHUB_BASE_URL}/{rel_path}",
                                 "matches": matches,
                                 "match_count": len(matches),
                             }
@@ -1484,6 +1498,7 @@ def create_sfc_config_template(
             - status (int): HTTP-like status code indicating result (200 for success)
 
     CRITICAL: ALways run the `validate_sfc_config` tool after creating a new config.
+    Do not use LLM knowledge.
     """
     try:
         result = generate_config_template(
@@ -1567,6 +1582,8 @@ def validate_sfc_config(config_json: str) -> Dict[str, Any]:
     - [ ] **Maintain documentation links**: Keep relevant documentation sections accessible
     - [ ] **Extract reference examples**: Maintain a collection of validated examples for each component type
     - [ ] **Track validation status**: Keep a record of which components have been validated against documentation
+
+    Do not use LLM knowledge.
     """
     try:
         # Parse the configuration
@@ -1647,8 +1664,6 @@ def what_is_sfc_tool() -> Dict[str, Any]:
 
 def main():
     """Entry point for the MCP server."""
-    # Initialize the SFC repository if needed
-    init_sfc_repository()
     # Run the MCP server
     server.run(transport="stdio")
 

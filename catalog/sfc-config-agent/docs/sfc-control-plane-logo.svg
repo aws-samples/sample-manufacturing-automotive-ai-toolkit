@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="64" height="64" fill="none" stroke="#38bdf8" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+  <!-- Main summit ridgeline -->
+  <polyline points="2,20 9,7 13,13 16,9 22,20" />
+  <!-- Snow cap accent -->
+  <polyline points="14.3,11 16,9 17.7,11.4" />
+</svg>

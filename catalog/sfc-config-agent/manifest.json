@@ -21,6 +21,9 @@
       }
     }
   ],
+  "ssm_parameter_mapping": {
+    "sfc_config_agent": "/sfc-config-agent/agentcore-runtime-id"
+  },
   "infrastructure": {
     "cdk": true,
     "stack_class": "SfcConfigAgentStack",
