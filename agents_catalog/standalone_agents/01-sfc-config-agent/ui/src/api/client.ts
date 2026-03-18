@@ -1,4 +1,5 @@
 import axios from "axios";
+import { getIdToken, login } from "../auth";
 
 const BASE_URL =
   (import.meta as unknown as { env: Record<string, string> }).env
@@ -8,6 +9,28 @@ export const api = axios.create({
   baseURL: BASE_URL,
   headers: { "Content-Type": "application/json" },
 });
+
+// ── Auth interceptor — attach Bearer token on every request ──────────────────
+api.interceptors.request.use((config) => {
+  const token = getIdToken();
+  if (token) {
+    config.headers = config.headers ?? {};
+    config.headers["Authorization"] = `Bearer ${token}`;
+  }
+  return config;
+});
+
+// ── Response interceptor — re-authenticate on 401 ────────────────────────────
+api.interceptors.response.use(
+  (response) => response,
+  (error) => {
+    if (error?.response?.status === 401) {
+      // Token expired or invalid — re-trigger PKCE login
+      void login();
+    }
+    return Promise.reject(error);
+  }
+);
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 

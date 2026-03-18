@@ -5,9 +5,14 @@ import PackageList from "./pages/PackageList";
 import PackageDetail from "./pages/PackageDetail";
 import LogViewer from "./pages/LogViewer";
 import FocusBanner from "./components/FocusBanner";
+import LoginGate from "./components/LoginGate";
+import { logout, getUser } from "./auth";
 
 export default function App() {
+  const user = getUser();
+  const displayName = user?.email ?? user?.username ?? user?.sub ?? "";
   return (
+    <LoginGate>
       <BrowserRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
       <div className="min-h-screen flex flex-col">
         {/* Top nav */}
@@ -55,6 +60,36 @@ export default function App() {
               Launch Packages
             </NavLink>
           </nav>
+
+          {/* Spacer + user info + sign-out */}
+          <div className="ml-auto flex items-center gap-3">
+            {displayName && (
+              <span className="flex items-center gap-1.5 text-xs text-slate-400 select-none">
+                {/* User icon */}
+                <svg
+                  viewBox="0 0 24 24"
+                  className="w-3.5 h-3.5 text-slate-500 shrink-0"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                >
+                  <circle cx="12" cy="8" r="4" />
+                  <path d="M4 20c0-4 3.6-7 8-7s8 3 8 7" />
+                </svg>
+                {displayName}
+              </span>
+            )}
+            <div className="h-4 w-px bg-[#252d3d]" />
+            <button
+              onClick={logout}
+              className="text-xs text-slate-500 hover:text-slate-200 transition-colors"
+              title="Sign out"
+            >
+              Sign out
+            </button>
+          </div>
         </header>
 
         {/* Focus banner */}
@@ -72,5 +107,6 @@ export default function App() {
         </main>
       </div>
     </BrowserRouter>
+    </LoginGate>
   );
 }

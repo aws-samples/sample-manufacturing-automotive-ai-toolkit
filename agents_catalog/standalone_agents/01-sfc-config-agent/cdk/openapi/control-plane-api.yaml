@@ -25,6 +25,11 @@ x-amazon-apigateway-cors:
     - X-Amz-Security-Token
   maxAge: 300
 
+# Global security — all routes require a valid Cognito JWT unless overridden.
+# The Lambda authorizer (fn-authorizer) validates RS256-signed id_tokens / access_tokens.
+security:
+  - CognitoJwt: []
+
 tags:
   - name: configs
     description: SFC configuration file management
@@ -1081,6 +1086,19 @@ paths:
 # ──────────────────────────────────────────────────────────────────
 
 components:
+
+  securitySchemes:
+    CognitoJwt:
+      type: apiKey
+      name: Authorization
+      in: header
+      x-amazon-apigateway-authorizer:
+        type: request
+        authorizerPayloadFormatVersion: "2.0"
+        enableSimpleResponses: true
+        identitySource: "$request.header.Authorization"
+        authorizerUri: "${FnAuthorizerArn}"
+        authorizerResultTtlInSeconds: 300
 
   parameters:
     configId:

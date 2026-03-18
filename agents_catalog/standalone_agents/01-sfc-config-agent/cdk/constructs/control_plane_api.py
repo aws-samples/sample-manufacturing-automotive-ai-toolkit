@@ -24,6 +24,7 @@ from aws_cdk import (
     Fn,
     Stack,
     aws_apigatewayv2 as apigwv2,
+    aws_cognito as cognito,
     aws_iam as iam,
     aws_lambda as lambda_,
     aws_logs as logs,
@@ -58,6 +59,64 @@ class ControlPlaneApi(Construct):
 
         region = Stack.of(self).region
         account = Stack.of(self).account
+
+        # ----------------------------------------------------------------
+        # Auth — Cognito User Pool + App Client
+        # ----------------------------------------------------------------
+        self.user_pool = cognito.UserPool(
+            self,
+            "SfcCpUserPool",
+            user_pool_name="sfc-control-plane-users",
+            self_sign_up_enabled=False,
+            sign_in_aliases=cognito.SignInAliases(email=True, username=False),
+            standard_attributes=cognito.StandardAttributes(
+                email=cognito.StandardAttribute(required=True, mutable=True),
+            ),
+            password_policy=cognito.PasswordPolicy(
+                min_length=12,
+                require_digits=True,
+                require_symbols=True,
+                require_uppercase=True,
+                require_lowercase=True,
+            ),
+            account_recovery=cognito.AccountRecovery.EMAIL_ONLY,
+            removal_policy=None,  # retain on stack delete (default)
+        )
+
+        # Hosted UI domain  (prefix must be globally unique — use account+region)
+        hosted_ui_domain = self.user_pool.add_domain(
+            "SfcCpHostedUiDomain",
+            cognito_domain=cognito.CognitoDomainOptions(
+                domain_prefix=Fn.sub(
+                    "sfc-cp-${Account}-${Region}",
+                    {"Account": account, "Region": region},
+                ),
+            ),
+        )
+
+        self.user_pool_client = self.user_pool.add_client(
+            "SfcCpWebClient",
+            user_pool_client_name="sfc-cp-web",
+            generate_secret=False,          # SPA — no client secret
+            auth_flows=cognito.AuthFlow(user_srp=True),
+            o_auth=cognito.OAuthSettings(
+                flows=cognito.OAuthFlows(authorization_code_grant=True),
+                scopes=[
+                    cognito.OAuthScope.OPENID,
+                    cognito.OAuthScope.EMAIL,
+                    cognito.OAuthScope.PROFILE,
+                ],
+                # Callback / logout URLs are updated post-deploy when the
+                # CloudFront distribution URL is known.  A localhost entry
+                # enables local development out of the box.
+                callback_urls=["http://localhost:5173/"],
+                logout_urls=["http://localhost:5173/"],
+            ),
+            id_token_validity=Duration.hours(8),
+            access_token_validity=Duration.hours(8),
+            refresh_token_validity=Duration.days(30),
+            prevent_user_existence_errors=True,
+        )
 
         # ----------------------------------------------------------------
         # WP-03 — Shared Lambda Layer (sfc_cp_utils)
@@ -328,6 +387,32 @@ class ControlPlaneApi(Construct):
         ))
 
         # ----------------------------------------------------------------
+        # Auth — fn-authorizer (JWT Lambda Authorizer, zero external deps)
+        # ----------------------------------------------------------------
+        self.fn_authorizer = lambda_.Function(
+            self,
+            "fn-authorizer",
+            function_name="fn-authorizer",
+            runtime=lambda_.Runtime.PYTHON_3_12,
+            handler="lambda_handlers.jwt_authorizer_handler.handler",
+            code=lambda_.Code.from_asset(_HANDLERS_SRC),
+            layers=[self.layer],
+            memory_size=128,
+            timeout=Duration.seconds(10),
+            environment={
+                "COGNITO_USER_POOL_ID": self.user_pool.user_pool_id,
+                "COGNITO_CLIENT_ID": self.user_pool_client.user_pool_client_id,
+                "AWS_REGION_NAME": region,
+            },
+            log_retention=logs.RetentionDays.ONE_MONTH,
+        )
+        # API Gateway must be able to invoke the authorizer
+        self.fn_authorizer.add_permission(
+            "ApiGwInvoke-fn-authorizer",
+            principal=iam.ServicePrincipal("apigateway.amazonaws.com"),
+        )
+
+        # ----------------------------------------------------------------
         # WP-12 — API Gateway HTTP API (OpenAPI import)
         # Inject Lambda ARNs into the spec via Fn.sub before import.
         # ----------------------------------------------------------------
@@ -339,6 +424,7 @@ class ControlPlaneApi(Construct):
 
         # Build substitution map for all ARN placeholders in the spec
         substitutions = {
+            "FnAuthorizerArn": _lambda_integration_uri(self.fn_authorizer),
             "FnConfigsArn": _lambda_integration_uri(self.fn_configs),
             "FnLaunchPkgArn": _lambda_integration_uri(self.fn_launch_pkg),
             "FnIotProvArn": _lambda_integration_uri(self.fn_iot_prov),
@@ -417,6 +503,30 @@ class ControlPlaneApi(Construct):
                 {"ApiId": self.http_api.ref, "Region": region},
             ),
             description="SFC Control Plane API Gateway invoke URL",
+        )
+
+        CfnOutput(
+            self,
+            "CognitoUserPoolId",
+            value=self.user_pool.user_pool_id,
+            description="Cognito User Pool ID for the SFC Control Plane",
+        )
+
+        CfnOutput(
+            self,
+            "CognitoUserPoolClientId",
+            value=self.user_pool_client.user_pool_client_id,
+            description="Cognito App Client ID (SPA, no secret)",
+        )
+
+        CfnOutput(
+            self,
+            "CognitoHostedUiDomain",
+            value=Fn.sub(
+                "https://sfc-cp-${Account}-${Region}.auth.${Region}.amazoncognito.com",
+                {"Account": account, "Region": region},
+            ),
+            description="Cognito Hosted UI base URL (used by the UI for PKCE login redirects)",
         )
 
     # ────────────────────────────────────────────────────────────────────
