@@ -11,7 +11,7 @@ TODO
 - [x] Add one-click UI macOS/linux/windows runners to Launch Package
 - [x] Fix sfc path length issue by using java jar based runtime
 - [x] Remove Java installer if java not found
-- [ ] Fix Dockerfile & docker build script - add instructions to LP README.md
+- [x] Fix Dockerfile & docker build script - add instructions to LP README.md
 - [x] Make sure that the [SFC top-level Metrics adapter](https://github.com/awslabs/industrial-shopfloor-connect/blob/main/docs/core/sfc-configuration.md#metrics) is always built into a LP's config
 - [ ] Trace logs switch and switch back leads to logging disappear - subprocess fix required.
 
