@@ -2,7 +2,7 @@
 """
 Deploy script for AgentCore compatible agents in MA3T framework
 
-This script scans the agents_catalog directory for agents with type 'agentcore' in their manifest,
+This script scans the catalog directory for agents with type 'agentcore' in their manifest,
 and deploys them using the bedrock_agentcore_starter_toolkit.
 """
 
@@ -38,10 +38,10 @@ def get_account_id():
     sts_client = boto3.client('sts')
     return sts_client.get_caller_identity()["Account"]
 
-def find_agentcore_agents(base_dir="agents_catalog"):
+def find_agentcore_agents(base_dir="catalog"):
     """
-    Scan the agents_catalog directory for agents with type 'agentcore' in their manifest
-    
+    Scan the catalog directory for agents with type 'agentcore' in their manifest
+
     Returns:
         Tuple of (agents_list, ssm_mappings_dict)
         - agents_list: List of tuples (agent_path, agent_id, agent_name, entrypoint)
@@ -49,8 +49,8 @@ def find_agentcore_agents(base_dir="agents_catalog"):
     """
     agents = []
     ssm_mappings = {}
-    
-    # Walk through the agents_catalog directory
+
+    # Walk through the catalog directory
     for root, dirs, files in os.walk(base_dir):
         if "manifest.json" in files:
             manifest_path = os.path.join(root, "manifest.json")

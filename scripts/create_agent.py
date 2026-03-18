@@ -28,16 +28,6 @@ def sanitize_id(name: str) -> str:
     
     return sanitized
 
-def get_next_folder_number(base_path: str) -> str:
-    """Get the next available folder number in the sequence."""
-    try:
-        existing = [d for d in os.listdir(base_path) if os.path.isdir(os.path.join(base_path, d))]
-        numbers = [int(d.split('-')[0]) for d in existing if d[:2].isdigit()]
-        next_num = max(numbers + [-1]) + 1
-        return f"{next_num:02d}"
-    except Exception:
-        return "00"
-
 def prompt_basic_info() -> Dict:
     """Prompt for basic agent information."""
     questions = [
@@ -46,9 +36,6 @@ def prompt_basic_info() -> Dict:
         inquirer.List('agent_type',
                      message="What type of agent is this?",
                      choices=['bedrock', 'agentcore']),
-        inquirer.List('deployment_type',
-                     message="Is this a standalone agent or part of a multi-agent collaboration?",
-                     choices=['standalone', 'collaboration']),
         inquirer.Text('entrypoint',
                      message="What is the main entry point file? (e.g., agent.py)",
                      default="agent.py"),
@@ -131,8 +118,7 @@ def create_manifest(info: Dict, infrastructure: Optional[Dict] = None) -> Dict:
 
 def create_folder_structure(base_path: str, agent_id: str, manifest: Dict, infrastructure: Optional[Dict] = None) -> None:
     """Create the folder structure and files for the agent."""
-    folder_num = get_next_folder_number(base_path)
-    agent_folder = os.path.join(base_path, f"{folder_num}-{agent_id}")
+    agent_folder = os.path.join(base_path, agent_id)
 
     # Create main folder
     os.makedirs(agent_folder, exist_ok=True)
@@ -292,12 +278,9 @@ def main():
     # Create manifest
     manifest = create_manifest(info, infrastructure)
 
-    # Determine base path based on deployment type
+    # Determine base path
     base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-    if info['deployment_type'] == 'standalone':
-        base_path = os.path.join(base_dir, 'agents_catalog', 'standalone_agents')
-    else:
-        base_path = os.path.join(base_dir, 'agents_catalog', 'multi_agent_collaboration')
+    base_path = os.path.join(base_dir, 'catalog')
 
     # Create folder structure
     create_folder_structure(base_path, info['agent_id'], manifest, infrastructure)

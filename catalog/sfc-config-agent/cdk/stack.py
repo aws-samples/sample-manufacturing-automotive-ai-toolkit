@@ -74,7 +74,9 @@ class SfcConfigAgentStack(NestedStack):
                 type=dynamodb.AttributeType.STRING,
             ),
             billing_mode=dynamodb.BillingMode.PAY_PER_REQUEST,
-            removal_policy=RemovalPolicy.DESTROY,
+            # WARNING: RETAIN prevents accidental permanent data loss on `cdk destroy`.
+            # Change to DESTROY only if you are certain all config metadata is expendable.
+            removal_policy=RemovalPolicy.RETAIN,
             point_in_time_recovery=True,
         )
 

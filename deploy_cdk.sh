@@ -1,5 +1,7 @@
 #!/bin/bash
 
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
 # Default configuration
 export STACK_NAME="MA3TMainStack"
 # Get AWS CLI's configured region, fallback to us-west-2
@@ -94,7 +96,7 @@ if [ "$STACK_NAME" = "QualityInspectionStack" ]; then
   fi
   
   # Run the quality inspection deployment script
-  exec bash "./agents_catalog/multi_agent_collaboration/03-quality-inspection/deploy/deploy_full_stack_quality_inspection.sh"
+  exec bash "./catalog/quality-inspection/deploy/deploy_full_stack_quality_inspection.sh"
 fi
 
 echo "Deploying MA3T Toolkit with CDK"
@@ -317,4 +319,50 @@ else
   exit 1
 fi
 
+# Print project summary with UI information
+echo ""
+echo "=========================================="
+echo "  Project Summary"
+echo "=========================================="
+python3 -c "
+import os, json, glob
+
+catalog = os.path.join('$SCRIPT_DIR', 'catalog')
+shared_ui = []
+custom_ui = []
+
+for manifest_path in sorted(glob.glob(os.path.join(catalog, '*/manifest.json'))):
+    project = os.path.basename(os.path.dirname(manifest_path))
+    with open(manifest_path) as f:
+        m = json.load(f)
+    agents = m.get('agents', [])
+    name = agents[0]['name'] if agents else m.get('group', [project])[0]
+    ui = m.get('ui', {})
+    infra = m.get('infrastructure', {})
+    if ui.get('type') == 'custom':
+        fw = ui.get('framework', 'unknown')
+        path = ui.get('path', '')
+        standalone = '(standalone deploy)' if infra.get('standalone') else ''
+        custom_ui.append((project, name, fw, path, standalone))
+    else:
+        shared_ui.append((project, name))
+
+if shared_ui:
+    print()
+    print('  Shared MA3T UI:')
+    for proj, name in shared_ui:
+        print(f'    - {name} ({proj})')
+
+if custom_ui:
+    print()
+    print('  Custom UI (deploy separately):')
+    for proj, name, fw, path, standalone in custom_ui:
+        print(f'    - {name} ({proj}) [{fw}] {standalone}'.rstrip())
+        if path:
+            print(f'      UI path: catalog/{proj}/{path}')
+
+print()
+" 2>/dev/null
+echo "=========================================="
+echo ""
 echo "CDK deployment process completed!"

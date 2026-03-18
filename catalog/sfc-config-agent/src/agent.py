@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved. SPDX-License-Identifier: MIT-0
-01-sfc-config-agent
+sfc-config-agent
 SFC Config generation Agent - Accelerate Industrial Equipment Onboarding.
 """
 

@@ -64,35 +64,15 @@ aws bedrock-agentcore invoke-agent-runtime \
 The **SFC Control Plane** is a Vite + React SPA served via **Amazon CloudFront**. In local dev, start it against the deployed API:
 
 ```bash
+# Set the API URL from the CDK output
+echo "VITE_API_BASE_URL=<SfcControlPlaneApiUrl>" > ui/.env.local
+
+# Start the dev server
 cd ui && npm install && npm run dev
 # → http://localhost:5173
 ```
 
-
-### `ui/.env.local` — required variables
-
-After `deploy_cdk.sh` from repo root is finalized, copy the following four Cloudformation outputs into `ui/.env.local`:
-
-```dotenv
-# API Gateway invoke URL  (CDK output: SfcControlPlaneApiUrl)
-VITE_API_BASE_URL=https://<api-id>.execute-api.<region>.amazonaws.com
-
-# Cognito Hosted UI base URL  (CDK output: CognitoHostedUiDomain)
-VITE_COGNITO_DOMAIN=https://sfc-cp-<account>-<region>.auth.<region>.amazoncognito.com
-
-# Cognito App Client ID  (CDK output:  ControlPlaneApiCognitoUserPoolClientId)
-VITE_COGNITO_CLIENT_ID=<user-pool-client-id>
-
-# OAuth2 redirect URI — must match a registered callback URL in the Cognito app client.
-# Use http://localhost:5173/ for local dev.
-# For production set to the CloudFront distribution URL, e.g. https://d1234abcd.cloudfront.net/
-VITE_COGNITO_REDIRECT_URI=http://localhost:5173/
-```
-
-> **Note:** The Cognito app client pre-registers `http://localhost:5173/` as a callback URL.
-> When deploying to production, add the CloudFront URL to **Allowed callback URLs** in the Cognito console
-> (Cognito → User Pools → `sfc-control-plane-users` → App clients → `sfc-cp-web`)
-> and update `VITE_COGNITO_REDIRECT_URI` accordingly.
+In production, open the `SfcControlPlaneUiUrl` CloudFront URL from the CDK output directly in a browser.
 
 ### Primary operator workflow
 
@@ -215,7 +195,7 @@ In addition to the MCP tools, the agent has direct access to cloud storage via t
 ## Deployment
 
 ```bash
-cd agents_catalog/standalone_agents/01-sfc-config-agent/cdk
+cd catalog/sfc-config-agent/cdk
 pip install -r requirements.txt
 cdk deploy
 ```
@@ -392,7 +372,7 @@ Certificate revocation (`DELETE /packages/{packageId}/iot`) is available as a fi
 ## Project Structure
 
 ```
-01-sfc-config-agent/
+sfc-config-agent/
 ├── manifest.json                          # Agent registry metadata
 ├── requirements.txt
 ├── Dockerfile.deps                        # Dependency image for AgentCore build

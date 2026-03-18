@@ -23,7 +23,7 @@ class AgentCoreConstruct(Construct):
     """
     Construct for deploying Bedrock AgentCore agents.
     
-    This construct scans the agents_catalog directory for agents with type 'agentcore'
+    This construct scans the catalog directory for agents with type 'agentcore'
     and deploys them using the bedrock_agentcore_starter_toolkit.
     """
 
@@ -47,15 +47,15 @@ class AgentCoreConstruct(Construct):
             print("No AgentCore agents found to deploy")
 
     def _discover_agentcore_agents(self) -> None:
-        """Discover agentcore agents from the agents_catalog directory"""
-        agents_catalog_path = Path("agents_catalog")
-        
-        if not agents_catalog_path.exists():
-            print("agents_catalog directory not found")
+        """Discover agentcore agents from the catalog directory"""
+        catalog_path = Path("catalog")
+
+        if not catalog_path.exists():
+            print("catalog directory not found")
             return
-        
-        # Walk through the agents_catalog directory
-        for manifest_path in agents_catalog_path.rglob("manifest.json"):
+
+        # Walk through the catalog directory
+        for manifest_path in catalog_path.rglob("manifest.json"):
             try:
                 with open(manifest_path, 'r', encoding='utf-8') as f:
                     manifest = json.load(f)
@@ -93,7 +93,7 @@ class AgentCoreConstruct(Construct):
     def _create_agentcore_deployment_project(self) -> None:
         """Create CodeBuild project for deploying AgentCore agents"""
         
-        # Create asset for the entire project (including scripts and agents_catalog)
+        # Create asset for the entire project (including scripts and catalog)
         project_asset = s3_assets.Asset(
             self, "ProjectAsset",
             path=".",

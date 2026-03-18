@@ -47,5 +47,10 @@
     "cdk": true,
     "stack_class": "FleetDiscoveryCdkStack",
     "stack_path": "infra/cdk/fleet_discovery_cdk_stack.py"
+  },
+  "ui": {
+    "type": "custom",
+    "framework": "nextjs",
+    "path": "frontend/"
   }
 }

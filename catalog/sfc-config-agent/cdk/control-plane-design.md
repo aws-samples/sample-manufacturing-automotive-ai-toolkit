@@ -905,7 +905,11 @@ SfcAgentStack
 ## 13. File / Directory Structure (new additions)
 
 ```
+<<<<<<< HEAD:agents_catalog/standalone_agents/01-sfc-config-agent/cdk/control-plane-design.md
 agents_catalog/standalone_agents/01-sfc-config-agent/
+=======
+catalog/sfc-config-agent/
+>>>>>>> 1d282580b37e685deb1ab44ddd6b162cf2fec693:catalog/sfc-config-agent/cdk/control-plane-design.md
 ├── cdk/
 │   ├── sfc_agent_stack.py                   # Extended to import new constructs
 │   ├── control-plane-requirements.md
@@ -975,7 +979,11 @@ agents_catalog/standalone_agents/01-sfc-config-agent/
 
 ```bash
 # 1. Deploy CDK stack to get API URL
+<<<<<<< HEAD:agents_catalog/standalone_agents/01-sfc-config-agent/cdk/control-plane-design.md
 cd agents_catalog/standalone_agents/01-sfc-config-agent/cdk
+=======
+cd catalog/sfc-config-agent/cdk
+>>>>>>> 1d282580b37e685deb1ab44ddd6b162cf2fec693:catalog/sfc-config-agent/cdk/control-plane-design.md
 cdk deploy
 
 # 2. Copy API URL to UI env

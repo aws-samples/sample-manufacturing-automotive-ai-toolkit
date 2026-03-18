@@ -72,9 +72,11 @@ def handler(event: dict, context) -> dict:
                 deep = (event.get("queryStringParameters") or {}).get("deep", "false").lower() == "true"
                 return _delete_package(package_id, deep=deep)
         return _error(404, "NOT_FOUND", "Route not matched")
-    except Exception as exc:
+    except Exception:
         logger.exception("Unhandled error")
-        return _error(500, "INTERNAL_ERROR", str(exc))
+        # Do not expose str(exc) — it may leak stack traces or implementation
+        # details to the caller. Full error is captured in CloudWatch Logs above.
+        return _error(500, "INTERNAL_ERROR", "An internal error occurred. Check CloudWatch logs for details.")
 
 
 # ── Route implementations ────────────────────────────────────────────────────

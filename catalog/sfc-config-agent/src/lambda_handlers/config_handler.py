@@ -106,9 +106,11 @@ def handler(event: dict, context) -> dict:
 
         return _error(404, "NOT_FOUND", f"No route matched: {method} {path}")
 
-    except Exception as exc:  # noqa: BLE001
+    except Exception:  # noqa: BLE001
         logger.exception("Unhandled error")
-        return _error(500, "INTERNAL_ERROR", str(exc))
+        # Do not expose str(exc) — it may leak stack traces or implementation
+        # details to the caller. Full error is captured in CloudWatch Logs above.
+        return _error(500, "INTERNAL_ERROR", "An internal error occurred. Check CloudWatch logs for details.")
 
 
 # ─────────────────────────────────────────────────────────────────────────────

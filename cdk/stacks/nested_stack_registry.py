@@ -86,54 +86,44 @@ class AgentRegistry:
         # Get the path relative to the workspace root, not the cdk directory
         current_dir = os.path.dirname(os.path.abspath(__file__))
         workspace_root = os.path.dirname(os.path.dirname(current_dir))
-        self.agents_catalog_path = os.path.join(workspace_root, "agents_catalog")
+        self.catalog_path = os.path.join(workspace_root, "catalog")
         self.discovered_cdk_stacks: List[CDKStackConfig] = []
         self.discovered_agentcore_agents: List[AgentCoreConfig] = []
 
     def discover_agents(self) -> Tuple[List[CDKStackConfig], List[AgentCoreConfig]]:
         """
-        Scan agents_catalog for both CDK and AgentCore projects.
+        Scan catalog for both CDK and AgentCore projects.
         """
-        print(f"Starting agent discovery in {self.agents_catalog_path}")
+        print(f"Starting agent discovery in {self.catalog_path}")
 
-        if not os.path.exists(self.agents_catalog_path):
-            print(f"Warning: Agents catalog directory {self.agents_catalog_path} does not exist")
+        if not os.path.exists(self.catalog_path):
+            print(f"Warning: Catalog directory {self.catalog_path} does not exist")
             return [], []
 
         cdk_stacks = []
         agentcore_agents = []
 
-        # Scan all categories in agents_catalog
-        for category in os.listdir(self.agents_catalog_path):
-            category_path = os.path.join(self.agents_catalog_path, category)
+        # Scan all projects in catalog (flat structure)
+        for agent_name in os.listdir(self.catalog_path):
+            agent_path = os.path.join(self.catalog_path, agent_name)
 
             # Skip files and hidden directories
-            if not os.path.isdir(category_path) or category.startswith('.'):
+            if not os.path.isdir(agent_path) or agent_name.startswith('.'):
                 continue
 
-            print(f"Scanning category: {category}")
+            print(f"  Examining agent: {agent_name}")
 
-            # Scan all agents in this category
-            for agent_name in os.listdir(category_path):
-                agent_path = os.path.join(category_path, agent_name)
+            # Check for CDK stack
+            cdk_config = self._detect_cdk_stack(agent_name, agent_path, "")
+            if cdk_config:
+                cdk_stacks.append(cdk_config)
+                print(f"    Found CDK stack: {cdk_config}")
 
-                # Skip files and hidden directories
-                if not os.path.isdir(agent_path) or agent_name.startswith('.'):
-                    continue
-
-                print(f"  Examining agent: {agent_name}")
-
-                # Check for CDK stack
-                cdk_config = self._detect_cdk_stack(agent_name, agent_path, category)
-                if cdk_config:
-                    cdk_stacks.append(cdk_config)
-                    print(f"    Found CDK stack: {cdk_config}")
-
-                # Check for AgentCore agent
-                agentcore_config = self._detect_agentcore_agent(agent_name, agent_path, category)
-                if agentcore_config:
-                    agentcore_agents.append(agentcore_config)
-                    print(f"    Found AgentCore agent: {agentcore_config}")
+            # Check for AgentCore agent
+            agentcore_config = self._detect_agentcore_agent(agent_name, agent_path, "")
+            if agentcore_config:
+                agentcore_agents.append(agentcore_config)
+                print(f"    Found AgentCore agent: {agentcore_config}")
 
         self.discovered_cdk_stacks = cdk_stacks
         self.discovered_agentcore_agents = agentcore_agents
