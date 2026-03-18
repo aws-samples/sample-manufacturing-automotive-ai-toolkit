@@ -13,12 +13,13 @@ TODO
 - [x] Remove Java installer if java not found
 - [ ] Fix Dockerfile & docker build script - add instructions to LP README.md
 - [x] Make sure that the [SFC top-level Metrics adapter](https://github.com/awslabs/industrial-shopfloor-connect/blob/main/docs/core/sfc-configuration.md#metrics) is always built into a LP's config
+- [ ] Trace logs switch and switch back leads to logging disappear - subprocess fix required.
 
 ## Control Plane
 - [x] AI Remidiation
 - [x] AI remediation shall not update Launch packages config - just use the remediated config and create new versions of the LP's config
 - [x] Config Versioning - use iterations like v1, v2 etc. instead of Timestamp
-- [ ] SFC Cloudwatch Metrics dashboard
+- [x] SFC Cloudwatch Metrics dashboard
 - [x] Log Viewer & API calls only 100 oldest log lines - not newest
 - [x] AI guided "Create config" option with prompt & file upload to context (instant base64 encoding)
 - [x] AI guided config Update option

@@ -367,6 +367,37 @@ export const extractTags = (protocol: string, docText: string) =>
     .post<TagExtractResponse>("/configs/tags/extract", { protocol, docText })
     .then((r) => r.data);
 
+// ─── Metrics endpoints ───────────────────────────────────────────────────────
+
+export type MetricsCategory = "Target" | "Core" | "Adapter" | "All";
+
+export interface ChartJsDataPoint {
+  x: string; // ISO-8601 UTC timestamp
+  y: number;
+}
+
+export interface ChartJsDataset {
+  label: string;
+  data: ChartJsDataPoint[];
+  borderColor: string;
+  backgroundColor: string;
+  tension: number;
+  fill: boolean;
+  pointRadius: number;
+}
+
+export const getPackageMetrics = (
+  packageId: string,
+  category: MetricsCategory = "Target",
+  lookbackMinutes = 15
+) =>
+  api
+    .post<ChartJsDataset[]>(`/packages/${packageId}/metrics`, {
+      category,
+      lookbackMinutes,
+    })
+    .then((r) => r.data);
+
 // ─── Remediation endpoints ───────────────────────────────────────────────────
 
 export const triggerRemediation = (

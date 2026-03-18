@@ -970,6 +970,44 @@ paths:
         payloadFormatVersion: "2.0"
 
   # ────────────────────────────────────────────────────────────────
+  # CloudWatch Metrics Dashboard
+  # ────────────────────────────────────────────────────────────────
+
+  /packages/{packageId}/metrics:
+    post:
+      operationId: getPackageMetrics
+      summary: >
+        Query CloudWatch SFC metrics for a launch package and return
+        Chart.js-formatted datasets (last 15 min, 60-second period).
+      tags: [packages]
+      parameters:
+        - $ref: "#/components/parameters/packageId"
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/MetricsRequest"
+      responses:
+        "200":
+          description: Array of Chart.js dataset objects
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/ChartJsDataset"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "500":
+          $ref: "#/components/responses/InternalError"
+      x-amazon-apigateway-integration:
+        type: aws_proxy
+        httpMethod: POST
+        uri: "${FnMetricsArn}"
+        payloadFormatVersion: "2.0"
+
+  # ────────────────────────────────────────────────────────────────
   # AI Remediation
   # ────────────────────────────────────────────────────────────────
 
@@ -1547,6 +1585,66 @@ components:
           items:
             $ref: "#/components/schemas/ExtractedPlc"
       required: [plcs]
+
+    # ── Metrics Dashboard ─────────────────────────────────────────
+
+    MetricsRequest:
+      type: object
+      properties:
+        lookbackMinutes:
+          type: integer
+          description: How many minutes of history to query (default 15, max 1440)
+          default: 15
+          minimum: 1
+          maximum: 1440
+        category:
+          type: string
+          description: >
+            SFC metric category to filter by. "Target" returns ingest/write metrics,
+            "Core" returns SFC core metrics, "Adapter" returns adapter/read metrics,
+            "All" returns all metrics for the package.
+          enum: [Target, Core, Adapter, All]
+          default: Target
+
+    ChartJsDataPoint:
+      type: object
+      properties:
+        x:
+          type: string
+          format: date-time
+          description: ISO-8601 UTC timestamp
+        y:
+          type: number
+          description: Metric value (average over the 60-second period)
+      required: [x, y]
+
+    ChartJsDataset:
+      type: object
+      properties:
+        label:
+          type: string
+          description: Series label — format "<MetricName> · <Type> · <Source>"
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/ChartJsDataPoint"
+          description: Data points sorted ascending by timestamp
+        borderColor:
+          type: string
+          description: CSS hex colour for the line
+        backgroundColor:
+          type: string
+          description: CSS hex colour (with alpha) for the fill area
+        tension:
+          type: number
+          description: Chart.js line tension (0 = straight, 0.4 = curved)
+        fill:
+          type: boolean
+          description: Whether to fill the area under the line
+        pointRadius:
+          type: integer
+          description: Chart.js point radius in pixels
+      required: [label, data, borderColor]
 
     # ── Remediation ───────────────────────────────────────────────
 

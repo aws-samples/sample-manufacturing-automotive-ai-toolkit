@@ -252,6 +252,23 @@ class ControlPlaneApi(Construct):
         ))
 
         # ----------------------------------------------------------------
+        # WP-metrics — fn-metrics (CloudWatch metrics → Chart.js datasets)
+        # ----------------------------------------------------------------
+        self.fn_metrics = _fn(
+            "fn-metrics",
+            "metrics_handler",
+            memory_mb=256,
+            timeout_s=30,
+        )
+        self.fn_metrics.add_to_role_policy(iam.PolicyStatement(
+            actions=[
+                "cloudwatch:ListMetrics",
+                "cloudwatch:GetMetricData",
+            ],
+            resources=["*"],
+        ))
+
+        # ----------------------------------------------------------------
         # Tag Extraction — fn-tag-extract
         # ----------------------------------------------------------------
         self.fn_tag_extract = _fn(
@@ -331,6 +348,7 @@ class ControlPlaneApi(Construct):
             "FnAgentCreateConfigArn": _lambda_integration_uri(self.fn_agent_create_config),
             "FnAgentRemediateArn": _lambda_integration_uri(self.fn_agent_remediate),
             "FnTagExtractArn": _lambda_integration_uri(self.fn_tag_extract),
+            "FnMetricsArn": _lambda_integration_uri(self.fn_metrics),
             # CloudFront origin placeholder — filled at deploy time via stack output
             "CloudFrontOrigin": "https://placeholder.cloudfront.net",
         }
@@ -380,6 +398,7 @@ class ControlPlaneApi(Construct):
             self.fn_agent_create_config,
             self.fn_agent_remediate,
             self.fn_tag_extract,
+            self.fn_metrics,
         ]:
             fn.add_permission(
                 f"ApiGwInvoke-{fn.node.id}",

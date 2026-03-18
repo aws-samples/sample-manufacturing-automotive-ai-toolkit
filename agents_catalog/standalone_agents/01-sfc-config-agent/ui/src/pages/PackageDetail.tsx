@@ -13,6 +13,7 @@ import PackageControlPanel from "../components/PackageControlPanel";
 import ConfirmDialog from "../components/ConfirmDialog";
 import GgDeployDialog from "../components/GgDeployDialog";
 import TagEditor from "../components/TagEditor";
+import MetricsDashboard from "../components/MetricsDashboard";
 import { useState, useEffect, useRef } from "react";
 
 export default function PackageDetail() {
@@ -144,6 +145,9 @@ export default function PackageDetail() {
                 <DownloadButton packageId={pkg.packageId} />
               </div>
             )}
+
+            {/* CloudWatch Metrics Dashboard */}
+            <MetricsDashboard packageId={pkg.packageId} />
 
             {/* AI Remediation entry point */}
             <div className="card space-y-3 border border-sky-900/40 bg-sky-950/10">
