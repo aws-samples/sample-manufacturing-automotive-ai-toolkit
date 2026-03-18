@@ -12,6 +12,7 @@ import json
 import csv
 import base64
 import logging
+import uuid
 from typing import Tuple, Optional
 from datetime import datetime, timezone
 
@@ -103,10 +104,18 @@ def _resolve_ddb_table() -> str:
 
 
 def _get_s3_client():
-    """Get or create the S3 client."""
+    """Get or create the S3 client using the regional endpoint.
+
+    Passing ``region_name`` explicitly forces boto3 to generate URLs with the
+    regional endpoint (e.g. s3.eu-central-1.amazonaws.com) instead of the
+    global endpoint (s3.amazonaws.com). Without this, presigned URLs use the
+    global endpoint while the signing credential scope specifies the bucket's
+    region, causing SignatureDoesNotMatch for buckets outside us-east-1.
+    """
     global _s3_client
     if _s3_client is None:
-        _s3_client = boto3.client("s3")
+        region = os.environ.get("AWS_REGION", os.environ.get("AWS_DEFAULT_REGION", "eu-central-1"))
+        _s3_client = boto3.client("s3", region_name=region)
     return _s3_client
 
 
@@ -129,21 +138,28 @@ def _timestamp_prefix() -> str:
     return now.strftime("%Y-%m-%dT%H-%M-%SZ")
 
 
-def _hive_partition_prefix() -> str:
-    """Generate a Hive-style date partition prefix for S3 keys.
+def _date_partition_prefix() -> str:
+    """Generate a date partition prefix for S3 keys.
 
     Returns:
-        String like 'year=2026/month=02/day=18/hour=18'
+        String like '2026/02/18/18'
     """
     now = datetime.now(timezone.utc)
-    return now.strftime("year=%Y/month=%m/day=%d/hour=%H")
+    return now.strftime("%Y/%m/%d/%H")
 
 
 def _generate_presigned_url(s3_key: str, expiration: int = 3600) -> Optional[str]:
     """Generate a pre-signed URL for an S3 object.
 
+    Uses the shared ``_get_s3_client()`` (same client as upload operations) so
+    that the presigned URL endpoint and signing region are always consistent with
+    the credentials used to write the object in the first place.
+
+    The raw ``s3_key`` is passed directly without URI-encoding; boto3 handles
+    path encoding internally when building the canonical request.
+
     Args:
-        s3_key: The S3 object key
+        s3_key: The S3 object key (raw, as stored in S3)
         expiration: URL expiration time in seconds (default: 1 hour)
 
     Returns:
@@ -154,7 +170,26 @@ def _generate_presigned_url(s3_key: str, expiration: int = 3600) -> Optional[str
         logger.error("S3 bucket name not available – cannot generate pre-signed URL")
         return None
     try:
-        url = _get_s3_client().generate_presigned_url(
+        region = os.environ.get("AWS_REGION", os.environ.get("AWS_DEFAULT_REGION", "eu-central-1"))
+        # Use get_frozen_credentials() to atomically snapshot all three credential
+        # values (access_key, secret_key, token) from the same STS refresh cycle.
+        # Without this, boto3's RefreshableCredentials can rotate credentials in a
+        # background thread exactly while generate_presigned_url runs — the signing
+        # key is derived from the old secret but X-Amz-Security-Token in the URL
+        # comes from the new token, causing SignatureDoesNotMatch.
+        session = boto3.Session()
+        creds = session.get_credentials()
+        if creds is None:
+            raise RuntimeError("No AWS credentials available")
+        frozen = creds.get_frozen_credentials()
+        presign_client = boto3.client(
+            "s3",
+            region_name=region,
+            aws_access_key_id=frozen.access_key,
+            aws_secret_access_key=frozen.secret_key,
+            aws_session_token=frozen.token,
+        )
+        url = presign_client.generate_presigned_url(
             "get_object",
             Params={"Bucket": bucket, "Key": s3_key},
             ExpiresIn=expiration,
@@ -418,8 +453,10 @@ class SFCFileOperations:
     def save_config_to_file(config_json: str, filename: str) -> str:
         """Save an SFC configuration to the S3 artifacts bucket and index it in DynamoDB.
 
-        The file is stored under configs/year=YYYY/month=MM/day=DD/hour=HH/<filename>
-        in S3, and a metadata entry (including base64-encoded content) is written to DynamoDB.
+        The file is stored under configs/YYYY/MM/DD/HH/<filename> in S3.
+        A control-plane schema record (configId / version / name / s3Key / status)
+        is written to DynamoDB so the config appears in the Control Plane UI — no
+        base64 content is stored in DynamoDB.
         A pre-signed download URL is returned as a markdown hyperlink.
 
         Args:
@@ -438,22 +475,39 @@ class SFCFileOperations:
             if not filename.lower().endswith(".json"):
                 filename += ".json"
             basename = os.path.basename(filename)
+            name = basename[:-5]  # strip .json for human-readable name
 
-            # Build Hive-partitioned S3 key
-            partition = _hive_partition_prefix()
+            # Build date-partitioned S3 key (YYYY/MM/DD/HH)
+            partition = _date_partition_prefix()
             s3_key = f"configs/{partition}/{basename}"
 
             # Upload to S3
             s3_ok = _put_to_s3(s3_key, pretty_json, content_type="application/json")
 
-            # Index in DynamoDB
-            ddb_ok = _put_to_ddb(
-                file_type="config",
-                s3_key=s3_key,
-                filename=basename,
-                content=pretty_json,
-                content_type="application/json",
-            )
+            # Write control-plane schema record to DynamoDB (no base64 content)
+            ddb_ok = False
+            config_id = str(uuid.uuid4())
+            version = _iso_timestamp()
+            sort_key = f"{config_id}#{version}"
+            try:
+                _get_ddb_table().put_item(Item={
+                    "file_type": "config",
+                    "sort_key": sort_key,
+                    "configId": config_id,
+                    "version": version,
+                    "name": name,
+                    "description": "Agent-generated",
+                    "s3Key": s3_key,
+                    "status": "active",
+                    "createdAt": version,
+                })
+                ddb_ok = True
+                logger.info(
+                    "Indexed agent config in DDB: configId=%s sort_key=%s",
+                    config_id, sort_key,
+                )
+            except Exception as ddb_exc:
+                logger.error("DDB put_item failed for agent config %s: %s", basename, ddb_exc)
 
             bucket = _resolve_s3_bucket()
             if s3_ok and ddb_ok:
@@ -466,7 +520,7 @@ class SFCFileOperations:
                 return (
                     f"✅ Configuration saved successfully:\n"
                     f"  • S3: `s3://{bucket}/{s3_key}`\n"
-                    f"  • DynamoDB: {_resolve_ddb_table()} (config/{basename})\n"
+                    f"  • Control Plane ID: `{config_id}` (visible in Config Browser)\n"
                     f"  • {download_link}"
                 )
             elif s3_ok:
@@ -495,9 +549,9 @@ class SFCFileOperations:
     ) -> str:
         """Save content to the S3 artifacts bucket and index it in DynamoDB.
 
-        The file is stored under results/year=YYYY/month=MM/day=DD/hour=HH/<filename>
-        in S3. If a config run name is provided, an additional copy is stored under
-        runs/<config_name>/year=YYYY/month=MM/day=DD/hour=HH/<filename>.
+        The file is stored under results/YYYY/MM/DD/HH/<filename> in S3.
+        If a config run name is provided, an additional copy is stored under
+        runs/<config_name>/YYYY/MM/DD/HH/<filename>.
         A pre-signed download URL is returned as a markdown hyperlink.
 
         Args:
@@ -529,8 +583,8 @@ class SFCFileOperations:
             }
             ct = content_types.get(ext, "text/plain")
 
-            # Build Hive-partitioned S3 key
-            partition = _hive_partition_prefix()
+            # Build date-partitioned S3 key (YYYY/MM/DD/HH)
+            partition = _date_partition_prefix()
             s3_key = f"results/{partition}/{basename}"
             s3_ok = _put_to_s3(s3_key, content, content_type=ct)
             ddb_ok = _put_to_ddb(
