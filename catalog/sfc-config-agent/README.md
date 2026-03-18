@@ -63,16 +63,37 @@ aws bedrock-agentcore invoke-agent-runtime \
 
 The **SFC Control Plane** is a Vite + React SPA served via **Amazon CloudFront**. In local dev, start it against the deployed API:
 
-```bash
-# Set the API URL from the CDK output
-echo "VITE_API_BASE_URL=<SfcControlPlaneApiUrl>" > ui/.env.local
 
+
+In production, open the `SfcControlPlaneUiUrl` CloudFront URL from the CDK output directly in a browser. Otherwise: 
+
+```bash
 # Start the dev server
 cd ui && npm install && npm run dev
 # → http://localhost:5173
 ```
 
-In production, open the `SfcControlPlaneUiUrl` CloudFront URL from the CDK output directly in a browser.
+### `ui/.env.local` — required variables
+
+After `cdk deploy`, copy the three Cognito outputs into `ui/.env.local`:
+
+```dotenv
+# API Gateway invoke URL  (CDK output: SfcControlPlaneApiUrl)
+VITE_API_BASE_URL=https://<api-id>.execute-api.<region>.amazonaws.com
+
+# Cognito Hosted UI base URL  (CDK output: CognitoHostedUiDomain)
+VITE_COGNITO_DOMAIN=https://sfc-cp-<account>-<region>.auth.<region>.amazoncognito.com
+
+# Cognito App Client ID  (CDK output: CognitoUserPoolClientId)
+VITE_COGNITO_CLIENT_ID=<user-pool-client-id>
+
+# OAuth2 redirect URI — must match a registered callback URL in the Cognito app client.
+# Use http://localhost:5173/ for local dev.
+# For production set to the CloudFront distribution URL, e.g. https://d1234abcd.cloudfront.net/
+VITE_COGNITO_REDIRECT_URI=http://localhost:5173/
+```
+
+> __Note:__ The Cognito app client pre-registers `http://localhost:5173/` as a callback URL. When deploying to production, add the CloudFront URL to __Allowed callback URLs__ in the Cognito console (Cognito → User Pools → `sfc-control-plane-users` → App clients → `sfc-cp-web`) and update `VITE_COGNITO_REDIRECT_URI` accordingly.
 
 ### Primary operator workflow
 
