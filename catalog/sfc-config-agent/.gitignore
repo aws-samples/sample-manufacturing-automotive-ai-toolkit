@@ -2,3 +2,4 @@
 sfc-repo
 ui/dist
 ui/.env.local
+ui/package-lock.json
