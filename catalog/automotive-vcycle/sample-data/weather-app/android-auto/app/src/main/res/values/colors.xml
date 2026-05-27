@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Weather App Specific -->
+    <color name="weather_launcher_background">#2196F3</color>
+    
+    <!-- Generic Automotive Colors (Reusable across Android Auto apps) -->
+    <color name="car_background">#1A1A1A</color>
+    <color name="car_card_background">#2D2D2D</color>
+    <color name="car_text_primary">#FFFFFF</color>
+    <color name="car_text_secondary">#B3B3B3</color>
+    <color name="car_accent">#4FC3F7</color>
+    <color name="car_error">#EF5350</color>
+    <color name="car_button_primary">#B3D9FF</color>
+    <color name="car_button_border">#333333</color>
+</resources>
