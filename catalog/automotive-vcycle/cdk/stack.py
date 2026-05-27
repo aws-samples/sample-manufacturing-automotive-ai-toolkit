@@ -22,6 +22,7 @@ from aws_cdk import (
     aws_s3_deployment as s3_deploy,
     aws_lambda as _lambda,
     aws_iam as iam,
+    aws_bedrockagentcore as agentcore,
 )
 from constructs import Construct
 
@@ -133,6 +134,67 @@ class AutomotiveVCycleStack(NestedStack):
             self.guidelines_lambda.grant_invoke(shared_resources["agent_role"])
 
         # ----------------------------------------------------------------
+        # AgentCore Gateway (MCP, CUSTOM_JWT auth via Gateway Cognito)
+        # ----------------------------------------------------------------
+        gw_discovery_url = shared_resources.get("gateway_cognito_discovery_url", "")
+        gw_client_id = shared_resources.get("gateway_cognito_client_id", "")
+
+        self.gateway = agentcore.CfnGateway(
+            self, "DesignGuidesGateway",
+            name="GuidelinesGateway",
+            role_arn=self.gateway_role.role_arn,
+            protocol_type="MCP",
+            authorizer_type="CUSTOM_JWT",
+            authorizer_configuration=agentcore.CfnGateway.AuthorizerConfigurationProperty(
+                custom_jwt_authorizer=agentcore.CfnGateway.CustomJWTAuthorizerConfigurationProperty(
+                    discovery_url=gw_discovery_url,
+                    allowed_clients=[gw_client_id] if gw_client_id else [],
+                ),
+            ),
+            protocol_configuration=agentcore.CfnGateway.GatewayProtocolConfigurationProperty(
+                mcp=agentcore.CfnGateway.MCPGatewayConfigurationProperty(
+                    supported_versions=["2025-03-26"],
+                ),
+            ),
+        )
+
+        agentcore.CfnGatewayTarget(
+            self, "GuidelinesTarget",
+            gateway_identifier=self.gateway.ref,
+            name="GuidelineLambdaTarget",
+            credential_provider_configurations=[
+                agentcore.CfnGatewayTarget.CredentialProviderConfigurationProperty(
+                    credential_provider_type="GATEWAY_IAM_ROLE",
+                ),
+            ],
+            target_configuration=agentcore.CfnGatewayTarget.TargetConfigurationProperty(
+                mcp=agentcore.CfnGatewayTarget.McpTargetConfigurationProperty(
+                    lambda_=agentcore.CfnGatewayTarget.McpLambdaTargetConfigurationProperty(
+                        lambda_arn=self.guidelines_lambda.function_arn,
+                        tool_schema=agentcore.CfnGatewayTarget.ToolSchemaProperty(
+                            inline_payload=[
+                                agentcore.CfnGatewayTarget.ToolDefinitionProperty(
+                                    name="get_technical_guideline",
+                                    description="Retrieve technical design guideline",
+                                    input_schema=agentcore.CfnGatewayTarget.SchemaDefinitionProperty(
+                                        type="object", properties={}, required=[],
+                                    ),
+                                ),
+                                agentcore.CfnGatewayTarget.ToolDefinitionProperty(
+                                    name="list_available_guidelines",
+                                    description="List all available guideline files",
+                                    input_schema=agentcore.CfnGatewayTarget.SchemaDefinitionProperty(
+                                        type="object", properties={}, required=[],
+                                    ),
+                                ),
+                            ],
+                        ),
+                    ),
+                ),
+            ),
+        )
+
+        # ----------------------------------------------------------------
         # Outputs
         # ----------------------------------------------------------------
         CfnOutput(
@@ -149,6 +211,11 @@ class AutomotiveVCycleStack(NestedStack):
             self, "GatewayRoleArn",
             value=self.gateway_role.role_arn,
             description="IAM role ARN for AgentCore Gateway",
+        )
+        CfnOutput(
+            self, "GatewayUrl",
+            value=self.gateway.attr_gateway_url,
+            description="AgentCore Gateway URL for MCP connections",
         )
 
 

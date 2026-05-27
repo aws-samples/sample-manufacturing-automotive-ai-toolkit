@@ -55,10 +55,10 @@ class _PipLocalBundling:
 
 class McpGatewayConstruct(Construct):
     """
-    Discovers MCP servers from the mcp-servers/ directory and deploys them
+    Discovers MCP servers from a configurable directory and deploys them
     as Lambda-backed targets on an AgentCore Gateway.
 
-    Each subdirectory in mcp-servers/ must contain:
+    Each subdirectory must contain:
       - mcp_config.json  (server name, Lambda config, tool definitions)
       - lambda_function.py (or whatever handler the config specifies)
       - requirements.txt   (pip dependencies)
@@ -69,6 +69,10 @@ class McpGatewayConstruct(Construct):
         scope: Construct,
         construct_id: str,
         gateway_role: iam.Role,
+        mcp_servers_path: Optional[str] = None,
+        authorizer_type: str = "AWS_IAM",
+        authorizer_discovery_url: Optional[str] = None,
+        authorizer_allowed_clients: Optional[List[str]] = None,
         **kwargs,
     ) -> None:
         super().__init__(scope, construct_id, **kwargs)
@@ -76,11 +80,15 @@ class McpGatewayConstruct(Construct):
         self.gateway_role = gateway_role
         self.mcp_servers: List[Dict[str, Any]] = []
         self.lambda_functions: Dict[str, lambda_.Function] = {}
+        self._mcp_servers_path = mcp_servers_path
+        self._authorizer_type = authorizer_type
+        self._authorizer_discovery_url = authorizer_discovery_url
+        self._authorizer_allowed_clients = authorizer_allowed_clients or []
 
         self._discover_mcp_servers()
 
         if not self.mcp_servers:
-            print("No MCP servers found in mcp-servers/")
+            print("No MCP servers found")
             return
 
         self._create_gateway()
@@ -96,11 +104,14 @@ class McpGatewayConstruct(Construct):
 
     def _discover_mcp_servers(self) -> None:
         """Scan mcp-servers/ directory for server configs."""
-        current_dir = os.path.dirname(os.path.abspath(__file__))
-        workspace_root = os.path.dirname(
-            os.path.dirname(os.path.dirname(current_dir))
-        )
-        mcp_servers_path = os.path.join(workspace_root, "mcp-servers")
+        if self._mcp_servers_path:
+            mcp_servers_path = self._mcp_servers_path
+        else:
+            current_dir = os.path.dirname(os.path.abspath(__file__))
+            workspace_root = os.path.dirname(
+                os.path.dirname(os.path.dirname(current_dir))
+            )
+            mcp_servers_path = os.path.join(workspace_root, "mcp-servers")
 
         if not os.path.exists(mcp_servers_path):
             return
@@ -130,19 +141,32 @@ class McpGatewayConstruct(Construct):
         """Create the AgentCore MCP Gateway."""
         stack_name = Stack.of(self).stack_name
 
-        self.gateway = agentcore.CfnGateway(
-            self,
-            "McpGateway",
+        gateway_props = dict(
             name=f"{stack_name}-mcp-gateway",
             role_arn=self.gateway_role.role_arn,
             protocol_type="MCP",
-            authorizer_type="AWS_IAM",
+            authorizer_type=self._authorizer_type,
             protocol_configuration=agentcore.CfnGateway.GatewayProtocolConfigurationProperty(
                 mcp=agentcore.CfnGateway.MCPGatewayConfigurationProperty(
                     supported_versions=["2025-03-26"],
                 ),
             ),
         )
+
+        if self._authorizer_type == "CUSTOM_JWT" and self._authorizer_discovery_url:
+            gateway_props["authorizer_configuration"] = agentcore.CfnGateway.AuthorizerConfigurationProperty(
+                custom_jwt_authorizer=agentcore.CfnGateway.CustomJWTAuthorizerConfigurationProperty(
+                    discovery_url=self._authorizer_discovery_url,
+                    allowed_clients=self._authorizer_allowed_clients,
+                ),
+            )
+
+        self.gateway = agentcore.CfnGateway(self, "McpGateway", **gateway_props)
+
+    @property
+    def gateway_url(self) -> str:
+        """The Gateway URL for MCP connections."""
+        return self.gateway.attr_gateway_url
 
     # ------------------------------------------------------------------
     # Per-server resources (Lambda + GatewayTarget)
