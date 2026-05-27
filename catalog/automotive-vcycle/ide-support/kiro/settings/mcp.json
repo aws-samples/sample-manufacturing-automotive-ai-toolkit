@@ -1,0 +1,40 @@
+{
+  "mcpServers": {
+    "automotive-requirements": {
+      "command": "./catalog/automotive-vcycle/mcp-servers/automotive-requirements-mcp/.venv/bin/python",
+      "args": [
+        "catalog/automotive-vcycle/mcp-servers/automotive-requirements-mcp/requirements-server.py"
+      ],
+      "env": {
+        "AWS_REGION": "us-west-2",
+        "FASTMCP_LOG_LEVEL": "INFO",
+        "COGNITO_CLIENT_ID": "19gtupsjnnxxxzzz5q", // put your own cognito client id from the notebooks or .bedrock_agentcore.yaml here
+        "COGNITO_USERNAME": "testuser",
+        "COGNITO_PASSWORD": "ChangeMe123!"
+      },
+      "disabled": false,
+      "autoApprove": [
+        "automotive_requirements_analyzer"
+      ],
+      "disabledTools": []
+    },
+    "automotive-design": {
+      "command": "./catalog/automotive-vcycle/mcp-servers/automotive-requirements-mcp/.venv/bin/python",
+      "args": [
+        "catalog/automotive-vcycle/mcp-servers/automotive-design-mcp/design-server.py"
+      ],
+      "env": {
+        "AWS_REGION": "us-west-2",
+        "FASTMCP_LOG_LEVEL": "INFO",
+        "COGNITO_CLIENT_ID": "19gtupsjnnxxxzzz5q", // put your own cognito client id from the notebooks or .bedrock_agentcore.yaml here
+        "COGNITO_USERNAME": "testuser",
+        "COGNITO_PASSWORD": "ChangeMe123!"
+      },
+      "disabled": false,
+      "autoApprove": [
+        "automotive_design_generator"
+      ],
+      "disabledTools": []
+    }
+  }
+}

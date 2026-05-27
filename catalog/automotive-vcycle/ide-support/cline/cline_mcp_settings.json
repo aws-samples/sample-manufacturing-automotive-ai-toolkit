@@ -1,0 +1,21 @@
+{
+  "mcpServers": {
+    "automotive-coding-cline": {
+      "_comment": "Replace command and args paths with your actual python and script paths",
+      "disabled": false,
+      "timeout": 3600,
+      "type": "stdio",
+      "command": "<path-to>/.venv/bin/python",
+      "args": [
+        "<path-to>/mcp-servers/automotive-coding-mcp/coding-server.py"
+      ],
+      "env": {
+        "AWS_REGION": "us-west-2",
+        "FASTMCP_LOG_LEVEL": "INFO",
+        "COGNITO_CLIENT_ID": "TODO: Replace with your COGNITO client id (see notebook or .bedrock_agentcore.yaml)",
+        "COGNITO_USERNAME": "testuser",
+        "COGNITO_PASSWORD": "MyPassword123!"
+      }
+    }
+  }
+}
