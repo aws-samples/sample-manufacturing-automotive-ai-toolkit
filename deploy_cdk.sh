@@ -13,6 +13,7 @@ SKIP_NAG=false
 AUTH_USER=""
 AUTH_PASSWORD=""
 ACCOUNT=""
+TARGET_PROJECT=""
 while [[ $# -gt 0 ]]; do
   case $1 in
     --stack-name)
@@ -39,9 +40,13 @@ while [[ $# -gt 0 ]]; do
       ACCOUNT="$2"
       shift 2
       ;;
+    --target-project)
+      TARGET_PROJECT="$2"
+      shift 2
+      ;;
     *)
       echo "Unknown option: $1"
-      echo "Usage: $0 [--stack-name NAME] [--region REGION] [--skip-nag] [--auth-user USER] [--auth-password PASSWORD] [--account ACCOUNT]"
+      echo "Usage: $0 [--stack-name NAME] [--region REGION] [--skip-nag] [--auth-user USER] [--auth-password PASSWORD] [--account ACCOUNT] [--target-project PROJECT]"
       exit 1
       ;;
   esac
@@ -117,19 +122,26 @@ cd cdk
 export AUTH_USER="$AUTH_USER"
 export AUTH_PASSWORD="$AUTH_PASSWORD"
 
+# Build context args for selective deployment
+TARGET_PROJECT_CONTEXT=""
+if [ -n "$TARGET_PROJECT" ]; then
+  TARGET_PROJECT_CONTEXT="--context targetProject=$TARGET_PROJECT"
+  echo "Selective deploy: targeting project '$TARGET_PROJECT'"
+fi
+
 # Set account for all CDK apps if specified
 if [ -n "$ACCOUNT" ]; then
   export CDK_DEFAULT_ACCOUNT="$ACCOUNT"
   if [ "$SKIP_NAG" = true ]; then
-    cdk deploy "$STACK_NAME" --require-approval never --context region="$REGION" --context account="$ACCOUNT" --context skipNag=true
+    cdk deploy "$STACK_NAME" --require-approval never --context region="$REGION" --context account="$ACCOUNT" --context skipNag=true $TARGET_PROJECT_CONTEXT
   else
-    cdk deploy "$STACK_NAME" --require-approval never --context region="$REGION" --context account="$ACCOUNT"
+    cdk deploy "$STACK_NAME" --require-approval never --context region="$REGION" --context account="$ACCOUNT" $TARGET_PROJECT_CONTEXT
   fi
 else
   if [ "$SKIP_NAG" = true ]; then
-    cdk deploy "$STACK_NAME" --require-approval never --context region="$REGION" --context skipNag=true
+    cdk deploy "$STACK_NAME" --require-approval never --context region="$REGION" --context skipNag=true $TARGET_PROJECT_CONTEXT
   else
-    cdk deploy "$STACK_NAME" --require-approval never --context region="$REGION"
+    cdk deploy "$STACK_NAME" --require-approval never --context region="$REGION" $TARGET_PROJECT_CONTEXT
   fi
 fi
 

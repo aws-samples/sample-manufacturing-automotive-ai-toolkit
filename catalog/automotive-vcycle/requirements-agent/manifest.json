@@ -1,0 +1,12 @@
+{
+  "agents": [
+    {
+      "id": "automotive_requirements_analyzer",
+      "name": "Automotive Requirements Analyzer",
+      "version": "1.0.0",
+      "description": "Multi-agent graph system that analyzes automotive business requirements for consistency and generates user acceptance tests.",
+      "type": "agentcore",
+      "entrypoint": "requirements_analyzer.py"
+    }
+  ]
+}

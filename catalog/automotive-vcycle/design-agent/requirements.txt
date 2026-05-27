@@ -1,0 +1,6 @@
+# Core dependencies for Enhanced Design Agent with AgentCore Gateway
+bedrock-agentcore
+strands-agents
+boto3
+mcp
+requests

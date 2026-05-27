@@ -18,6 +18,7 @@ from .constructs.storage import StorageConstruct
 from .constructs.iam import IAMConstruct
 from .constructs.compute import ComputeConstruct
 from .constructs.codebuild import CodeBuildConstruct
+from .constructs.notebook import NotebookConstruct
 from .nested_stack_registry import AgentRegistry, CDKStackConfig, AgentCoreConfig
 
 
@@ -128,6 +129,17 @@ class MainStack(cdk.Stack):
         self.agentcore_projects = []
         print(
             f"Discovered {len(agentcore_agents)} AgentCore agents - will be deployed by CodeBuild")
+
+        # Create SageMaker notebooks for notebook-type catalog entries
+        for nb_config in self.agent_registry.discovered_notebooks:
+            sanitized = ''.join(c for c in nb_config.name if c.isalnum())
+            notebook_name = f"{self.stack_name}-{nb_config.name}"
+            NotebookConstruct(
+                self, f"Notebook{sanitized}",
+                notebook_name=notebook_name,
+                shared_resources=shared_resources,
+            )
+            print(f"Created notebook for: {nb_config.name}")
 
     def _create_parameters(self) -> None:
         """Create CDK parameters matching the CloudFormation template"""

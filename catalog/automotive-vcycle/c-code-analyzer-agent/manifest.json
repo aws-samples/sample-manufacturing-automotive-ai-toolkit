@@ -1,0 +1,12 @@
+{
+  "agents": [
+    {
+      "id": "automotive_c_code_analyzer",
+      "name": "Automotive C Code Analyzer",
+      "version": "1.0.0",
+      "description": "Analyzes C code for automotive coding standards compliance and conditionally generates unit tests.",
+      "type": "agentcore",
+      "entrypoint": "c_code_analyzer.py"
+    }
+  ]
+}

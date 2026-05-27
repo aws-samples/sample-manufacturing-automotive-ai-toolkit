@@ -93,7 +93,12 @@ class CodeBuildConstruct(Construct):
             build_spec=codebuild.BuildSpec.from_object(
                 self._get_agentcore_buildspec()),
             timeout=Duration.minutes(60),
-            cache=codebuild.Cache.local(codebuild.LocalCacheMode.DOCKER_LAYER)
+            cache=codebuild.Cache.local(codebuild.LocalCacheMode.DOCKER_LAYER),
+            artifacts=codebuild.Artifacts.s3(
+                bucket=self.resource_bucket,
+                path="build-artifacts",
+                include_build_id=True
+            )
         )
 
     def _get_agentcore_buildspec(self) -> Dict[str, Any]:
@@ -189,7 +194,8 @@ class CodeBuildConstruct(Construct):
                 "files": [
                     "agentcore_deployment_results.json",
                     "agents.json",
-                    "ui/src/config/agents.json"
+                    "ui/src/config/agents.json",
+                    "catalog/**/.bedrock_agentcore.yaml"
                 ],
                 "discard-paths": False
             },
