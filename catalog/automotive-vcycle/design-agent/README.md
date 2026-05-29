@@ -61,7 +61,7 @@ This section describes the deployment via notebooks. If you want to deploy via m
 Run notebook cells. This will deploy the agent to the agentcore runtime and an MCP server retrieving guidelines to AgentCore Gateway.
 
 ### 2. Adjust the Settings/Steering Files for Local IDE
-- For Kiro, use the default setup in the workspace (`./kiro` folder). 
+- For Kiro, use the files under `./ide-support/kiro` folder (choose files selectively based on your agent).
 - For Cline, use `./ide-support/cline`.
 - Adjust the Cognito Client-Id from your deployment from step 1.
 - Adjust your local Python path to the `design-server.py` if necessary.
