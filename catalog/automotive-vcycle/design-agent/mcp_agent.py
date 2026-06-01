@@ -54,7 +54,6 @@ def get_token(user_pool_id: str, client_id: str, client_secret: str, scope_strin
 scopeString=f"{RESOURCE_SERVER_ID}/gateway:read {RESOURCE_SERVER_ID}/gateway:write"
 token_response = get_token(GATEWAY_USER_POOL_ID, GATEWAY_CLIENT_ID, GATEWAY_CLIENT_SECRET,scopeString,REGION)
 token = token_response["access_token"]
-print("Token response:", token)
 
 def create_streamable_http_transport():
     return streamablehttp_client(GATEWAY_URL,headers={"Authorization": f"Bearer {token}"})

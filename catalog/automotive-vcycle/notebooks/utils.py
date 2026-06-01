@@ -7,8 +7,8 @@ from botocore.exceptions import ClientError
 import requests
 import os
 
-USER_NAME = os.environ.get("COGNITO_USERNAME", "testuser")
-PASSWORD = os.environ.get("COGNITO_PASSWORD", "ChangeMe123!")
+USER_NAME = os.environ.get("AUTH_USER", "admin")
+PASSWORD = os.environ.get("AUTH_PASSWORD", "changeme")
 TEMP_ADMIN_PASSWORD = "Temp123!"
 
 
