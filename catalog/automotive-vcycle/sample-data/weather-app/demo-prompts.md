@@ -20,5 +20,5 @@ Implement a first version of the weather app focused on:
 
 ## Implement all Tasks of Spec (Kiro CLI)
 ```
-Implement the non-optional tasks of the .kiro/specs/weather-display-mvp/ spec using the ui-design under weather-app/business-requirements/ui-design.png, and test its deployment using the locally running emulator
+Implement the non-optional tasks of the .kiro/specs/weather-app/ spec using the ui-design under catalog/automotive-vcycle/sample-data/weather-app/business-requirements/ui-design.png, and test its deployment using the locally running emulator
 ```

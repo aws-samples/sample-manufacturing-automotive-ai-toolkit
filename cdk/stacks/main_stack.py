@@ -83,13 +83,17 @@ class MainStack(cdk.Stack):
         )
 
         # 4. Create Cognito construct (User Pool for AgentCore JWT auth)
-        self.cognito_construct = CognitoConstruct(self, "Cognito")
+        import os
+        self.cognito_construct = CognitoConstruct(
+            self, "Cognito",
+            username=os.environ.get('AUTH_USER', 'testuser'),
+            password=os.environ.get('AUTH_PASSWORD', 'ChangeMe123!'),
+        )
 
         # 4b. Create Gateway Cognito construct (OAuth M2M for Gateway auth)
         self.gateway_cognito_construct = GatewayCognitoConstruct(self, "GatewayCognito")
 
         # 5. Create CodeBuild construct (deployment projects)
-        import os
         self.codebuild_construct = CodeBuildConstruct(
             self, "CodeBuild",
             agent_role=self.iam_construct.bedrock_agent_role,

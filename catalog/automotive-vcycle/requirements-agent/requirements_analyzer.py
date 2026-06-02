@@ -175,7 +175,7 @@ def automotive_requirements_analyzer(payload):
 
 {requirements_docs}
 
-Please use the analyze_requirements_consistency tool to analyze the requirements and provide a comprehensive report on any issues found."""
+Use the check_for_incomplete_requirements tool to analyze the requirements and provide a comprehensive report on any issues found."""
     
     # Execute the multi-agent graph
     try:

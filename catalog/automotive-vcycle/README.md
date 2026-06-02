@@ -81,7 +81,7 @@ The project integrates with MA3T's deployment pipeline:
 1. **CDK stack** is discovered by `nested_stack_registry.py` via the top-level `manifest.json`
 2. **Per-agent manifests** are discovered by `build_launch_agentcore.py` via `os.walk`
 3. Run `cd ma3t && ./deploy_cdk.sh` to deploy infrastructure and agents
-4. After the deployment, retrieve the .bedrock_agentcore.yaml files from the S3 bucket and save them under `catalog/automotive-vcycle/design-agent/.bedrock_agentcore.yaml`, `catalog/automotive-vcycle/requirements-agent/.bedrock_agentcore.yaml` or `catalog/automotive-vcycle/c-code-analyzer-agent/.bedrock_agentcore.yaml` respectively.
+4. After the deployment, retrieve the .bedrock_agentcore.yaml files from the S3 bucket (`ResourceBucketName` from the stack outputs, path: `build-artifacts/latest/catalog/automotive-vcycle/`) and save them under `catalog/automotive-vcycle/design-agent/.bedrock_agentcore.yaml`, `catalog/automotive-vcycle/requirements-agent/.bedrock_agentcore.yaml` or `catalog/automotive-vcycle/c-code-analyzer-agent/.bedrock_agentcore.yaml` respectively.
 5. Adjust the Settings/Steering Files for Local IDE
 - For Kiro, extend the default setup in the workspace (`./kiro` folder) by adding the c-code analyzer configuration. Add additional steering file under '/ide-support/kiro'
 - For Cline, use `./ide-support/cline`.
