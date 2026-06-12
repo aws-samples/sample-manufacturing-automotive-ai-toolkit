@@ -138,6 +138,54 @@ def inject_dockerfile_deps(agent_path, dockerfile_path):
     logger.info(f"Injected Dockerfile.deps into {dockerfile_path}")
 
 
+def get_gateway_env_vars(agent_id):
+    """
+    Return env_vars dict for agents that need Gateway access (design agent).
+    Reads GATEWAY_* env vars set by CodeBuild and queries GATEWAY_URL from CF outputs.
+    """
+    # Only the design agent needs gateway env vars
+    if agent_id != "automotive_design_generator":
+        return None
+
+    gateway_user_pool_id = os.environ.get('GATEWAY_USER_POOL_ID')
+    gateway_client_id = os.environ.get('GATEWAY_CLIENT_ID')
+    gateway_client_secret = os.environ.get('GATEWAY_CLIENT_SECRET')
+    resource_server_id = os.environ.get('RESOURCE_SERVER_ID')
+
+    if not all([gateway_user_pool_id, gateway_client_id, gateway_client_secret]):
+        logger.warning("Gateway Cognito env vars not set, skipping env_vars for design agent")
+        return None
+
+    # Query Gateway URL from AgentCore API (the role has bedrock-agentcore:* permissions)
+    gateway_url = os.environ.get('GATEWAY_URL')
+    if not gateway_url:
+        try:
+            agentcore = boto3.client('bedrock-agentcore-control', region_name=os.environ.get('AWS_REGION', 'us-west-2'))
+            gateways = agentcore.list_gateways(maxResults=10)
+            for gw in gateways.get('items', []):
+                if gw.get('status') == 'READY' and gw.get('protocolType') == 'MCP':
+                    gw_detail = agentcore.get_gateway(gatewayIdentifier=gw['gatewayId'])
+                    gateway_url = gw_detail.get('gatewayUrl')
+                    logger.info(f"Found Gateway URL from API: {gateway_url}")
+                    break
+        except Exception as e:
+            logger.warning(f"Could not query Gateway URL from AgentCore API: {e}")
+
+    if not gateway_url:
+        logger.warning("GATEWAY_URL not available, skipping env_vars for design agent")
+        return None
+
+    env_vars = {
+        "GATEWAY_URL": gateway_url,
+        "GATEWAY_USER_POOL_ID": gateway_user_pool_id,
+        "GATEWAY_CLIENT_ID": gateway_client_id,
+        "GATEWAY_CLIENT_SECRET": gateway_client_secret,
+        "RESOURCE_SERVER_ID": resource_server_id,
+    }
+    logger.info(f"Passing gateway env_vars to design agent: GATEWAY_URL={gateway_url}")
+    return env_vars
+
+
 def deploy_agentcore_agent(agent_path, agent_id, agent_name, entrypoint, region, execution_role_arn):
     """
     Deploy an AgentCore agent
@@ -180,6 +228,18 @@ def deploy_agentcore_agent(agent_path, agent_id, agent_name, entrypoint, region,
             requirements_file = str(requirements_path) if requirements_path.exists() else None
             print(f"DEBUG: cwd={os.getcwd()}, requirements_file={requirements_file}", flush=True)
             
+            # Build authorizer configuration from environment
+            cognito_discovery_url = os.environ.get('COGNITO_DISCOVERY_URL')
+            cognito_client_id = os.environ.get('COGNITO_CLIENT_ID')
+            authorizer_config = None
+            if cognito_discovery_url and cognito_client_id:
+                authorizer_config = {
+                    "customJWTAuthorizer": {
+                        "discoveryUrl": cognito_discovery_url,
+                        "allowedClients": [cognito_client_id]
+                    }
+                }
+
             # Configure the agent
             logger.info(f"Configuring agent {agent_id}")
             config_result = configure_bedrock_agentcore(
@@ -191,7 +251,8 @@ def deploy_agentcore_agent(agent_path, agent_id, agent_name, entrypoint, region,
                 region=region,
                 container_runtime="docker",
                 verbose=True,
-                requirements_file=requirements_file
+                requirements_file=requirements_file,
+                authorizer_configuration=authorizer_config,
             )
             
             # Inject system dependencies from Dockerfile.deps if present
@@ -221,7 +282,8 @@ def deploy_agentcore_agent(agent_path, agent_id, agent_name, entrypoint, region,
             
             # Launch the agent
             logger.info(f"Launching agent {agent_id}")
-            result = launch_bedrock_agentcore(config_path, local=False, auto_update_on_conflict=True)
+            env_vars = get_gateway_env_vars(agent_id)
+            result = launch_bedrock_agentcore(config_path, local=False, auto_update_on_conflict=True, env_vars=env_vars)
             
             # Extract and return deployment information
             deployment_info = {

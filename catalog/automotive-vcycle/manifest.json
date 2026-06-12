@@ -1,0 +1,17 @@
+{
+  "group": ["Automotive V-Cycle"],
+  "agents": [
+    {
+      "id": "automotive-vcycle",
+      "name": "Automotive V-Cycle Development Agents",
+      "version": "1.0.0",
+      "description": "Multi-agent V-cycle system: requirements analysis, design generation, and C code compliance checking.",
+      "type": "notebook"
+    }
+  ],
+  "infrastructure": {
+    "cdk": true,
+    "stack_class": "AutomotiveVCycleStack",
+    "stack_path": "cdk/stack.py"
+  }
+}

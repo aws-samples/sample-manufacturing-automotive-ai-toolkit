@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Weather App Specific -->
+    <string name="app_name">Weather</string>
+    
+    <!-- Generic Automotive Strings (Reusable) -->
+    <string name="car_loading">Loading…</string>
+    <string name="car_error_generic">Something went wrong</string>
+    <string name="car_error_network">Network error. Please check your connection.</string>
+    <string name="car_error_location">Unable to get location</string>
+</resources>

@@ -76,6 +76,16 @@ class AgentCoreConfig:
         return f"AgentCoreConfig(name='{self.name}', path='{self.path}', category='{self.category}')"
 
 
+class NotebookConfig:
+    """Configuration for a notebook-type catalog entry"""
+    def __init__(self, name: str, path: str):
+        self.name = name
+        self.path = path
+
+    def __repr__(self):
+        return f"NotebookConfig(name='{self.name}', path='{self.path}')"
+
+
 class AgentRegistry:
     """
     Auto-discover and manage both CDK nested stacks and AgentCore agents.
@@ -83,12 +93,14 @@ class AgentRegistry:
 
     def __init__(self, main_stack: cdk.Stack):
         self.main_stack = main_stack
+        self.target_project = main_stack.node.try_get_context("targetProject")
         # Get the path relative to the workspace root, not the cdk directory
         current_dir = os.path.dirname(os.path.abspath(__file__))
         workspace_root = os.path.dirname(os.path.dirname(current_dir))
         self.catalog_path = os.path.join(workspace_root, "catalog")
         self.discovered_cdk_stacks: List[CDKStackConfig] = []
         self.discovered_agentcore_agents: List[AgentCoreConfig] = []
+        self.discovered_notebooks: List[NotebookConfig] = []
 
     def discover_agents(self) -> Tuple[List[CDKStackConfig], List[AgentCoreConfig]]:
         """
@@ -102,6 +114,7 @@ class AgentRegistry:
 
         cdk_stacks = []
         agentcore_agents = []
+        notebooks = []
 
         # Scan all projects in catalog (flat structure)
         for agent_name in os.listdir(self.catalog_path):
@@ -125,10 +138,23 @@ class AgentRegistry:
                 agentcore_agents.append(agentcore_config)
                 print(f"    Found AgentCore agent: {agentcore_config}")
 
+            # Check for notebook type
+            notebook_config = self._detect_notebook(agent_name, agent_path)
+            if notebook_config:
+                notebooks.append(notebook_config)
+                print(f"    Found notebook: {notebook_config}")
+
+        if self.target_project:
+            cdk_stacks = [s for s in cdk_stacks if s.name == self.target_project]
+            agentcore_agents = [a for a in agentcore_agents if a.name == self.target_project]
+            notebooks = [n for n in notebooks if n.name == self.target_project]
+            print(f"Selective deploy: filtered to project '{self.target_project}'")
+
         self.discovered_cdk_stacks = cdk_stacks
         self.discovered_agentcore_agents = agentcore_agents
+        self.discovered_notebooks = notebooks
 
-        print(f"Discovery complete: {len(cdk_stacks)} CDK stacks, {len(agentcore_agents)} AgentCore agents")
+        print(f"Discovery complete: {len(cdk_stacks)} CDK stacks, {len(agentcore_agents)} AgentCore agents, {len(notebooks)} notebooks")
         return cdk_stacks, agentcore_agents
 
     def _detect_cdk_stack(self, agent_name: str, agent_path: str, category: str) -> Optional[CDKStackConfig]:
@@ -171,20 +197,6 @@ class AgentRegistry:
         except (json.JSONDecodeError, KeyError) as e:
             print(f"    Warning: Error reading manifest.json for {agent_name}: {e}")
             return None
-            return None
-
-        # Try to determine the stack class name from app.py
-        stack_class = self._extract_stack_class_name(app_py_path, agent_name)
-
-        if stack_class:
-            return CDKStackConfig(
-                name=agent_name,
-                path=cdk_path,
-                stack_class=stack_class,
-                category=category
-            )
-
-        return None
 
     def _detect_agentcore_agent(self, agent_name: str, agent_path: str, category: str) -> Optional[AgentCoreConfig]:
         """Detect if an agent is an AgentCore agent"""
@@ -216,6 +228,23 @@ class AgentRegistry:
                         )
             except Exception as e:
                 print(f"Warning: Could not parse manifest for {agent_name}: {e}")
+
+        return None
+
+    def _detect_notebook(self, agent_name: str, agent_path: str) -> Optional[NotebookConfig]:
+        """Detect if a catalog entry has type 'notebook' in its agents list."""
+        manifest_path = os.path.join(agent_path, "manifest.json")
+        if not os.path.exists(manifest_path):
+            return None
+
+        try:
+            with open(manifest_path, 'r') as f:
+                manifest = json.load(f)
+            for agent in manifest.get("agents", []):
+                if agent.get("type") == "notebook":
+                    return NotebookConfig(name=agent_name, path=agent_path)
+        except Exception:
+            pass
 
         return None
 

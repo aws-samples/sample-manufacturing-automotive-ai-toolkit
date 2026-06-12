@@ -1,0 +1,12 @@
+{
+  "agents": [
+    {
+      "id": "automotive_design_generator",
+      "name": "Automotive Design Generator",
+      "version": "1.0.0",
+      "description": "Generates comprehensive technical design documents from validated requirements using AgentCore Gateway MCP tools.",
+      "type": "agentcore",
+      "entrypoint": "mcp_agent.py"
+    }
+  ]
+}

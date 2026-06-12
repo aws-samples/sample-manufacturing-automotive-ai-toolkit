@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Generic Automotive Dimensions (Reusable - AAOS Guidelines) -->
+    <!-- AAOS touch target minimum: 76dp, we use 64dp as practical minimum -->
+    <dimen name="car_touch_target_min">76dp</dimen>
+    <dimen name="car_touch_target_practical">64dp</dimen>
+    <dimen name="car_padding">24dp</dimen>
+    <dimen name="car_padding_small">8dp</dimen>
+    <dimen name="car_padding_large">32dp</dimen>
+    <dimen name="car_card_radius">16dp</dimen>
+    <dimen name="car_button_radius">12dp</dimen>
+    
+    <!-- Generic Automotive Typography (Reusable) -->
+    <dimen name="car_text_xlarge">48sp</dimen>
+    <dimen name="car_text_large">40sp</dimen>
+    <dimen name="car_text_medium">24sp</dimen>
+    <dimen name="car_text_normal">20sp</dimen>
+    <dimen name="car_text_small">18sp</dimen>
+    <dimen name="car_text_xsmall">16sp</dimen>
+</resources>

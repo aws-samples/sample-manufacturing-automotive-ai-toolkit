@@ -18,6 +18,8 @@ from .constructs.storage import StorageConstruct
 from .constructs.iam import IAMConstruct
 from .constructs.compute import ComputeConstruct
 from .constructs.codebuild import CodeBuildConstruct
+from .constructs.cognito import CognitoConstruct, GatewayCognitoConstruct
+from .constructs.notebook import NotebookConstruct
 from .nested_stack_registry import AgentRegistry, CDKStackConfig, AgentCoreConfig
 
 
@@ -80,8 +82,18 @@ class MainStack(cdk.Stack):
             resource_bucket=self.storage_construct.resource_bucket
         )
 
-        # 4. Create CodeBuild construct (deployment projects)
+        # 4. Create Cognito construct (User Pool for AgentCore JWT auth)
         import os
+        self.cognito_construct = CognitoConstruct(
+            self, "Cognito",
+            username=os.environ.get('AUTH_USER', 'testuser'),
+            password=os.environ.get('AUTH_PASSWORD', 'ChangeMe123!'),
+        )
+
+        # 4b. Create Gateway Cognito construct (OAuth M2M for Gateway auth)
+        self.gateway_cognito_construct = GatewayCognitoConstruct(self, "GatewayCognito")
+
+        # 5. Create CodeBuild construct (deployment projects)
         self.codebuild_construct = CodeBuildConstruct(
             self, "CodeBuild",
             agent_role=self.iam_construct.bedrock_agent_role,
@@ -90,7 +102,12 @@ class MainStack(cdk.Stack):
             apprunner_instance_role=self.iam_construct.apprunner_instance_role,
             bedrock_model_id=self.bedrock_model_param.value_as_string,
             auth_user=os.environ.get('AUTH_USER', 'admin'),
-            auth_password=os.environ.get('AUTH_PASSWORD', 'changeme')
+            auth_password=os.environ.get('AUTH_PASSWORD', 'changeme'),
+            cognito_discovery_url=self.cognito_construct.discovery_url,
+            cognito_client_id=self.cognito_construct.client_id,
+            gateway_user_pool_id=self.gateway_cognito_construct.gateway_user_pool_id,
+            gateway_client_id=self.gateway_cognito_construct.gateway_client_id,
+            gateway_client_secret=self.gateway_cognito_construct.gateway_client_secret,
         )
 
         # Store references for easy access
@@ -128,6 +145,17 @@ class MainStack(cdk.Stack):
         self.agentcore_projects = []
         print(
             f"Discovered {len(agentcore_agents)} AgentCore agents - will be deployed by CodeBuild")
+
+        # Create SageMaker notebooks for notebook-type catalog entries
+        for nb_config in self.agent_registry.discovered_notebooks:
+            sanitized = ''.join(c for c in nb_config.name if c.isalnum())
+            notebook_name = f"{self.stack_name}-{nb_config.name}"
+            NotebookConstruct(
+                self, f"Notebook{sanitized}",
+                notebook_name=notebook_name,
+                shared_resources=shared_resources,
+            )
+            print(f"Created notebook for: {nb_config.name}")
 
     def _create_parameters(self) -> None:
         """Create CDK parameters matching the CloudFormation template"""
@@ -399,7 +427,11 @@ def handler(event, context):
             'storage_construct': self.storage_construct,
             'iam_construct': self.iam_construct,
             'compute_construct': self.compute_construct,
-            'codebuild_construct': self.codebuild_construct
+            'codebuild_construct': self.codebuild_construct,
+
+            # Gateway Cognito (OAuth M2M for design agent → Gateway)
+            'gateway_cognito_discovery_url': f"https://cognito-idp.{self.region}.amazonaws.com/{self.gateway_cognito_construct.gateway_user_pool_id}/.well-known/openid-configuration",
+            'gateway_cognito_client_id': self.gateway_cognito_construct.gateway_client_id,
         }
 
     def get_agent_summary(self) -> Dict[str, Any]:

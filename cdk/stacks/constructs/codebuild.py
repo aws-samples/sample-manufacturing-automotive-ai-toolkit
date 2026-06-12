@@ -27,6 +27,11 @@ class CodeBuildConstruct(Construct):
                  bedrock_model_id: str = "anthropic.claude-3-haiku-20240307-v1:0",
                  auth_user: str = "admin",
                  auth_password: str = "changeme",
+                 cognito_discovery_url: str = "",
+                 cognito_client_id: str = "",
+                 gateway_user_pool_id: str = "",
+                 gateway_client_id: str = "",
+                 gateway_client_secret: str = "",
                  **kwargs) -> None:
         super().__init__(scope, construct_id)
 
@@ -37,6 +42,11 @@ class CodeBuildConstruct(Construct):
         self.bedrock_model_id = bedrock_model_id
         self.auth_user = auth_user
         self.auth_password = auth_password
+        self.cognito_discovery_url = cognito_discovery_url
+        self.cognito_client_id = cognito_client_id
+        self.gateway_user_pool_id = gateway_user_pool_id
+        self.gateway_client_id = gateway_client_id
+        self.gateway_client_secret = gateway_client_secret
 
         # Create AgentCore deployment project
         self._create_agentcore_deployment_project()
@@ -72,6 +82,24 @@ class CodeBuildConstruct(Construct):
             ),
             'AUTH_PASSWORD': codebuild.BuildEnvironmentVariable(
                 value=self.auth_password
+            ),
+            'COGNITO_DISCOVERY_URL': codebuild.BuildEnvironmentVariable(
+                value=self.cognito_discovery_url
+            ),
+            'COGNITO_CLIENT_ID': codebuild.BuildEnvironmentVariable(
+                value=self.cognito_client_id
+            ),
+            'GATEWAY_USER_POOL_ID': codebuild.BuildEnvironmentVariable(
+                value=self.gateway_user_pool_id
+            ),
+            'GATEWAY_CLIENT_ID': codebuild.BuildEnvironmentVariable(
+                value=self.gateway_client_id
+            ),
+            'GATEWAY_CLIENT_SECRET': codebuild.BuildEnvironmentVariable(
+                value=self.gateway_client_secret
+            ),
+            'RESOURCE_SERVER_ID': codebuild.BuildEnvironmentVariable(
+                value="AutomotiveGatewayResId"
             )
         }
 
@@ -93,7 +121,12 @@ class CodeBuildConstruct(Construct):
             build_spec=codebuild.BuildSpec.from_object(
                 self._get_agentcore_buildspec()),
             timeout=Duration.minutes(60),
-            cache=codebuild.Cache.local(codebuild.LocalCacheMode.DOCKER_LAYER)
+            cache=codebuild.Cache.local(codebuild.LocalCacheMode.DOCKER_LAYER),
+            artifacts=codebuild.Artifacts.s3(
+                bucket=self.resource_bucket,
+                path="build-artifacts",
+                include_build_id=True
+            )
         )
 
     def _get_agentcore_buildspec(self) -> Dict[str, Any]:
@@ -142,6 +175,9 @@ class CodeBuildConstruct(Construct):
                         "echo 'Listing and managing AgentCore agents...'",
                         "python scripts/build_launch_agentcore.py --region $AWS_REGION --execution-role-arn $EXECUTION_ROLE_ARN",
                         "echo 'AgentCore management completed'",
+                        "echo 'Uploading agent config artifacts to S3...'",
+                        "find catalog -name '.bedrock_agentcore.yaml' | while read f; do aws s3 cp \"$f\" \"s3://$S3_BUCKET/build-artifacts/latest/$f\"; done",
+                        "aws s3 cp agentcore_deployment_results.json s3://$S3_BUCKET/build-artifacts/latest/agentcore_deployment_results.json || true",
                         "",
                         "echo 'Starting UI build...'",
                         "cd ui",
@@ -189,7 +225,8 @@ class CodeBuildConstruct(Construct):
                 "files": [
                     "agentcore_deployment_results.json",
                     "agents.json",
-                    "ui/src/config/agents.json"
+                    "ui/src/config/agents.json",
+                    "catalog/**/.bedrock_agentcore.yaml"
                 ],
                 "discard-paths": False
             },
