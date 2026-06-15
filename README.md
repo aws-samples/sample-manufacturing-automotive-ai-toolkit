@@ -23,6 +23,9 @@ An agent that accelerates industrial equipment onboarding by generating Shopfloo
 ### [Vehicle Data Discovery](catalog/vehicle-data-discovery)
 A multi-agent system for autonomous vehicle fleet data discovery and HIL (Hardware-in-the-Loop) testing optimization.
 
+### [Agentic Automotive V-Cycle Assistant](catalog/automotive-vcycle)
+An agentic assistant that supports the automotive software V-Cycle from requirements through implementation, built with Kiro and Amazon Bedrock AgentCore. The capabilities are demonstrated on a brown-field infotainment system, where the coding assistant develops an Android weather app end-to-end, from requirements analysis to high-level technical design, spec-driven development, and code generation.
+
 ---
 
 ## Full Library Installation
