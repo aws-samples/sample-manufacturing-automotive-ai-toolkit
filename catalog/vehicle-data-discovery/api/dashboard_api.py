@@ -117,31 +117,46 @@ app.mount("/api", api_app)
 
 # Serve static frontend with SPA fallback
 from fastapi.responses import FileResponse
+from typing import Optional
 import os
 
 STATIC_DIR = "static"
+# Absolute, symlink-resolved root. Every served path must stay inside this
+# directory; anything that escapes it (e.g. via "../" or encoded separators)
+# is rejected to prevent path traversal / arbitrary file read.
+STATIC_ROOT = os.path.realpath(STATIC_DIR)
+
+
+def _resolve_static_file(*parts: str) -> Optional[str]:
+    """Resolve a path relative to STATIC_ROOT and return it only if it stays
+    inside STATIC_ROOT and points at an existing regular file. Returns None
+    otherwise (including for any traversal attempt)."""
+    candidate = os.path.realpath(os.path.join(STATIC_ROOT, *parts))
+    if candidate != STATIC_ROOT and not candidate.startswith(STATIC_ROOT + os.sep):
+        return None
+    if os.path.isfile(candidate):
+        return candidate
+    return None
+
 
 @app.get("/{path:path}")
 async def serve_spa(path: str):
-    """Serve static files with SPA-style routing"""
-    # Try exact file
-    file_path = os.path.join(STATIC_DIR, path)
-    if os.path.isfile(file_path):
-        return FileResponse(file_path)
-    # Try with .html extension
-    html_path = os.path.join(STATIC_DIR, f"{path}.html")
-    if os.path.isfile(html_path):
-        return FileResponse(html_path)
-    # Try index.html in directory
-    index_path = os.path.join(STATIC_DIR, path, "index.html")
-    if os.path.isfile(index_path):
-        return FileResponse(index_path)
-    # Fallback to 404.html
-    return FileResponse(os.path.join(STATIC_DIR, "404.html"), status_code=404)
+    """Serve static files with SPA-style routing (confined to STATIC_DIR)."""
+    # Try exact file, then ".html", then a directory index — all constrained
+    # to STATIC_ROOT so traversal outside the static bundle is impossible.
+    for candidate in (
+        _resolve_static_file(path),
+        _resolve_static_file(f"{path}.html"),
+        _resolve_static_file(path, "index.html"),
+    ):
+        if candidate:
+            return FileResponse(candidate)
+    # Fallback to 404.html (fixed filename inside STATIC_ROOT)
+    return FileResponse(os.path.join(STATIC_ROOT, "404.html"), status_code=404)
 
 @app.get("/")
 async def serve_index():
-    return FileResponse(os.path.join(STATIC_DIR, "index.html"))
+    return FileResponse(os.path.join(STATIC_ROOT, "index.html"))
 
 
 # Lambda handler
